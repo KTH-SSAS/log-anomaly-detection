@@ -1,11 +1,14 @@
 from argparse import ArgumentParser
 import argparse
 
+import log_analyzer.data.utils
+
 """
 Entrypoint script for training
 """
 
 def train():
+
     pass
 
 if __name__ == "__main__":
