@@ -50,7 +50,7 @@ class Fwd_LSTM(nn.Module):
 
         self.stacked_lstm = build_stacked_lstm(self.layers, self.embedding_dim, self.bid)
         self.hidden2tag = nn.Linear(self.layers[-1], self.vocab_size)
-        self.tanh = nn.Tanh()
+        # self.tanh = nn.Tanh()
         initialize_weights(self)
 
     def forward(self, sequences, lengths = None, context_vectors = None):
@@ -68,10 +68,9 @@ class Fwd_LSTM(nn.Module):
             lstm_out = pad_packed_sequence(lstm_out, batch_first=True)
 
         tag_size = self.hidden2tag(lstm_out)
-        output = self.tanh(tag_size)
+        # output = self.tanh(tag_size)
 
-
-        return output, hx
+        return tag_size, hx
     
 class Bid_LSTM(nn.Module):
     def __init__(self, layers, vocab_size, embedding_dim, jagged = False, tiered =False, context_vector_size = 0):
@@ -91,7 +90,7 @@ class Bid_LSTM(nn.Module):
 
         self.stacked_bid_lstm = build_stacked_lstm(self.layers, self.embedding_dim, self.bid)
         self.hidden2tag = nn.Linear(self.layers[-1] * 2, self.vocab_size)
-        self.tanh = nn.Tanh()
+        # self.tanh = nn.Tanh()
 
         initialize_weights(self)
 
@@ -109,7 +108,7 @@ class Bid_LSTM(nn.Module):
             lstm_out = pad_packed_sequence(lstm_out, batch_first=True)
             
         tag_size = self.hidden2tag(lstm_out)
-        output = self.tanh(tag_size)
+        # output = self.tanh(tag_size)
         return tag_size, hx
 
 if __name__ == "__main__":
