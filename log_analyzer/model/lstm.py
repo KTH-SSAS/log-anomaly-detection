@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from collections import OrderedDict
+import log_analyzer.model.auxiliary as auxiliary
 
 def truncated_normal_(tensor, mean=0, std=1):
     size = tensor.shape
@@ -22,20 +23,72 @@ def initialize_weights(net, initrange = 1.0):
         elif isinstance(m, nn.Embedding):
             truncated_normal_(m.weight.data, mean = 0.0, std =1)
 
+def training_settings(args, conf, lr = 1e-3, step_size = 20, gamma = 0.99, patience = 20, verbose = False):
 
-def build_stacked_lstm(layers, embedding_dim, bid):
-    lstm_lst = []
-    for i, unit_size in enumerate(layers):
-        if i == 0:
-            lstm_lst.append(('LSTM_fwd'+str(i), nn.LSTM(embedding_dim, unit_size, batch_first = True, bidirectional = bid)))
-        else:
-            lstm_lst.append(('LSTM_fwd'+str(i), nn.LSTM(layers[i-1], unit_size, batch_first = True, bidirectional = bid)))
-    return nn.Sequential(OrderedDict(lstm_lst))      
 
+    # Check GPU
+    cuda = torch.cuda.is_available()
+    
+    # Select a model
+    if args.bidirectional:
+        model = Fwd_LSTM
+    else:
+        model = Bid_LSTM
+
+    # Create a model
+    model = model(args.lstm_layers, conf['token_set_size'], args.embed_dim)
+    if cuda:
+        model.cuda()
+
+    # Create settings for training.
+    criterion = nn.CrossEntropyLoss(reduction= 'none')
+    early_stopping = auxiliary.EarlyStopping(patience=patience, verbose=verbose)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size= step_size, gamma=gamma)
+
+    return model, criterion,  optimizer, scheduler, early_stopping, cuda
+
+def train_model(batch, model, criterion, optimizer, scheduler, early_stopping, cuda, jagged):
+
+    model.train()
+    optimizer.zero_grad()
+    X = batch['x']
+    Y = batch['t']
+    L = batch.get('length')
+    M = batch.get('mask')
+    if cuda:
+        X = X.cuda()
+        Y = Y.cuda()
+        if jagged:
+            L = L.cuda()
+            M = M.cuda()
+    output, lstm_out, hx = model(X, lengths = L) 
+    token_losses = criterion(output.transpose(1,2), Y)
+    if jagged:
+        masked_losses = token_losses * M
+        line_losses = torch.sum(masked_losses, dim = 1)
+    else:
+        line_losses = torch.mean(token_losses, dim = 1)
+        
+    loss = torch.mean(line_losses, dim = 0)
+
+    loss.backward()
+    optimizer.step()
+    scheduler.step()
+
+    early_stopping(loss, model)
+
+    if early_stopping.early_stop:
+        print("Early stopping")
+        early_stopping.early_stop = False
+        early_stopping.counter = 0
+    
+    return model
 
 class Fwd_LSTM(nn.Module):
     def __init__(self, layers, vocab_size, embedding_dim, jagged = False, tiered =False, context_vector_size = 0):
         super().__init__()
+        # Parameter setting
         self.layers = layers 
         self.jagged = jagged
         self.vocab_size = vocab_size
@@ -43,14 +96,15 @@ class Fwd_LSTM(nn.Module):
         self.tiered = tiered
         self.bid = False
 
+        # Layers
         self.embeddings = nn.Embedding(vocab_size, embedding_dim)
-
         if self.tiered:
             self.embedding_dim += context_vector_size  
-
-        self.stacked_lstm = build_stacked_lstm(self.layers, self.embedding_dim, self.bid)
+        self.stacked_lstm = nn.LSTM(self.embedding_dim, self.layers[0], len(self.layers), batch_first = True, bidirectional = self.bid)
+        self.tanh = nn.Tanh()
         self.hidden2tag = nn.Linear(self.layers[-1], self.vocab_size)
-        # self.tanh = nn.Tanh()
+
+        # Weight initialization
         initialize_weights(self)
 
     def forward(self, sequences, lengths = None, context_vectors = None):
@@ -67,15 +121,15 @@ class Fwd_LSTM(nn.Module):
         if self.jagged: 
             lstm_out = pad_packed_sequence(lstm_out, batch_first=True)
 
-        tag_size = self.hidden2tag(lstm_out)
-        # output = self.tanh(tag_size)
+        output = self.tanh(lstm_out)
+        tag_size = self.hidden2tag(output)
 
-        return tag_size, hx
+        return tag_size, lstm_out, hx
     
 class Bid_LSTM(nn.Module):
     def __init__(self, layers, vocab_size, embedding_dim, jagged = False, tiered =False, context_vector_size = 0):
         super().__init__()
-        
+        # Parameter setting
         self.layers = layers 
         self.jagged = jagged
         self.vocab_size = vocab_size
@@ -83,15 +137,15 @@ class Bid_LSTM(nn.Module):
         self.tiered = tiered
         self.bid = True
         
+        # Layers
         self.embeddings = nn.Embedding(self.vocab_size, self.embedding_dim)
-        
         if self.tiered:
             self.embedding_dim += context_vector_size
-
-        self.stacked_bid_lstm = build_stacked_lstm(self.layers, self.embedding_dim, self.bid)
+        self.stacked_bid_lstm = nn.LSTM(self.embedding_dim, self.layers[0], len(self.layers), batch_first = True, bidirectional = self.bid)
+        self.tanh = nn.Tanh()
         self.hidden2tag = nn.Linear(self.layers[-1] * 2, self.vocab_size)
-        # self.tanh = nn.Tanh()
 
+        # Weight initialization
         initialize_weights(self)
 
     def forward(self, sequences, lengths = None, context_vectors = None):   
@@ -106,14 +160,75 @@ class Bid_LSTM(nn.Module):
         lstm_out, (hx, cx)  = self.stacked_bid_lstm(x_lookups)
         if self.jagged:
             lstm_out = pad_packed_sequence(lstm_out, batch_first=True)
-            
-        tag_size = self.hidden2tag(lstm_out)
-        # output = self.tanh(tag_size)
-        return tag_size, hx
+        
+        output = self.tanh(lstm_out)
+        tag_size = self.hidden2tag(output)
+           
+        return tag_size, lstm_out, hx
+
+class Context_LSTM(nn.Module):
+    def __init__(self, ctxt_lv_layers, input_dim):
+        super().__init__()
+        # Parameter setting
+        self.ctxt_lv_layers = ctxt_lv_layers 
+        self.input_dim = input_dim
+
+        # Layers
+        self.context_lstm_layers = nn.LSTM(input_dim, self.ctxt_lv_layers[0], len(ctxt_lv_layers), batch_first = True, bidirectional = bid)
+
+        # Weight initialization
+        initialize_weights(self)
+
+    def forward(self, lower_lv_outputs, final_hidden, context_h, context_c, seq_len = None):   
+
+        if seq_len is not None:
+            mean_hidden = torch.sum(lower_lv_outputs, dim = 1) / seq_len
+        else:
+            mean_hidden = torch.mean(lower_lv_outputs, dim = 1)
+        synthetic_input = torch.cat(mean_hidden, final_hidden, dim=1)
+        output, (context_hx, context_cx) = self.context_lstm_layers(synthetic_input, (context_h, context_c))
+        
+        return output, context_hx, context_cx 
+    
+class Tiered_LSTM(nn.Module):
+    def __init__(self, low_lv_layers, ctxt_lv_layers, vocab_size, embedding_dim, context_vector_size, 
+                 jagged = False, bid = False):
+        
+        super().__init__()
+        # Parameter setting
+        self.bid = bid
+        if self.bid:
+            self.model = Bid_LSTM
+        else:
+            self.model = Fwd_LSTM
+        self.low_lv_layers = low_lv_layers 
+        self.ctxt_lv_layers = ctxt_lv_layers
+        self.jagged = jagged
+        self.vocab_size = vocab_size
+        self.embedding_dim = embedding_dim
+
+        # Layers        
+        self.low_lv_lstm = self.model(self.low_lv_layers, self.vocab_size, self.embedding_dim, 
+                                      jagged = self.jagged, tiered = True, context_vector_size = self.ctxt_lv_layers[-1])
+        self.ctxt_lv_lstm = Context_LSTM(self.ctxt_lv_layers, low_lv_layers[-1] * 2)
+
+        # Weight initialization
+        initialize_weights(self)
+
+    def forward(self, user_sequences, context_vectors, context_h, context_c, lengths = None):
+        self.ctxt_vector = context_vectors
+        self.ctxt_h = context_h
+        self.ctxt_c = context_c
+        self.tag_output = []
+        for sequences in range(user_sequences): #number of steps (e.g., 3), number of users (e.g., 64), lengths of sequences (e.g., 10)
+            tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(sequences, lengths = lengths, context_vectors = self.ctxt_vector)
+            self.ctxt_vector, (self.ctxt_h, self.ctxt_c) = self.ctxt_lv_lstm(low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len = lengths)
+            self.tag_output.append(tag_size)
+        return self.tag_output, self.ctxt_vector, self.ctxt_h, self.ctxt_c
 
 if __name__ == "__main__":
     # I tried to make this code self-explanatory, but if there is any difficulty to understand ti or possible improvements, please tell me.
-    test_layers = [10, 20, 10]
+    test_layers = [10, 10] #each layer has to have the same hidden units.
     test_vocab_size = 96
     test_embedding_dim= 30
 
