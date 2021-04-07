@@ -51,5 +51,7 @@ if __name__ == "__main__":
     parser.add_argument('-embed_dim', type=int, default=20,
                         help='Size of embeddings for categorical features.')
     parser.add_argument('--config', type=str, default='config.json', help='JSON configuration file')
+    parser.add_argument('--model_dir', type=str, help='Directory to save stats and checkpoints to', default='runs')
+    parser.add_argument('--load_from_checkpoint', type=str, help='Checkpoint to resume training from')
     args = parser.parse_args()
     train(args)
