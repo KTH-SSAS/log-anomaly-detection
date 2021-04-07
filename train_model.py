@@ -5,6 +5,7 @@ import os
 import json
 import log_analyzer.data.utils as data_utils
 import log_analyzer.model.lstm as lstms
+from log_analyzer import trainer
 
 """
 Entrypoint script for training
@@ -22,7 +23,7 @@ def train(args):
         conf = json.load(f)
     
     # Settings for LSTM.
-    model, criterion,  optimizer, scheduler, early_stopping, cuda = lstms.training_settings(args, conf, verbose = True) 
+    model, criterion,  optimizer, scheduler, early_stopping, cuda = trainer.training_settings(args, conf, verbose = True) 
 
     jag = int(args.jagged)
     skipsos = int(args.skipsos)
@@ -33,7 +34,7 @@ def train(args):
     train_loader, test_loader = data_utils.load_data(train_day, test_day, args)
 
     for batch in train_loader:
-        model = lstms.train_model(batch, model, criterion, optimizer, scheduler, early_stopping, cuda, args.jagged)
+        model = trainer.train_model(batch, model, criterion, optimizer, scheduler, early_stopping, cuda, args.jagged)
         
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -51,5 +52,7 @@ if __name__ == "__main__":
     parser.add_argument('-embed_dim', type=int, default=20,
                         help='Size of embeddings for categorical features.')
     parser.add_argument('--config', type=str, default='config.json', help='JSON configuration file')
+    parser.add_argument('--model_dir', type=str, help='Directory to save stats and checkpoints to', default='runs')
+    parser.add_argument('--load_from_checkpoint', type=str, help='Checkpoint to resume training from')
     args = parser.parse_args()
     train(args)
