@@ -5,6 +5,7 @@ import os
 import json
 import log_analyzer.data.utils as data_utils
 import log_analyzer.model.lstm as lstms
+from log_analyzer import trainer
 
 """
 Entrypoint script for training
@@ -21,14 +22,14 @@ def train(args):
     conf = json.load(open(specpath, 'r'))
     
     # Settings for LSTM.
-    model, criterion,  optimizer, scheduler, early_stopping, cuda = lstms.training_settings(args, conf, verbose = True) 
+    model, criterion,  optimizer, scheduler, early_stopping, cuda = trainer.training_settings(args, conf, verbose = True) 
 
     jag = int(args.jagged)
     skipsos = int(args.skipsos)    
     train_loader, test_loader = data_utils.load_data(str(0) + 'head', str(1) + 'head', args) # For a short test, I changed it. This part should be decided depending on how we will generate json files.
 
     for batch in train_loader:
-        model = lstms.train_model(batch, model, criterion, optimizer, scheduler, early_stopping, cuda, args.jagged)
+        model = trainer.train_model(batch, model, criterion, optimizer, scheduler, early_stopping, cuda, args.jagged)
         
 if __name__ == "__main__":
     parser = ArgumentParser()
