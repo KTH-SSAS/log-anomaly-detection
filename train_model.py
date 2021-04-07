@@ -18,15 +18,20 @@ def train(args):
         json_file = 'lanl_char_config.json'
     else:
         json_file = 'lanl_word_config.json'
-    specpath = os.path.join(os.getcwd(), 'notebooks/safekit/features/specs/lm', json_file) # For a short test
-    conf = json.load(open(specpath, 'r'))
+   
+    with open(args.config, 'r') as f:
+        conf = json.load(f)
     
     # Settings for LSTM.
     model, criterion,  optimizer, scheduler, early_stopping, cuda = trainer.training_settings(args, conf, verbose = True) 
 
     jag = int(args.jagged)
-    skipsos = int(args.skipsos)    
-    train_loader, test_loader = data_utils.load_data(str(0) + 'head', str(1) + 'head', args) # For a short test, I changed it. This part should be decided depending on how we will generate json files.
+    skipsos = int(args.skipsos)
+
+    train_day = conf['test_files'][0] # Should be better probably, to be able to train with multiple days
+    test_day = conf['test_files'][1]
+
+    train_loader, test_loader = data_utils.load_data(train_day, test_day, args)
 
     for batch in train_loader:
         model = trainer.train_model(batch, model, criterion, optimizer, scheduler, early_stopping, cuda, args.jagged)
@@ -46,5 +51,8 @@ if __name__ == "__main__":
                         help="A list of hidden layer sizes.")
     parser.add_argument('-embed_dim', type=int, default=20,
                         help='Size of embeddings for categorical features.')
+    parser.add_argument('--config', type=str, default='config.json', help='JSON configuration file')
+    parser.add_argument('--model_dir', type=str, help='Directory to save stats and checkpoints to', default='runs')
+    parser.add_argument('--load_from_checkpoint', type=str, help='Checkpoint to resume training from')
     args = parser.parse_args()
     train(args)

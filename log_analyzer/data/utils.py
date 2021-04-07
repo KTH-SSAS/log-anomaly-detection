@@ -69,10 +69,10 @@ def create_data_loader(filepath, args):
     ds = IterableLogDataSet(filepath, args.bidirectional, args.skipsos, args.jagged)
     return DataLoader(ds, batch_size=args.batch_size)
 
-def load_data(day_train, day_eval, args):
+def load_data(train_file, eval_file, args):
 
-    filepath_train = path.join(args.data_folder, f"{day_train}.txt")
-    filepath_eval = path.join(args.data_folder, f"{day_eval}.txt")
+    filepath_train = path.join(args.data_folder, train_file)
+    filepath_eval = path.join(args.data_folder, eval_file)
     train_loader = create_data_loader(filepath_train, args)
     test_loader = create_data_loader(filepath_eval, args)
 
