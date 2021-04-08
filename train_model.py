@@ -6,6 +6,7 @@ import json
 import log_analyzer.data.utils as data_utils
 import log_analyzer.model.lstm as lstms
 from log_analyzer import trainer
+from log_analyzer import evaluator
 
 """
 Entrypoint script for training
@@ -28,14 +29,17 @@ def train(args):
     jag = int(args.jagged)
     skipsos = int(args.skipsos)
 
-    train_day = conf['test_files'][0] # Should be better probably, to be able to train with multiple days
-    test_day = conf['test_files'][1]
+    for i in range(len(conf['test_files'][:-1])):
+        train_day = conf['test_files'][i] # Should be better probably, to be able to train with multiple days / Thank you for this nice change! I agree :)
+        test_day = conf['test_files'][i+1]
 
-    train_loader, test_loader = data_utils.load_data(train_day, test_day, args)
+        train_loader, test_loader = data_utils.load_data(train_day, test_day, args)
 
-    for batch in train_loader:
-        model = trainer.train_model(batch, model, criterion, optimizer, scheduler, early_stopping, cuda, args.jagged)
-        
+        for batch in train_loader:
+            model = trainer.train_model(batch, model, criterion, optimizer, scheduler, early_stopping, cuda, args.jagged)
+        for batch_num, batch in enumerate(test_loader):
+            evaluator.evaluate_model(batch_num, batch, test_day, model, criterion, cuda, args.jagged, verbose = True) 
+                                     
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--data-folder", type=str, help="Path to data files.")
