@@ -14,12 +14,7 @@ Entrypoint script for training
 
 def train(args):
 
-    # Read a config file.
-    if args.jagged:
-        json_file = 'lanl_char_config.json'
-    else:
-        json_file = 'lanl_word_config.json'
-   
+    # Read a config file.   
     with open(args.config, 'r') as f:
         conf = json.load(f)
     
