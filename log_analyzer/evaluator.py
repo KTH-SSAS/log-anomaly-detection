@@ -1,28 +1,15 @@
 import torch
 import numpy as np
 
-def evaluate_model(batch_num, batch, test_day, model, criterion, cuda, jagged, outfile = None, verbose = False): 
+def evaluate_model(batch_num, batch, test_day, trainer, jagged, outfile = None, verbose = False): 
     # TODO: outfile is None since I think it is not necessary. but there is a functionality for outfile, since we might need it in future.
     #       If we don't use outfile, then we can remove batch_num as well.
-    model.eval()
-    X = batch['x']
-    Y = batch['t']
-    L = batch.get('length')
-    M = batch.get('mask')
-    if cuda:
-        X = X.cuda()
-        Y = Y.cuda()
-        if jagged:
-            L = L.cuda()
-            M = M.cuda()
-    output, lstm_out, hx = model(X, lengths = L) 
-    token_losses = criterion(output.transpose(1,2), Y)
-    if jagged:
-        masked_losses = token_losses * M
-        line_losses = torch.sum(masked_losses, dim = 1)
-    else:
-        line_losses = torch.mean(token_losses, dim = 1)
-    loss = torch.mean(line_losses, dim = 0)
+    cuda = torch.cuda.is_available()
+    trainer.model.eval()
+    
+    X, Y, L, M = trainer.split_batch(batch)
+    
+    token_losses = trainer.compute_loss(X, Y, lengths=L, mask=M)
 
     if outfile is not None:
         for line, sec, day, usr, red, loss in zip(batch['line'].flatten().tolist(),

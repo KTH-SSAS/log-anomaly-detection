@@ -5,8 +5,9 @@ import os
 import json
 import log_analyzer.data.utils as data_utils
 import log_analyzer.model.lstm as lstms
-from log_analyzer import trainer
+from log_analyzer.trainer import Trainer
 from log_analyzer import evaluator
+import torch
 
 """
 Entrypoint script for training
@@ -19,7 +20,7 @@ def train(args):
         conf = json.load(f)
     
     # Settings for LSTM.
-    model, criterion,  optimizer, scheduler, early_stopping, cuda = trainer.training_settings(args, conf, verbose = True) 
+    lm_trainer = Trainer(args, conf, verbose = True) 
 
     jag = int(args.jagged)
     skipsos = int(args.skipsos)
@@ -32,10 +33,12 @@ def train(args):
 
         train_loader, test_loader = data_utils.load_data(train_day, test_day, args, sentence_length)
 
-        for batch in train_loader:
-            model = trainer.train_model(batch, model, criterion, optimizer, scheduler, early_stopping, cuda, args.jagged)
+        for iteration, batch in enumerate(train_loader):
+            loss = lm_trainer.train_step(batch)
+            # TODO log loss with tensorboard
+
         for batch_num, batch in enumerate(test_loader):
-            evaluator.evaluate_model(batch_num, batch, test_day, model, criterion, cuda, args.jagged, verbose = True) 
+            evaluator.evaluate_model(batch_num, batch, test_day, lm_trainer, jagged=args.jagged, verbose = True) 
                                      
 if __name__ == "__main__":
     parser = ArgumentParser()
