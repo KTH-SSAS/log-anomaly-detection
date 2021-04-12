@@ -16,7 +16,7 @@ def training_settings(args, conf, lr = 1e-3, step_size = 20, gamma = 0.99, patie
         model = Fwd_LSTM
 
     # Create a model
-    model = model(args.lstm_layers, conf['token_set_size'], args.embed_dim)
+    model = model(args.lstm_layers, conf['token_set_size'], args.embed_dim, jagged=args.jagged)
     if cuda:
         model.cuda()
 
@@ -34,8 +34,12 @@ def train_model(batch, model, criterion, optimizer, scheduler, early_stopping, c
     optimizer.zero_grad()
     X = batch['x']
     Y = batch['t']
-    L = batch.get('length')
-    M = batch.get('mask')
+    if jagged:
+        L = batch['length']
+        M = batch['mask']
+    else:
+        L = None
+        M = None
     if cuda:
         X = X.cuda()
         Y = Y.cuda()

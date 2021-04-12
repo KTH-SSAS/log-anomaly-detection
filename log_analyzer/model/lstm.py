@@ -50,17 +50,18 @@ class LSTMLanguageModel(nn.Module):
         if self.tiered:
             x_lookups = torch.cat(x_lookups, context_vectors, dim=2)
 
+        x_lookups = x_lookups.transpose(0, 1) # Transpose input because PyTorch LSTM input dimensions are weird
+
         lstm_in = x_lookups
         if self.jagged:
-            lstm_in = pack_padded_sequence(lstm_in, lengths, batch_first=True)            
+            lstm_in = pack_padded_sequence(lstm_in, lengths, enforce_sorted=False)              
         
-        x_lookups = x_lookups.transpose(0, 1) # Transpose input because PyTorch LSTM input dimensions are weird
-        
-        lstm_out, (hx, cx)  = self.stacked_lstm(x_lookups)
+        lstm_out, (hx, cx)  = self.stacked_lstm(lstm_in)
+
         if self.jagged:
-            lstm_out = pad_packed_sequence(lstm_out, batch_first=True)
+            lstm_out = pad_packed_sequence(lstm_out)
         
-        output = self.tanh(lstm_out)
+        output = self.tanh(lstm_out[0])
            
         return output, lstm_out, hx
             

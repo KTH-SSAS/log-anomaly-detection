@@ -68,10 +68,10 @@ class IterableLogDataSet(IterableDataset):
                     }
 
                 if self.jag:
-                    datadict['lengths'] = data[5]
-                    datadict['mask'] = get_mask(datadict['lengths']-2*self.bidir-int(self.skipsos), self.sentence_length-2*self.bidir)
-                    assert datadict['lengths'] <= datadict['x'].shape[-1], 'Sequence found greater than num_tokens_predicted'
-                    assert datadict['lengths'] > 0, \
+                    datadict['length'] = data[5]
+                    datadict['mask'] = get_mask(datadict['length']-2*self.bidir-int(self.skipsos), self.sentence_length-2*self.bidir)
+                    assert datadict['length'] <= datadict['x'].shape[-1], 'Sequence found greater than num_tokens_predicted'
+                    assert datadict['length'] > 0, \
                         'Sequence lengths must be greater than zero.' \
                         f'Found zero length sequence in datadict["lengths"]: {datadict["lengths"]}' 
 
