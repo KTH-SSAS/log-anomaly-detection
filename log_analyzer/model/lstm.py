@@ -23,9 +23,10 @@ def initialize_weights(net, initrange = 1.0):
             m.bias.data.zero_()
         elif isinstance(m, nn.Embedding):
             truncated_normal_(m.weight.data, mean = 0.0, std =1)
-            
-class Fwd_LSTM(nn.Module):
-    def __init__(self, layers, vocab_size, embedding_dim, jagged = False, tiered =False, context_vector_size = 0):
+
+class LSTMLanguageModel(nn.Module):
+
+    def __init__(self, layers, vocab_size, embedding_dim, jagged = False, tiered = False, context_vector_size = 0):
         super().__init__()
         # Parameter setting
         self.layers = layers 
@@ -33,56 +34,13 @@ class Fwd_LSTM(nn.Module):
         self.vocab_size = vocab_size
         self.embedding_dim = embedding_dim
         self.tiered = tiered
-        self.bid = False
-
-        # Layers
-        self.embeddings = nn.Embedding(vocab_size, embedding_dim)
-        if self.tiered:
-            self.embedding_dim += context_vector_size  
-        self.stacked_lstm = nn.LSTM(self.embedding_dim, self.layers[0], len(self.layers), batch_first = True, bidirectional = self.bid)
-        self.tanh = nn.Tanh()
-        self.hidden2tag = nn.Linear(self.layers[-1], self.vocab_size)
-
-        # Weight initialization
-        initialize_weights(self)
-
-    def forward(self, sequences, lengths = None, context_vectors = None):
-        
-        x_lookups = self.embeddings(sequences) 
-        if self.tiered:
-            x_lookups = torch.cat(x_lookups, context_vectors, dim=2)
-
-        lstm_in = x_lookups
-        if self.jagged:
-            lstm_in = pack_padded_sequence(lstm_in, lengths, batch_first=True)
-            
-        lstm_out, (hx, cx)  = self.stacked_lstm(x_lookups)
-        if self.jagged: 
-            lstm_out = pad_packed_sequence(lstm_out, batch_first=True)
-
-        output = self.tanh(lstm_out)
-        tag_size = self.hidden2tag(output)
-
-        return tag_size, lstm_out, hx
-    
-class Bid_LSTM(nn.Module):
-    def __init__(self, layers, vocab_size, embedding_dim, jagged = False, tiered =False, context_vector_size = 0):
-        super().__init__()
-        # Parameter setting
-        self.layers = layers 
-        self.jagged = jagged
-        self.vocab_size = vocab_size
-        self.embedding_dim = embedding_dim
-        self.tiered = tiered
-        self.bid = True
         
         # Layers
         self.embeddings = nn.Embedding(self.vocab_size, self.embedding_dim)
         if self.tiered:
             self.embedding_dim += context_vector_size
-        self.stacked_bid_lstm = nn.LSTM(self.embedding_dim, self.layers[0], len(self.layers), batch_first = True, bidirectional = self.bid)
-        self.tanh = nn.Tanh()
-        self.hidden2tag = nn.Linear(self.layers[-1] * 2, self.vocab_size)
+        self.stacked_lstm = nn.LSTM(self.embedding_dim, self.layers[0], len(self.layers), batch_first = True, bidirectional = self.bid)
+        self.tanh = nn.Tanh()      
 
         # Weight initialization
         initialize_weights(self)
@@ -98,12 +56,37 @@ class Bid_LSTM(nn.Module):
         
         x_lookups = x_lookups.transpose(0, 1) # Transpose input because PyTorch LSTM input dimensions are weird
         
-        lstm_out, (hx, cx)  = self.stacked_bid_lstm(x_lookups)
+        lstm_out, (hx, cx)  = self.stacked_lstm(x_lookups)
         if self.jagged:
             lstm_out = pad_packed_sequence(lstm_out, batch_first=True)
         
         output = self.tanh(lstm_out)
+           
+        return output, lstm_out, hx
+            
+class Fwd_LSTM(LSTMLanguageModel):
+    def __init__(self, layers, vocab_size, embedding_dim, jagged = False, tiered = False, context_vector_size = 0):
+        self.bid = False
+        super().__init__(layers, vocab_size, embedding_dim, jagged, tiered, context_vector_size)
+        self.hidden2tag = nn.Linear(self.layers[-1], self.vocab_size)
+
+    def forward(self, sequences, lengths = None, context_vectors = None): 
+        output, lstm_out, hx = super().forward(sequences, lengths, context_vectors)
         
+        output = output.transpose(0, 1)
+
+        tag_size = self.hidden2tag(output)
+
+        return tag_size, lstm_out, hx
+
+class Bid_LSTM(LSTMLanguageModel):
+    def __init__(self, layers, vocab_size, embedding_dim, jagged = False, tiered =False, context_vector_size = 0):
+        self.bid = True
+        super().__init__(layers, vocab_size, embedding_dim, jagged, tiered, context_vector_size)
+        self.hidden2tag = nn.Linear(self.layers[-1] * 2, self.vocab_size)
+
+    def forward(self, sequences, lengths = None, context_vectors = None): 
+        output, lstm_out, hx = super().forward(sequences, lengths, context_vectors)
         split = output.view(sequences.shape[-1], sequences.shape[0], 2, output.shape[-1]//2) # Reshape output to make forward/backward into seperate dims 
 
         # Seperate forward and backward hidden states
@@ -120,7 +103,7 @@ class Bid_LSTM(nn.Module):
         b_f_concat = b_f_concat.transpose(0, 1) # Transpose back to standard shape
 
         tag_size = self.hidden2tag(b_f_concat)
-           
+
         return tag_size, lstm_out, hx
 
 class Context_LSTM(nn.Module):
