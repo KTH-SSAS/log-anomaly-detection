@@ -19,9 +19,24 @@ DEFAULT_HEADERS = [
     "start_sentence"
 ]
 
+def char_tokens_to_text(tokens):
+    characters = [chr(t + 30) for t in tokens]
+    string = "".join(characters)
+    return characters, string
+
+
+def translate_line(string, pad_len):
+    """
+
+    :param string:
+    :param pad_len:
+    :return:
+    """
+    return "0 " + " ".join([str(ord(c) - 30) for c in string]) + " 1 " + " ".join(["0"] * pad_len) + "\n"
+
 class IterableLogDataSet(IterableDataset):
 
-    def __init__(self, filepath, bidirectional, skipsos, jagged, delimiter=' ') -> None:
+    def __init__(self, filepath, bidirectional, skipsos, jagged, sentence_length, delimiter=' ') -> None:
         super().__init__()
         self.filepath = filepath
         self.delimiter = delimiter
@@ -29,7 +44,7 @@ class IterableLogDataSet(IterableDataset):
         self.skipsos = skipsos
         self.jag = jagged
         self.bidir = bidirectional
-        self.sentence_length = 120 #TODO have this be set in config file
+        self.sentence_length = sentence_length
 
     def parse_lines(self, filepath):
         with open(filepath, 'r') as f:
@@ -37,6 +52,7 @@ class IterableLogDataSet(IterableDataset):
                 split_line = line.strip().split(self.delimiter)
                 split_line = [int(x) for x in split_line]
                 data = torch.LongTensor(split_line)
+
 
                 endx = data.shape[0] - int(not self.bidir)
                 endt = data.shape[0] - int(self.bidir)
@@ -65,16 +81,16 @@ class IterableLogDataSet(IterableDataset):
         return self.parse_lines(self.filepath)
 
 
-def create_data_loader(filepath, args):
-    ds = IterableLogDataSet(filepath, args.bidirectional, args.skipsos, args.jagged)
+def create_data_loader(filepath, args, sentence_length):
+    ds = IterableLogDataSet(filepath, args.bidirectional, args.skipsos, args.jagged, sentence_length)
     return DataLoader(ds, batch_size=args.batch_size)
 
-def load_data(train_file, eval_file, args):
+def load_data(train_file, eval_file, args, sentence_length):
 
     filepath_train = path.join(args.data_folder, train_file)
     filepath_eval = path.join(args.data_folder, eval_file)
-    train_loader = create_data_loader(filepath_train, args)
-    test_loader = create_data_loader(filepath_eval, args)
+    train_loader = create_data_loader(filepath_train, args, sentence_length)
+    test_loader = create_data_loader(filepath_eval, args, sentence_length)
 
     return train_loader, test_loader
 

@@ -23,12 +23,14 @@ def train(args):
 
     jag = int(args.jagged)
     skipsos = int(args.skipsos)
+    
+    sentence_length = conf["sentence_length"] - 1 - int(args.skipsos) + int(args.bidirectional)
 
     for i in range(len(conf['test_files'][:-1])):
         train_day = conf['test_files'][i] # Should be better probably, to be able to train with multiple days / Thank you for this nice change! I agree :)
         test_day = conf['test_files'][i+1]
 
-        train_loader, test_loader = data_utils.load_data(train_day, test_day, args)
+        train_loader, test_loader = data_utils.load_data(train_day, test_day, args, sentence_length)
 
         for batch in train_loader:
             model = trainer.train_model(batch, model, criterion, optimizer, scheduler, early_stopping, cuda, args.jagged)
