@@ -11,9 +11,9 @@ def training_settings(args, conf, lr = 1e-3, step_size = 20, gamma = 0.99, patie
     
     # Select a model
     if args.bidirectional:
-        model = Fwd_LSTM
-    else:
         model = Bid_LSTM
+    else:
+        model = Fwd_LSTM
 
     # Create a model
     model = model(args.lstm_layers, conf['token_set_size'], args.embed_dim)
