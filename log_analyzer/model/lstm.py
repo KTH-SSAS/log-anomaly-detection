@@ -60,8 +60,9 @@ class LSTMLanguageModel(nn.Module):
 
         if self.jagged:
             lstm_out = pad_packed_sequence(lstm_out)
+            lstm_out = lstm_out[0]
         
-        output = self.tanh(lstm_out[0])
+        output = self.tanh(lstm_out)
            
         return output, lstm_out, hx
             
