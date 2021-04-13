@@ -44,42 +44,41 @@ def train(args):
 
     writer = SummaryWriter(log_dir)
 
-    for i in range(len(conf['test_files'][:-1])):
-        train_day = conf['test_files'][i] # Should be better probably, to be able to train with multiple days / Thank you for this nice change! I agree :)
-        test_day = conf['test_files'][i+1]
+    train_days = conf['train_files']
+    test_days = conf['test_files']
 
-        train_loader, test_loader = data_utils.load_data(train_day, test_day, args, sentence_length)
+    train_loader, test_loader = data_utils.load_data(train_days, test_days, args, sentence_length)
 
-        for iteration, batch in enumerate(train_loader):
-            loss, done = lm_trainer.train_step(batch)
-            writer.add_scalar(f'Loss/train_day_{i}', loss, iteration)
-            if done:
-                print("Early stopping.")
-                break
+    for iteration, batch in enumerate(train_loader):
+        loss, done = lm_trainer.train_step(batch)
+        writer.add_scalar(f'Loss/train_day_{batch["day"][0]}', loss, iteration)
+        if done:
+            print("Early stopping.")
+            break
 
-        for iteration, batch in enumerate(test_loader):
-            loss = lm_trainer.eval_step(batch)
-            writer.add_scalar(f'Loss/test_day_{i}', loss, iteration+(i+1))
+    for iteration, batch in enumerate(test_loader):
+        loss = lm_trainer.eval_step(batch)
+        writer.add_scalar(f'Loss/test_day_{batch["day"][0]}', loss, iteration)
 
-            if outfile is not None:
-                for line, sec, day, usr, red, loss in zip(batch['line'].flatten().tolist(),
-                                                        batch['second'].flatten().tolist(),
-                                                        batch['day'].flatten().tolist(),
-                                                        batch['user'].flatten().tolist(),
-                                                        batch['red'].flatten().tolist(),
-                                                        loss.flatten().tolist()):
-                    outfile.write('%s %s %s %s %s %s %r\n' % (iteration, line, sec, day, usr, red, loss))
+        if outfile is not None:
+            for line, sec, day, usr, red, loss in zip(batch['line'].flatten().tolist(),
+                                                    batch['second'].flatten().tolist(),
+                                                    batch['day'].flatten().tolist(),
+                                                    batch['user'].flatten().tolist(),
+                                                    batch['red'].flatten().tolist(),
+                                                    loss.flatten().tolist()):
+                outfile.write('%s %s %s %s %s %s %r\n' % (iteration, line, sec, day, usr, red, loss))
 
-            if verbose:
-                print(f"{batch['x'].shape[0]}, {batch['line'][0]}, {batch['second'][0]} fixed {test_day} {loss}") 
-                # TODO: I don't think this print line, but I decided to keep it since removing a line is always easier than adding a line.
-                #       Also, In the original code, there was {data.index} which seems to be an accumulated sum of batch sizes. 
-                #       I don't think we need {data.index}. but... I added it to to-do since we might need to do it in future.
-        
-        writer.close()
-        torch.save(lm_trainer.model, os.path.join(log_dir,'model.pt'))
-        with open(os.path.join(log_dir, 'config.json'), 'w') as f:
-            json.dump(conf, f)
+        if verbose:
+            print(f"{batch['x'].shape[0]}, {batch['line'][0]}, {batch['second'][0]} fixed {batch['day']} {loss}") 
+            # TODO: I don't think this print line, but I decided to keep it since removing a line is always easier than adding a line.
+            #       Also, In the original code, there was {data.index} which seems to be an accumulated sum of batch sizes. 
+            #       I don't think we need {data.index}. but... I added it to to-do since we might need to do it in future.
+    
+    writer.close()
+    torch.save(lm_trainer.model, os.path.join(log_dir,'model.pt'))
+    with open(os.path.join(log_dir, 'config.json'), 'w') as f:
+        json.dump(conf, f)
                                      
 if __name__ == "__main__":
     parser = ArgumentParser()

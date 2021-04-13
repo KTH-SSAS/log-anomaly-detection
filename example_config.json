@@ -1,0 +1,10 @@
+{
+    "bidirectional": false,
+    "layers": [10],
+    "sentence_length": 122,
+    "token_set_size": 96,
+    "num_days": 30,
+    "train_files": ["0.txt", "1.txt"],
+    "test_files": ["2.txt"],
+    "weekend_days": [3, 4, 10, 11, 17, 18, 24, 25]
+}

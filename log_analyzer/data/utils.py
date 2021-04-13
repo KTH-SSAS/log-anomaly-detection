@@ -38,9 +38,8 @@ def translate_line(string, pad_len):
 
 class IterableLogDataSet(IterableDataset):
 
-    def __init__(self, filepath, bidirectional, skipsos, jagged, sentence_length, delimiter=' ') -> None:
+    def __init__(self, filepaths, bidirectional, skipsos, jagged, sentence_length, delimiter=' ') -> None:
         super().__init__()
-        self.filepath = filepath
         self.delimiter = delimiter
 
         self.skipsos = skipsos
@@ -48,39 +47,43 @@ class IterableLogDataSet(IterableDataset):
         self.bidir = bidirectional
         self.sentence_length = sentence_length
 
-    def parse_lines(self, filepath):
-        with open(filepath, 'r') as f:
-            for line in f:
-                split_line = line.strip().split(self.delimiter)
-                split_line = [int(x) for x in split_line]
-                data = torch.LongTensor(split_line)
+        self.filepaths = filepaths
 
-                endx = data.shape[0] - int(not self.bidir)
-                endt = data.shape[0] - int(self.bidir)
+    def parse_lines(self):
+        for datafile in self.filepaths:
+            with open(datafile, 'r') as f:
+                for line in f:
+                    split_line = line.strip().split(self.delimiter)
+                    split_line = [int(x) for x in split_line]
+                    data = torch.LongTensor(split_line)
 
-                datadict = {
-                    'line':     data[0],
-                    'second':   data[1],
-                    'day':      data[2],
-                    'user':     data[3],
-                    'red':      data[4],
-                    'x':        data[(5+self.jag+self.skipsos):endx],
-                    't':        data[(6+self.jag+self.skipsos):endt]
-                }
+                    endx = data.shape[0] - int(not self.bidir)
+                    endt = data.shape[0] - int(self.bidir)
 
-                if self.jag:
-                    datadict['length'] = data[5]
-                    datadict['mask'] = get_mask(
-                        datadict['length']-2*self.bidir-int(self.skipsos), self.sentence_length-2*self.bidir)
-                    assert datadict['length'] <= datadict['x'].shape[-1], 'Sequence found greater than num_tokens_predicted'
-                    assert datadict['length'] > 0, \
-                        'Sequence lengths must be greater than zero.' \
-                        f'Found zero length sequence in datadict["lengths"]: {datadict["lengths"]}'
+                    datadict = {
+                        'dayfile':  datafile,
+                        'line':     data[0],
+                        'second':   data[1],
+                        'day':      data[2],
+                        'user':     data[3],
+                        'red':      data[4],
+                        'x':        data[(5+self.jag+self.skipsos):endx],
+                        't':        data[(6+self.jag+self.skipsos):endt]
+                    }
 
-                yield datadict
+                    if self.jag:
+                        datadict['length'] = data[5]
+                        datadict['mask'] = get_mask(
+                            datadict['length']-2*self.bidir-int(self.skipsos), self.sentence_length-2*self.bidir)
+                        assert datadict['length'] <= datadict['x'].shape[-1], 'Sequence found greater than num_tokens_predicted'
+                        assert datadict['length'] > 0, \
+                            'Sequence lengths must be greater than zero.' \
+                            f'Found zero length sequence in datadict["lengths"]: {datadict["lengths"]}'
+
+                    yield datadict
 
     def __iter__(self):
-        return self.parse_lines(self.filepath)
+        return self.parse_lines()
 
 
 def create_data_loader(filepath, args, sentence_length):
@@ -89,12 +92,12 @@ def create_data_loader(filepath, args, sentence_length):
     return DataLoader(ds, batch_size=args.batch_size)
 
 
-def load_data(train_file, eval_file, args, sentence_length):
+def load_data(train_files, eval_files, args, sentence_length):
 
-    filepath_train = path.join(args.data_folder, train_file)
-    filepath_eval = path.join(args.data_folder, eval_file)
-    train_loader = create_data_loader(filepath_train, args, sentence_length)
-    test_loader = create_data_loader(filepath_eval, args, sentence_length)
+    filepaths_train = [path.join(args.data_folder, f) for f in train_files]
+    filepaths_eval = [path.join(args.data_folder, f) for f in eval_files]
+    train_loader = create_data_loader(filepaths_train, args, sentence_length)
+    test_loader = create_data_loader(filepaths_eval, args, sentence_length)
 
     return train_loader, test_loader
 
