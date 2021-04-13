@@ -24,12 +24,16 @@ def create_identifier_string(model_name, comment=""):
 
 def train(args):
 
+    base_logdir = './runs/'
+    id_string = create_identifier_string("lstm") #TODO have model name be set by config, args or something else
+    log_dir = os.path.join(base_logdir, id_string)
+
     # Read a config file.   
     with open(args.config, 'r') as f:
         conf = json.load(f)
     
     # Settings for LSTM.
-    lm_trainer = Trainer(args, conf, verbose = True) 
+    lm_trainer = Trainer(args, conf, log_dir, verbose = True) 
 
     jag = int(args.jagged)
     skipsos = int(args.skipsos)
@@ -38,11 +42,7 @@ def train(args):
     
     sentence_length = conf["sentence_length"] - 1 - int(args.skipsos) + int(args.bidirectional)
 
-    base_logdir = './runs/'
-    id_string = create_identifier_string(lm_trainer.model.name)
-    log_dir = os.path.join(base_logdir, id_string)
-
-    writer = SummaryWriter(log_dir)
+    writer = SummaryWriter(os.path.join(log_dir, 'metrics'))
 
     train_days = conf['train_files']
     test_days = conf['test_files']

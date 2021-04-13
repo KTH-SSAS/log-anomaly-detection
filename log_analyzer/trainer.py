@@ -7,7 +7,7 @@ import log_analyzer.model.auxiliary as auxiliary
 
 class Trainer():  # TODO name this something more descriptive, it might be used as a wrapper around both transformer/LSTM
 
-    def __init__(self, args, conf, lr=1e-3, step_size=20, gamma=0.99, patience=20, verbose=False):
+    def __init__(self, args, conf, checkpoint_dir, lr=1e-3, step_size=20, gamma=0.99, patience=20, verbose=False):
 
         # Check GPU
         self.cuda = torch.cuda.is_available()
@@ -29,7 +29,7 @@ class Trainer():  # TODO name this something more descriptive, it might be used 
         # Create settings for training.
         self.criterion = nn.CrossEntropyLoss(reduction='none')
         self.early_stopping = auxiliary.EarlyStopping(
-            patience=patience, verbose=verbose)
+            patience=patience, verbose=verbose, path=checkpoint_dir)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         self.scheduler = torch.optim.lr_scheduler.StepLR(
             self.optimizer, step_size=step_size, gamma=gamma)
