@@ -50,8 +50,6 @@ class LSTMLanguageModel(nn.Module):
         if self.tiered:
             x_lookups = torch.cat(x_lookups, context_vectors, dim=2)
 
-        x_lookups = x_lookups.transpose(0, 1) # Transpose input because PyTorch LSTM input dimensions are weird
-
         lstm_in = x_lookups
         if self.jagged:
             lstm_in = pack_padded_sequence(lstm_in, lengths, enforce_sorted=False)              
@@ -74,8 +72,6 @@ class Fwd_LSTM(LSTMLanguageModel):
 
     def forward(self, sequences, lengths = None, context_vectors = None): 
         output, lstm_out, hx = super().forward(sequences, lengths, context_vectors)
-        
-        output = output.transpose(0, 1)
 
         tag_size = self.hidden2tag(output)
 
@@ -89,20 +85,18 @@ class Bid_LSTM(LSTMLanguageModel):
 
     def forward(self, sequences, lengths = None, context_vectors = None): 
         output, lstm_out, hx = super().forward(sequences, lengths, context_vectors)
-        split = output.view(sequences.shape[-1], sequences.shape[0], 2, output.shape[-1]//2) # Reshape output to make forward/backward into seperate dims 
+        split = output.view(sequences.shape[0], sequences.shape[-1], 2, output.shape[-1]//2) # Reshape output to make forward/backward into seperate dims 
 
         # Seperate forward and backward hidden states
         forward_hidden_states = split[:, :, 0] 
         backward_hidden_states = split[:, :, 1]
 
         # Align hidden states
-        forward_hidden_states = forward_hidden_states[:-2]
-        backward_hidden_states = backward_hidden_states[2:]
+        forward_hidden_states = forward_hidden_states[:, :-2]
+        backward_hidden_states = backward_hidden_states[:, 2:]
 
         # Concat them back together
         b_f_concat = torch.cat([forward_hidden_states, backward_hidden_states], -1)
-
-        b_f_concat = b_f_concat.transpose(0, 1) # Transpose back to standard shape
 
         tag_size = self.hidden2tag(b_f_concat)
 
