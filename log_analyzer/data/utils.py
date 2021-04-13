@@ -19,6 +19,7 @@ DEFAULT_HEADERS = [
     "start_sentence"
 ]
 
+
 def char_tokens_to_text(tokens):
     characters = [chr(t + 30) for t in tokens]
     string = "".join(characters)
@@ -33,6 +34,7 @@ def translate_line(string, pad_len):
     :return:
     """
     return "0 " + " ".join([str(ord(c) - 30) for c in string]) + " 1 " + " ".join(["0"] * pad_len) + "\n"
+
 
 class IterableLogDataSet(IterableDataset):
 
@@ -53,7 +55,6 @@ class IterableLogDataSet(IterableDataset):
                 split_line = [int(x) for x in split_line]
                 data = torch.LongTensor(split_line)
 
-
                 endx = data.shape[0] - int(not self.bidir)
                 endt = data.shape[0] - int(self.bidir)
 
@@ -65,15 +66,16 @@ class IterableLogDataSet(IterableDataset):
                     'red':      data[4],
                     'x':        data[(5+self.jag+self.skipsos):endx],
                     't':        data[(6+self.jag+self.skipsos):endt]
-                    }
+                }
 
                 if self.jag:
                     datadict['length'] = data[5]
-                    datadict['mask'] = get_mask(datadict['length']-2*self.bidir-int(self.skipsos), self.sentence_length-2*self.bidir)
+                    datadict['mask'] = get_mask(
+                        datadict['length']-2*self.bidir-int(self.skipsos), self.sentence_length-2*self.bidir)
                     assert datadict['length'] <= datadict['x'].shape[-1], 'Sequence found greater than num_tokens_predicted'
                     assert datadict['length'] > 0, \
                         'Sequence lengths must be greater than zero.' \
-                        f'Found zero length sequence in datadict["lengths"]: {datadict["lengths"]}' 
+                        f'Found zero length sequence in datadict["lengths"]: {datadict["lengths"]}'
 
                 yield datadict
 
@@ -82,8 +84,10 @@ class IterableLogDataSet(IterableDataset):
 
 
 def create_data_loader(filepath, args, sentence_length):
-    ds = IterableLogDataSet(filepath, args.bidirectional, args.skipsos, args.jagged, sentence_length)
+    ds = IterableLogDataSet(filepath, args.bidirectional,
+                            args.skipsos, args.jagged, sentence_length)
     return DataLoader(ds, batch_size=args.batch_size)
+
 
 def load_data(train_file, eval_file, args, sentence_length):
 
@@ -93,6 +97,7 @@ def load_data(train_file, eval_file, args, sentence_length):
     test_loader = create_data_loader(filepath_eval, args, sentence_length)
 
     return train_loader, test_loader
+
 
 def get_mask(lens, num_tokens):
     """
