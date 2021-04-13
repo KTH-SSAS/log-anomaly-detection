@@ -82,12 +82,7 @@ class Trainer():  # TODO name this something more descriptive, it might be used 
 
         self.early_stopping(loss, self.model)
 
-        if self.early_stopping.early_stop:
-            print("Early stopping")
-            self.early_stopping.early_stop = False
-            self.early_stopping.counter = 0
-
-        return loss
+        return loss, self.early_stopping.early_stop
 
     def eval_step(self, batch):
         """Defines a single evaluation step. Feeds data through the model and computes the loss."""

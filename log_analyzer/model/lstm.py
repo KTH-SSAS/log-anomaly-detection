@@ -75,6 +75,7 @@ class LSTMLanguageModel(nn.Module):
 class Fwd_LSTM(LSTMLanguageModel):
     def __init__(self, layers, vocab_size, embedding_dim, jagged=False, tiered=False, context_vector_size=0):
         self.bid = False
+        self.name = "LSTM"
         super().__init__(layers, vocab_size, embedding_dim,
                          jagged, tiered, context_vector_size)
         self.hidden2tag = nn.Linear(self.layers[-1], self.vocab_size)
@@ -90,6 +91,7 @@ class Fwd_LSTM(LSTMLanguageModel):
 class Bid_LSTM(LSTMLanguageModel):
     def __init__(self, layers, vocab_size, embedding_dim, jagged=False, tiered=False, context_vector_size=0):
         self.bid = True
+        self.name = "LSTM-Bid"
         super().__init__(layers, vocab_size, embedding_dim,
                          jagged, tiered, context_vector_size)
         self.hidden2tag = nn.Linear(self.layers[-1] * 2, self.vocab_size)

@@ -8,10 +8,19 @@ import log_analyzer.model.lstm as lstms
 from log_analyzer.trainer import Trainer
 from log_analyzer import evaluator
 import torch
+from torch.utils.tensorboard import SummaryWriter
+import socket
+from datetime import datetime
 
 """
 Entrypoint script for training
 """
+
+def create_identifier_string(model_name, comment=""):
+    current_time = datetime.now().strftime('%b%d_%H-%M-%S')
+    id = f'{model_name}_{current_time}_{socket.gethostname()}_{comment}'
+    return id
+
 
 def train(args):
 
@@ -29,6 +38,12 @@ def train(args):
     
     sentence_length = conf["sentence_length"] - 1 - int(args.skipsos) + int(args.bidirectional)
 
+    base_logdir = './runs/'
+    id_string = create_identifier_string(lm_trainer.model.name)
+    log_dir = os.path.join(base_logdir, id_string)
+
+    writer = SummaryWriter(log_dir)
+
     for i in range(len(conf['test_files'][:-1])):
         train_day = conf['test_files'][i] # Should be better probably, to be able to train with multiple days / Thank you for this nice change! I agree :)
         test_day = conf['test_files'][i+1]
@@ -36,11 +51,15 @@ def train(args):
         train_loader, test_loader = data_utils.load_data(train_day, test_day, args, sentence_length)
 
         for iteration, batch in enumerate(train_loader):
-            loss = lm_trainer.train_step(batch)
-            # TODO log loss with tensorboard
+            loss, done = lm_trainer.train_step(batch)
+            writer.add_scalar(f'Loss/train_day_{i}', loss, iteration)
+            if done:
+                print("Early stopping.")
+                break
 
-        for batch_num, batch in enumerate(test_loader):
+        for iteration, batch in enumerate(test_loader):
             loss = lm_trainer.eval_step(batch)
+            writer.add_scalar(f'Loss/test_day_{i}', loss, iteration+(i+1))
 
             if outfile is not None:
                 for line, sec, day, usr, red, loss in zip(batch['line'].flatten().tolist(),
@@ -49,13 +68,18 @@ def train(args):
                                                         batch['user'].flatten().tolist(),
                                                         batch['red'].flatten().tolist(),
                                                         loss.flatten().tolist()):
-                    outfile.write('%s %s %s %s %s %s %r\n' % (batch_num, line, sec, day, usr, red, loss))
+                    outfile.write('%s %s %s %s %s %s %r\n' % (iteration, line, sec, day, usr, red, loss))
 
             if verbose:
                 print(f"{batch['x'].shape[0]}, {batch['line'][0]}, {batch['second'][0]} fixed {test_day} {loss}") 
                 # TODO: I don't think this print line, but I decided to keep it since removing a line is always easier than adding a line.
                 #       Also, In the original code, there was {data.index} which seems to be an accumulated sum of batch sizes. 
                 #       I don't think we need {data.index}. but... I added it to to-do since we might need to do it in future.
+        
+        writer.close()
+        torch.save(lm_trainer.model, os.path.join(log_dir,'model.pt'))
+        with open(os.path.join(log_dir, 'config.json'), 'w') as f:
+            json.dump(conf, f)
                                      
 if __name__ == "__main__":
     parser = ArgumentParser()
