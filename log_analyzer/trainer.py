@@ -31,6 +31,7 @@ class Trainer(): #TODO name this something more descriptive, it might be used as
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size= step_size, gamma=gamma)
 
     def compute_loss(self, X, Y, lengths, mask):
+        """Computes the loss for the given input."""
         output, lstm_out, hx = self.model(X, lengths) 
         token_losses = self.criterion(output.transpose(1,2), Y)
         if self.jagged:
@@ -43,6 +44,7 @@ class Trainer(): #TODO name this something more descriptive, it might be used as
         return loss
 
     def split_batch(self, batch):
+        """Splits a batch into variables containing relevant data."""
         X = batch['x']
         Y = batch['t']
         if self.jagged:
@@ -61,6 +63,7 @@ class Trainer(): #TODO name this something more descriptive, it might be used as
         return X, Y, L, M
 
     def train_step(self, batch):
+        """Defines a single training step. Feeds data through the model, computes the loss and makes an optimization step.""" 
 
         self.model.train()
         self.optimizer.zero_grad()
@@ -81,4 +84,15 @@ class Trainer(): #TODO name this something more descriptive, it might be used as
             self.early_stopping.counter = 0
         
         return loss
+    
+    def eval_step(self, batch): 
+        """Defines a single evaluation step. Feeds data through the model and computes the loss."""
+        # TODO add more metrics, like perplexity.
+        self.model.eval()
+        
+        X, Y, L, M = self.split_batch(batch)
+        
+        token_losses = self.compute_loss(X, Y, lengths=L, mask=M)
+
+        return token_losses
     

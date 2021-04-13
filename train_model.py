@@ -24,6 +24,8 @@ def train(args):
 
     jag = int(args.jagged)
     skipsos = int(args.skipsos)
+    outfile = None
+    verbose = False
     
     sentence_length = conf["sentence_length"] - 1 - int(args.skipsos) + int(args.bidirectional)
 
@@ -38,7 +40,22 @@ def train(args):
             # TODO log loss with tensorboard
 
         for batch_num, batch in enumerate(test_loader):
-            evaluator.evaluate_model(batch_num, batch, test_day, lm_trainer, jagged=args.jagged, verbose = True) 
+            loss = lm_trainer.eval_step(batch)
+
+            if outfile is not None:
+                for line, sec, day, usr, red, loss in zip(batch['line'].flatten().tolist(),
+                                                        batch['second'].flatten().tolist(),
+                                                        batch['day'].flatten().tolist(),
+                                                        batch['user'].flatten().tolist(),
+                                                        batch['red'].flatten().tolist(),
+                                                        loss.flatten().tolist()):
+                    outfile.write('%s %s %s %s %s %s %r\n' % (batch_num, line, sec, day, usr, red, loss))
+
+            if verbose:
+                print(f"{batch['x'].shape[0]}, {batch['line'][0]}, {batch['second'][0]} fixed {test_day} {loss}") 
+                # TODO: I don't think this print line, but I decided to keep it since removing a line is always easier than adding a line.
+                #       Also, In the original code, there was {data.index} which seems to be an accumulated sum of batch sizes. 
+                #       I don't think we need {data.index}. but... I added it to to-do since we might need to do it in future.
                                      
 if __name__ == "__main__":
     parser = ArgumentParser()
