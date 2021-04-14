@@ -3,7 +3,7 @@ import argparse
 import numpy as np
 import os
 import json
-import log_analyzer.data.utils as data_utils
+import log_analyzer.data.data_loader as data_utils
 import log_analyzer.model.lstm as lstms
 from log_analyzer.trainer import Trainer
 from log_analyzer import evaluator
