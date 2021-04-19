@@ -54,7 +54,12 @@ class LSTMLanguageModel(nn.Module):
         # batch size, sequence length, embedded dimension
         x_lookups = self.embeddings(sequences)
         if self.tiered:
-            x_lookups = torch.cat(x_lookups, context_vectors, dim=2)
+            cat_x_lookups = torch.tensor([])
+            x_lookups= x_lookups.transpose(0,1) # x_lookups (seq len x batch x embedding)
+            for x_lookup in x_lookups: #x_lookup (batch x embedding).
+                x_lookup = torch.unsqueeze(torch.cat((x_lookup, context_vectors), dim=1), dim=0) # x_lookup (1 x batch x embedding)
+                cat_x_lookups = torch.cat((cat_x_lookups, x_lookup), dim = 0) # cat_x_lookups (n x batch x embedding) n = number of iteration where 1 =< n =< seq_len
+            x_lookups = cat_x_lookups.transpose(0,1) #x_lookups (batch x seq len x embedding + context) 
 
         lstm_in = x_lookups
         if self.jagged:
@@ -120,7 +125,7 @@ class Bid_LSTM(LSTMLanguageModel):
 
 
 class Context_LSTM(nn.Module):
-    def __init__(self, ctxt_lv_layers, input_dim):
+    def __init__(self, ctxt_lv_layers, input_dim, bid):
         super().__init__()
         # Parameter setting
         self.ctxt_lv_layers = ctxt_lv_layers
@@ -139,7 +144,8 @@ class Context_LSTM(nn.Module):
             mean_hidden = torch.sum(lower_lv_outputs, dim=1) / seq_len
         else:
             mean_hidden = torch.mean(lower_lv_outputs, dim=1)
-        synthetic_input = torch.cat(mean_hidden, final_hidden, dim=1)
+        cat_input = torch.cat((mean_hidden, final_hidden[-1]), dim=1)
+        synthetic_input = torch.unsqueeze(cat_input, dim = 1)
         output, (context_hx, context_cx) = self.context_lstm_layers(
             synthetic_input, (context_h, context_c))
 
@@ -147,7 +153,7 @@ class Context_LSTM(nn.Module):
 
 
 class Tiered_LSTM(nn.Module):
-    def __init__(self, low_lv_layers, ctxt_lv_layers, vocab_size, embedding_dim, context_vector_size,
+    def __init__(self, low_lv_layers, ctxt_lv_layers, vocab_size, embedding_dim,
                  jagged=False, bid=False):
 
         super().__init__()
@@ -167,7 +173,7 @@ class Tiered_LSTM(nn.Module):
         self.low_lv_lstm = self.model(self.low_lv_layers, self.vocab_size, self.embedding_dim,
                                       jagged=self.jagged, tiered=True, context_vector_size=self.ctxt_lv_layers[-1])
         self.ctxt_lv_lstm = Context_LSTM(
-            self.ctxt_lv_layers, low_lv_layers[-1] * 2)
+            self.ctxt_lv_layers, low_lv_layers[-1] * 2, self.bid)
 
         # Weight initialization
         initialize_weights(self)
@@ -176,15 +182,14 @@ class Tiered_LSTM(nn.Module):
         self.ctxt_vector = context_vectors
         self.ctxt_h = context_h
         self.ctxt_c = context_c
-        self.tag_output = []
+        tag_output = []
         # number of steps (e.g., 3), number of users (e.g., 64), lengths of sequences (e.g., 10)
-        for sequences in range(user_sequences):
-            tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
-                sequences, lengths=lengths, context_vectors=self.ctxt_vector)
-            self.ctxt_vector, (self.ctxt_h, self.ctxt_c) = self.ctxt_lv_lstm(
-                low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len=lengths)
-            self.tag_output.append(tag_size)
-        return self.tag_output, self.ctxt_vector, self.ctxt_h, self.ctxt_c
+        for sequences in user_sequences:
+            tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(sequences, lengths = lengths, context_vectors = self.ctxt_vector)
+            self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len = lengths)
+            tag_output.append(tag_size)
+            self.ctxt_vector = torch.squeeze(self.ctxt_vector, dim = 1)
+        return tag_output, self.ctxt_vector, self.ctxt_h, self.ctxt_c
 
 
 if __name__ == "__main__":

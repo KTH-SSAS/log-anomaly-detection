@@ -31,26 +31,27 @@ def train(args):
     # Read a config file.   
     with open(args.config, 'r') as f:
         conf = json.load(f)
+
+    sentence_length = conf["sentence_length"] - 1 - int(args.skipsos) + int(args.bidirectional)
     
+    # Settings for dataloader.   
+    train_days = conf['train_files']
+    test_days = conf['test_files']
+    train_loader, test_loader = data_utils.load_data(train_days, test_days, args, sentence_length)
+
     # Settings for LSTM.
-    lm_trainer = Trainer(args, conf, log_dir, verbose = True) 
+    lm_trainer = Trainer(args, conf, log_dir, verbose = True, data_handler = train_loader) 
 
     jag = int(args.jagged)
     skipsos = int(args.skipsos)
     outfile = None
     verbose = False
     
-    sentence_length = conf["sentence_length"] - 1 - int(args.skipsos) + int(args.bidirectional)
 
     writer = SummaryWriter(os.path.join(log_dir, 'metrics'))
 
-    train_days = conf['train_files']
-    test_days = conf['test_files']
-
-    train_loader, test_loader = data_utils.load_data(train_days, test_days, args, sentence_length)
-
     for iteration, batch in enumerate(train_loader):
-        loss, done = lm_trainer.train_step(batch)
+        loss, done= lm_trainer.train_step(batch)
         writer.add_scalar(f'Loss/train_day_{batch["day"][0]}', loss, iteration)
         if done:
             print("Early stopping.")
@@ -90,9 +91,13 @@ if __name__ == "__main__":
                         help='Whether to skip a start of sentence token.')
     parser.add_argument('--bidir', dest='bidirectional', action='store_true',
                         help='Whether to use bidirectional lstm for lower tier.')
+    parser.add_argument('--tiered', action='store_true',
+                        help='Whether to use tiered lstm model.')
     parser.add_argument('-bs', dest='batch_size', type=int, help='batch size.')
     parser.add_argument("-lstm_layers", nargs='+', type=int, default=[10],
                         help="A list of hidden layer sizes.")
+    parser.add_argument("-context_layers", nargs='+', type=int, default=[10],
+                        help="A list of context layer sizes.")
     parser.add_argument('-embed_dim', type=int, default=20,
                         help='Size of embeddings for categorical features.')
     parser.add_argument('--config', type=str, default='config.json', help='JSON configuration file')
