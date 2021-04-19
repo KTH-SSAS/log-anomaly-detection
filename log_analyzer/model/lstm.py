@@ -64,12 +64,12 @@ class LSTMLanguageModel(nn.Module):
         lstm_in = x_lookups
         if self.jagged:
             lstm_in = pack_padded_sequence(
-                lstm_in, lengths, enforce_sorted=False)
+                lstm_in, lengths, enforce_sorted=False, batch_first=True)
 
         lstm_out, (hx, cx) = self.stacked_lstm(lstm_in)
 
         if self.jagged:
-            lstm_out = pad_packed_sequence(lstm_out)
+            lstm_out = pad_packed_sequence(lstm_out, batch_first=True)
             lstm_out = lstm_out[0]
 
         output = self.tanh(lstm_out)

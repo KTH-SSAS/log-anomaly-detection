@@ -32,7 +32,7 @@ class Trainer():  # TODO name this something more descriptive, it might be used 
             self.model.cuda()
 
         # Create settings for training.
-        self.criterion = nn.CrossEntropyLoss(reduction='none')
+        self.criterion = nn.CrossEntropyLoss(reduction='none', ignore_index=0)
         self.early_stopping = auxiliary.EarlyStopping(
             patience=patience, verbose=verbose, path=checkpoint_dir)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
@@ -48,19 +48,22 @@ class Trainer():  # TODO name this something more descriptive, it might be used 
             for step_output, true_y in zip(output, Y): # output (num_steps x batch x length x embedding dimension)  Y (num_steps x batch x length)
                 token_losses = self.criterion(step_output.transpose(1,2), true_y)
                 if self.jagged: # On notebook, I checked it with forward LSTM and word tokenization. Further checks have to be done... 
+                    token_losses = self.criterion(output.transpose(1, 2), Y[:,:max(lengths)])
                     masked_losses = token_losses * M
                     line_losses = torch.sum(masked_losses, dim = 1)
                 else:
+                    token_losses = self.criterion(output.transpose(1, 2), Y)
                     line_losses = torch.mean(token_losses, dim = 1)
                 step_loss = torch.mean(line_losses, dim = 0)
                 loss += step_loss
         else: # For non-tiered models.
             output, lstm_out, hx = self.model(X, lengths=lengths)
-            token_losses = self.criterion(output.transpose(1, 2), Y)
             if self.jagged:
-                masked_losses = token_losses * mask
+                token_losses = self.criterion(output.transpose(1, 2), Y[:,:max(lengths)])
+                masked_losses = token_losses * mask[:,:max(lengths)]
                 line_losses = torch.sum(masked_losses, dim=1)
             else:
+                token_losses = self.criterion(output.transpose(1, 2), Y)
                 line_losses = torch.mean(token_losses, dim=1)
             loss = torch.mean(line_losses, dim=0)
 
