@@ -32,7 +32,7 @@ class Trainer():  # TODO name this something more descriptive, it might be used 
             self.model.cuda()
 
         # Create settings for training.
-        self.criterion = nn.CrossEntropyLoss(reduction='none')
+        self.criterion = nn.CrossEntropyLoss(ignore_index=0, reduction='none')
         self.early_stopping = auxiliary.EarlyStopping(
             patience=patience, verbose=verbose, path=checkpoint_dir)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
@@ -45,12 +45,13 @@ class Trainer():  # TODO name this something more descriptive, it might be used 
             loss = 0
             output, ctxt_vector, ctxt_h, ctxt_c = self.model(X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths = lengths)    
             self.data_handler.update_state(ctxt_vector, ctxt_h, ctxt_c)
-            for step_output, true_y in zip(output, Y): # output (num_steps x batch x length x embedding dimension)  Y (num_steps x batch x length)
-                token_losses = self.criterion(step_output.transpose(1,2), true_y)
+            for i, (step_output, true_y) in enumerate(zip(output, Y)): # output (num_steps x batch x length x embedding dimension)  Y (num_steps x batch x length)
                 if self.jagged: # On notebook, I checked it with forward LSTM and word tokenization. Further checks have to be done... 
-                    masked_losses = token_losses * M
+                    token_losses = self.criterion(step_output.transpose(1, 2), true_y[:,:max(lengths[i])])
+                    masked_losses = token_losses * mask[i][:,:max(lengths[i])]
                     line_losses = torch.sum(masked_losses, dim = 1)
                 else:
+                    token_losses = self.criterion(step_output.transpose(1, 2), true_y)
                     line_losses = torch.mean(token_losses, dim = 1)
                 step_loss = torch.mean(line_losses, dim = 0)
                 loss += step_loss
