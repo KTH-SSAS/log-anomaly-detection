@@ -1,16 +1,15 @@
 from argparse import ArgumentParser
-import argparse
-import numpy as np
 import os
 import json
-import log_analyzer.data.data_loader as data_utils
-import log_analyzer.model.lstm as lstms
-from log_analyzer.trainer import Trainer
-from log_analyzer import evaluator
-import torch
-from torch.utils.tensorboard import SummaryWriter
 import socket
 from datetime import datetime
+from torch.utils.tensorboard import SummaryWriter
+import log_analyzer.data.data_loader as data_utils
+from log_analyzer.trainer import TieredTrainer, LSTMTrainer
+try:
+    import torch
+except ImportError:
+    print('PyTorch is needed for this application.')
 
 """
 Entrypoint script for training
@@ -40,14 +39,17 @@ def train(args):
     train_loader, test_loader = data_utils.load_data(train_days, test_days, args, sentence_length)
 
     # Settings for LSTM.
-    lm_trainer = Trainer(args, conf, log_dir, verbose = True, data_handler = train_loader) 
+    if args.tiered:
+        trainer_class = TieredTrainer
+    else:
+        trainer_class = LSTMTrainer
+    
+    lm_trainer = trainer_class(args, conf, log_dir, verbose = True, data_handler = train_loader)
 
     jag = int(args.jagged)
     skipsos = int(args.skipsos)
     outfile = None
     verbose = False
-    
-
     writer = SummaryWriter(os.path.join(log_dir, 'metrics'))
 
     for iteration, batch in enumerate(train_loader):
