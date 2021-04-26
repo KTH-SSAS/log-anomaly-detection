@@ -149,15 +149,15 @@ class OnlineLMBatcher:
         self.empty = False
         
     def filter_partition(self):
-        partition = self.day_df.get_partition(self.sel_part)
-        current_ids = partition.user.drop_duplicates().compute().tolist()
+        partition = self.day_df.get_partition(self.sel_part).compute()
+        current_ids = partition.user.drop_duplicates().tolist()
         for c_id in current_ids:
             if c_id not in self.user_id:
                 self.df_id[c_id] = None
                 self.saved_lstm[c_id] = (torch.zeros((self.context_size[0])),\
                                          torch.zeros((len(self.context_size), self.context_size[0])),\
                                          torch.zeros((len(self.context_size), self.context_size[0])))
-            self.df_id[c_id] = pd.concat([self.df_id[c_id], partition[partition.user == c_id].compute()], axis=0)
+            self.df_id[c_id] = pd.concat([self.df_id[c_id], partition[partition.user == c_id]], axis=0)
             self.len_id[c_id] = len(self.df_id[c_id])
 
         self.user_id = current_ids + [usr for usr in self.user_id if usr not in current_ids]
