@@ -91,8 +91,8 @@ class IterableLogDataSet(IterableDataset):
 
 def create_data_loader(filepath, args, sentence_length, num_steps):
     if args.tiered:
-        data_handler = OnlineLMBatcher(filepath, sentence_length, args.context_layers, args.skipsos, args.jagged, args.bidirectional, 
-                                        batch_size=args.batch_size, num_steps=num_steps, delimiter=" ")
+        data_handler = OnlineLMBatcher(filepath, sentence_length, args.context_layers, args.skipsos, args.jagged, args.bidirectional,
+                                       batch_size=args.batch_size, num_steps=num_steps, delimiter=" ")
     else:
         ds = IterableLogDataSet(filepath, args.bidirectional,
                                 args.skipsos, args.jagged, sentence_length)
@@ -100,12 +100,14 @@ def create_data_loader(filepath, args, sentence_length, num_steps):
     return data_handler
 
 
-def load_data(train_files, eval_files, args, sentence_length, num_steps = 3):
+def load_data(train_files, eval_files, args, sentence_length, num_steps=3):
 
     filepaths_train = [path.join(args.data_folder, f) for f in train_files]
     filepaths_eval = [path.join(args.data_folder, f) for f in eval_files]
-    train_loader = create_data_loader(filepaths_train, args, sentence_length, num_steps)
-    test_loader = create_data_loader(filepaths_eval, args, sentence_length, num_steps)
+    train_loader = create_data_loader(
+        filepaths_train, args, sentence_length, num_steps)
+    test_loader = create_data_loader(
+        filepaths_eval, args, sentence_length, num_steps)
 
     return train_loader, test_loader
 
@@ -124,14 +126,18 @@ def get_mask(lens, num_tokens):
     mask_template = torch.arange(num_tokens, dtype=torch.float)
     return (mask_template < lens) / lens
 
-class OnlineLMBatcher: 
+
+class OnlineLMBatcher:
     def __init__(self, file_path, sentence_length, context_size, skipsos, jagged, bidir, batch_size=100, num_steps=3, delimiter=" "):
-        #sentence len on json: 12(word), 122(char). weirdly, actual length is 12(word), 123(char), so I added jagged.
+        # sentence len on json: 12(word), 122(char). weirdly, actual length is 12(word), 123(char), so I added jagged.
         self.sentence_length = sentence_length
-        sentence_length = sentence_length + 1 + int(skipsos) - int(bidir) + int(jagged)
-        cols = ['line', 'second', 'day', 'user', 'red'] + [f'x_{i}' for i in range(sentence_length)]   
-        self.day_df = dd.read_csv(file_path, names=cols, sep = ' ', blocksize=25e3)
-        self.user_id = [] # set()
+        sentence_length = sentence_length + 1 + \
+            int(skipsos) - int(bidir) + int(jagged)
+        cols = ['line', 'second', 'day', 'user', 'red'] + \
+            [f'x_{i}' for i in range(sentence_length)]
+        self.day_df = dd.read_csv(
+            file_path, names=cols, sep=' ', blocksize=25e3)
+        self.user_id = []  # set()
         self.lst_avail_id = []
         self.pre_lst_avail_id = []
         self.df_id = {}
@@ -147,21 +153,24 @@ class OnlineLMBatcher:
         self.skipsos = skipsos
         self.bidir = bidir
         self.empty = False
-        
+
     def filter_partition(self):
         partition = self.day_df.get_partition(self.sel_part)
         current_ids = partition.user.drop_duplicates().compute().tolist()
         for c_id in current_ids:
             if c_id not in self.user_id:
                 self.df_id[c_id] = None
-                self.saved_lstm[c_id] = (torch.zeros((self.context_size[0])),\
-                                         torch.zeros((len(self.context_size), self.context_size[0])),\
+                self.saved_lstm[c_id] = (torch.zeros((self.context_size[0])),
+                                         torch.zeros(
+                                             (len(self.context_size), self.context_size[0])),
                                          torch.zeros((len(self.context_size), self.context_size[0])))
-            self.df_id[c_id] = pd.concat([self.df_id[c_id], partition[partition.user == c_id].compute()], axis=0)
+            self.df_id[c_id] = pd.concat(
+                [self.df_id[c_id], partition[partition.user == c_id].compute()], axis=0)
             self.len_id[c_id] = len(self.df_id[c_id])
 
-        self.user_id = current_ids + [usr for usr in self.user_id if usr not in current_ids]
-        self.sel_part += 1   
+        self.user_id = current_ids + \
+            [usr for usr in self.user_id if usr not in current_ids]
+        self.sel_part += 1
 
     def update_len(self):
         self.lst_avail_id = []
@@ -171,7 +180,7 @@ class OnlineLMBatcher:
             self.current_num_batch += above_num_steps
             if above_num_steps and j not in self.lst_avail_id:
                 self.lst_avail_id.append(j)
-    
+
     def __iter__(self):
         while not self.empty:
             output = []
@@ -180,20 +189,24 @@ class OnlineLMBatcher:
             h_state = torch.tensor([])
             c_state = torch.tensor([])
             while output == []:
-                if self.current_num_batch < self.batch_size and self.sel_part < self.day_df.npartitions: # Read a new partition
+                if self.current_num_batch < self.batch_size and self.sel_part < self.day_df.npartitions:  # Read a new partition
                     self.filter_partition()
                     self.update_len()
-                elif self.current_num_batch == 0 and self.sel_part == self.day_df.npartitions: # Activate staggler mode
+                elif self.current_num_batch == 0 and self.sel_part == self.day_df.npartitions:  # Activate staggler mode
                     self.batch_size = self.batch_size * self.num_steps
                     self.num_steps = self.staggler_num_steps
                     self.sel_part += 1
                     self.update_len()
-                elif self.current_num_batch > 0: # Output data
+                elif self.current_num_batch > 0:  # Output data
                     for j in self.lst_avail_id[:self.batch_size]:
-                        output.append(self.df_id[j].iloc[0:self.num_steps].values)                    
-                        ctxt_vector = torch.cat((ctxt_vector, torch.unsqueeze(self.saved_lstm[j][0], dim = 0)), dim = 0)                    
-                        h_state = torch.cat((h_state, torch.unsqueeze(self.saved_lstm[j][1], dim = 0)), dim = 0)
-                        c_state = torch.cat((c_state, torch.unsqueeze(self.saved_lstm[j][2], dim = 0)), dim = 0)
+                        output.append(
+                            self.df_id[j].iloc[0:self.num_steps].values)
+                        ctxt_vector = torch.cat(
+                            (ctxt_vector, torch.unsqueeze(self.saved_lstm[j][0], dim=0)), dim=0)
+                        h_state = torch.cat((h_state, torch.unsqueeze(
+                            self.saved_lstm[j][1], dim=0)), dim=0)
+                        c_state = torch.cat((c_state, torch.unsqueeze(
+                            self.saved_lstm[j][2], dim=0)), dim=0)
                         self.df_id[j] = self.df_id[j].iloc[self.num_steps:, :]
                         self.len_id[j] = len(self.df_id[j])
                     self.pre_lst_avail_id = self.lst_avail_id
@@ -209,22 +222,25 @@ class OnlineLMBatcher:
                                 'red': batch[:, :, 4],
                                 'x': [batch[0, :, 5 + self.jagged + self.skipsos:endx]] * self.num_steps,
                                 't': [batch[0, :, 6 + self.jagged + self.skipsos:endt]] * self.num_steps,
-                                'context_vector': ctxt_vector, #,['context_vector'],
-                                'c_state_init': torch.transpose(h_state, 0,1), #state_triple['c_state_init'],
-                                'h_state_init': torch.transpose(c_state, 0,1)} #state_triple['h_state_init']}
+                                # ,['context_vector'],
+                                'context_vector': ctxt_vector,
+                                # state_triple['c_state_init'],
+                                'c_state_init': torch.transpose(h_state, 0, 1),
+                                'h_state_init': torch.transpose(c_state, 0, 1)}  # state_triple['h_state_init']}
                     if self.jagged:
-                        datadict['length'] = [batch[0, :, 5] - int(self.skipsos)] * self.num_steps
-                        datadict['mask'] = [get_mask(seq_length.view(-1,1) - 2 * self.bidir, self.sentence_length - 2 * self.bidir) for
-                                             seq_length in datadict['length']]
-                else: # Empty dataset.
+                        datadict['length'] = [batch[0, :, 5] -
+                                              int(self.skipsos)] * self.num_steps
+                        datadict['mask'] = [get_mask(seq_length.view(-1, 1) - 2 * self.bidir, self.sentence_length - 2 * self.bidir) for
+                                            seq_length in datadict['length']]
+                else:  # Empty dataset.
                     self.empty = True
                     return None
 
             yield datadict
-    
+
     def update_state(self, ctxt_vectors, h_states, c_states):
         ctxt_vectors = ctxt_vectors.data
-        h_states = torch.transpose(h_states.data, 0,1)
-        c_states = torch.transpose(c_states.data, 0,1)
+        h_states = torch.transpose(h_states.data, 0, 1)
+        c_states = torch.transpose(c_states.data, 0, 1)
         for usr, ctxt_v, h_state, c_state in zip(self.pre_lst_avail_id[:self.batch_size], ctxt_vectors, h_states, c_states):
-            self.saved_lstm[usr] = (ctxt_v, h_state, c_state) 
+            self.saved_lstm[usr] = (ctxt_v, h_state, c_state)

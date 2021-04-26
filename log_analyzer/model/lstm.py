@@ -55,11 +55,16 @@ class LSTMLanguageModel(nn.Module):
         x_lookups = self.embeddings(sequences)
         if self.tiered:
             cat_x_lookups = torch.tensor([])
-            x_lookups= x_lookups.transpose(0,1) # x_lookups (seq len x batch x embedding)
-            for x_lookup in x_lookups: #x_lookup (batch x embedding).
-                x_lookup = torch.unsqueeze(torch.cat((x_lookup, context_vectors), dim=1), dim=0) # x_lookup (1 x batch x embedding)
-                cat_x_lookups = torch.cat((cat_x_lookups, x_lookup), dim = 0) # cat_x_lookups (n x batch x embedding) n = number of iteration where 1 =< n =< seq_len
-            x_lookups = cat_x_lookups.transpose(0,1) #x_lookups (batch x seq len x embedding + context) 
+            # x_lookups (seq len x batch x embedding)
+            x_lookups = x_lookups.transpose(0, 1)
+            for x_lookup in x_lookups:  # x_lookup (batch x embedding).
+                # x_lookup (1 x batch x embedding)
+                x_lookup = torch.unsqueeze(
+                    torch.cat((x_lookup, context_vectors), dim=1), dim=0)
+                # cat_x_lookups (n x batch x embedding) n = number of iteration where 1 =< n =< seq_len
+                cat_x_lookups = torch.cat((cat_x_lookups, x_lookup), dim=0)
+            # x_lookups (batch x seq len x embedding + context)
+            x_lookups = cat_x_lookups.transpose(0, 1)
 
         lstm_in = x_lookups
         if self.jagged:
@@ -141,11 +146,12 @@ class Context_LSTM(nn.Module):
     def forward(self, lower_lv_outputs, final_hidden, context_h, context_c, seq_len=None):
 
         if seq_len is not None:
-            mean_hidden = torch.sum(lower_lv_outputs, dim=1) / seq_len.view(-1,1)
+            mean_hidden = torch.sum(
+                lower_lv_outputs, dim=1) / seq_len.view(-1, 1)
         else:
             mean_hidden = torch.mean(lower_lv_outputs, dim=1)
         cat_input = torch.cat((mean_hidden, final_hidden[-1]), dim=1)
-        synthetic_input = torch.unsqueeze(cat_input, dim = 1)
+        synthetic_input = torch.unsqueeze(cat_input, dim=1)
         output, (context_hx, context_cx) = self.context_lstm_layers(
             synthetic_input, (context_h, context_c))
 
@@ -186,16 +192,20 @@ class Tiered_LSTM(nn.Module):
         # number of steps (e.g., 3), number of users (e.g., 64), lengths of sequences (e.g., 10)
         if lengths is None:
             for sequences in user_sequences:
-                tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(sequences, lengths = lengths, context_vectors = self.ctxt_vector)
-                self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len = lengths)
+                tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
+                    sequences, lengths=lengths, context_vectors=self.ctxt_vector)
+                self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
+                    low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len=lengths)
                 tag_output.append(tag_size)
-                self.ctxt_vector = torch.squeeze(self.ctxt_vector, dim = 1)
+                self.ctxt_vector = torch.squeeze(self.ctxt_vector, dim=1)
         else:
-            for sequences, length in zip(user_sequences,lengths):
-                tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(sequences, lengths = length, context_vectors = self.ctxt_vector)
-                self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len = length)
+            for sequences, length in zip(user_sequences, lengths):
+                tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
+                    sequences, lengths=length, context_vectors=self.ctxt_vector)
+                self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
+                    low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len=length)
                 tag_output.append(tag_size)
-                self.ctxt_vector = torch.squeeze(self.ctxt_vector, dim = 1)
+                self.ctxt_vector = torch.squeeze(self.ctxt_vector, dim=1)
 
         return tag_output, self.ctxt_vector, self.ctxt_h, self.ctxt_c
 
