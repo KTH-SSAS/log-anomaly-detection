@@ -55,6 +55,7 @@ class Trainer():  # TODO name this something more descriptive, it might be used 
                     line_losses = torch.mean(token_losses, dim = 1)
                 step_loss = torch.mean(line_losses, dim = 0)
                 loss += step_loss
+            loss /= len(X)
         else: # For non-tiered models.
             output, lstm_out, hx = self.model(X, lengths=lengths)
             if self.jagged:
