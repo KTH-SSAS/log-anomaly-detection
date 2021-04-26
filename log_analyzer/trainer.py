@@ -155,7 +155,7 @@ class TieredTrainer(Trainer):
                 line_losses = torch.mean(token_losses, dim=1)
             step_loss = torch.mean(line_losses, dim=0)
             loss += step_loss
-
+        loss /= len(X)
         return loss
 
     def split_batch(self, batch):
