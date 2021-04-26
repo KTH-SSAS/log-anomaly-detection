@@ -5,7 +5,8 @@ import socket
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 import log_analyzer.data.data_loader as data_utils
-from log_analyzer.trainer import TieredTrainer, LSTMTrainer
+from log_analyzer.trainer import LSTMTrainer
+from log_analyzer.tiered_trainer import TieredTrainer
 try:
     import torch
 except ImportError:
