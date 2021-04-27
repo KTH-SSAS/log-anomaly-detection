@@ -38,8 +38,8 @@ class Trainer():
         if self.jagged:
             if self.bidirectional:
                 token_losses = self.criterion(
-                    output.transpose(1, 2), Y[:, 1:max(lengths-1)])
-                masked_losses = token_losses * mask[:, 1:max(lengths-1)]
+                    output.transpose(1, 2), Y[:, 1:max(lengths)-1])
+                masked_losses = token_losses * mask[:, 1:max(lengths)-1]
             else:
                 token_losses = self.criterion(
                     output.transpose(1, 2), Y[:, :max(lengths)])
