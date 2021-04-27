@@ -110,7 +110,7 @@ class Bid_LSTM(LSTMLanguageModel):
         output, lstm_out, hx = super().forward(sequences, lengths, context_vectors)
         # Reshape output to make forward/backward into seperate dims
         split = output.view(
-            sequences.shape[0], sequences.shape[-1], 2, output.shape[-1]//2)
+            sequences.shape[0], max(lengths), 2, output.shape[-1]//2)
 
         # Seperate forward and backward hidden states
         forward_hidden_states = split[:, :, 0]

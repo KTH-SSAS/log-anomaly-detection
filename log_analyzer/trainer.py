@@ -18,6 +18,7 @@ class Trainer():
         self.cuda = torch.cuda.is_available()
 
         self.jagged = args.jagged
+        self.bidirectional = args.bidirectional
         self.data_handler = data_handler
 
         if self.cuda:
@@ -35,9 +36,14 @@ class Trainer():
         """Computes the loss for the given input."""
         output, _, _ = self.model(X, lengths=lengths)
         if self.jagged:
-            token_losses = self.criterion(
-                output.transpose(1, 2), Y[:, :max(lengths)])
-            masked_losses = token_losses * mask[:, :max(lengths)]
+            if self.bidirectional:
+                token_losses = self.criterion(
+                    output.transpose(1, 2), Y[:, 1:max(lengths-1)])
+                masked_losses = token_losses * mask[:, 1:max(lengths-1)]
+            else:
+                token_losses = self.criterion(
+                    output.transpose(1, 2), Y[:, :max(lengths)])
+                masked_losses = token_losses * mask[:, :max(lengths)]
             line_losses = torch.sum(masked_losses, dim=1)
         else:
             token_losses = self.criterion(output.transpose(1, 2), Y)
