@@ -54,7 +54,14 @@ def train(args):
     writer = SummaryWriter(os.path.join(log_dir, 'metrics'))
 
     for iteration, batch in enumerate(train_loader):
-        loss, done= lm_trainer.train_step(batch)
+        if args.tiered:
+            if train_loader.flush is False:
+                loss, done= lm_trainer.train_step(batch)
+            else:
+                loss = lm_trainer.eval_step(batch)
+                print(f'Due to flush, training stopped... Current loss: {loss:.3f}')
+        else: 
+            loss, done= lm_trainer.train_step(batch)
         writer.add_scalar(f'Loss/train_day_{batch["day"][0]}', loss, iteration)
         if done:
             print("Early stopping.")
