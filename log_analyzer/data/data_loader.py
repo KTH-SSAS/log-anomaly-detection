@@ -199,8 +199,6 @@ class OnlineLMBatcher:
                             break
                         self.mb_size = self.num_steps * self.mb_size
                         self.num_steps = self.staggler_num_steps     
-                    self.num_steps = self.staggler_num_steps
-                        self.num_steps = self.staggler_num_steps     
 
                 if self.empty == True:
                     break
@@ -223,8 +221,6 @@ class OnlineLMBatcher:
                     datadict['length'] = [batch[0, :, 5] -
                                             int(self.skipsos)] * self.num_steps
                     datadict['mask'] = [get_mask(seq_length.view(-1, 1) - 2 * self.bidir, self.sentence_length - 2 * self.bidir) for
-                                        seq_length in datadict['length']]            
-                                            seq_length in datadict['length']]
                                         seq_length in datadict['length']]            
                 yield datadict
 
