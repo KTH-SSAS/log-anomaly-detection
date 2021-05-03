@@ -128,119 +128,122 @@ def get_mask(lens, num_tokens):
 
 
 class OnlineLMBatcher:
-    def __init__(self, file_path, sentence_length, context_size, skipsos, jagged, bidir, batch_size=100, num_steps=3, delimiter=" "):
-        # sentence len on json: 12(word), 122(char). weirdly, actual length is 12(word), 123(char), so I added jagged.
+    """
+    For use with tiered_lm.py. Batcher keeps track of user states in upper tier RNN.
+    """
+
+    def __init__(self, datafile, sentence_length, context_size, skipsos, jagged, bidir, 
+                 batch_size=100, num_steps=5, delimiter=" ",
+                 skiprows=0):
         self.sentence_length = sentence_length
-        sentence_length = sentence_length + 1 + \
-            int(skipsos) - int(bidir) + int(jagged)
-        cols = ['line', 'second', 'day', 'user', 'red'] + \
-            [f'x_{i}' for i in range(sentence_length)]
-        self.day_df = dd.read_csv(
-            file_path, names=cols, sep=' ', blocksize=25e3)
-        self.user_id = []  # set()
-        self.lst_avail_id = []
-        self.pre_lst_avail_id = []
-        self.df_id = {}
-        self.len_id = {}
-        self.saved_lstm = {}
         self.context_size = context_size
-        self.sel_part = 0
-        self.current_num_batch = 0
-        self.num_steps = num_steps
-        self.batch_size = batch_size
-        self.staggler_num_steps = 1
         self.jagged = jagged
         self.skipsos = skipsos
         self.bidir = bidir
+        self.delimiter = delimiter  # delimiter for input file
+        self.init_mb_size = batch_size  
+        self.init_num_steps = num_steps
+        self.mb_size = batch_size  # the number of users in a batch
+        self.num_steps = num_steps  # The number of log lines for each user in a batch
+        self.user_logs = {} 
+        self.flush = False
         self.empty = False
-
-    def filter_partition(self):
-        partition = self.day_df.get_partition(self.sel_part).compute()
-        current_ids = partition.user.drop_duplicates().tolist()
-        for c_id in current_ids:
-            if c_id not in self.user_id:
-                self.df_id[c_id] = None
-                self.saved_lstm[c_id] = (torch.zeros((self.context_size[0])),
-                                         torch.zeros(
-                                             (len(self.context_size), self.context_size[0])),
-                                         torch.zeros((len(self.context_size), self.context_size[0])))
-            self.df_id[c_id] = pd.concat(
-                [self.df_id[c_id], partition[partition.user == c_id]], axis=0)
-            self.len_id[c_id] = len(self.df_id[c_id])
-
-        self.user_id = current_ids + \
-            [usr for usr in self.user_id if usr not in current_ids]
-        self.sel_part += 1
-
-    def update_len(self):
-        self.lst_avail_id = []
-        self.current_num_batch = 0
-        for j in self.user_id:
-            above_num_steps = self.len_id[j] >= self.num_steps
-            self.current_num_batch += above_num_steps
-            if above_num_steps and j not in self.lst_avail_id:
-                self.lst_avail_id.append(j)
+        self.staggler_num_steps = 1
+        self.users_ge_num_steps = [] # the list of users whose saved log lines are greater than or equal to the self.num_steps
+        self.datafile = datafile
+        self.line_num = 1  # The line number of the file to be read next
+        self.saved_lstm = {}
+        self.skiprows = skiprows
 
     def __iter__(self):
-        while not self.empty:
-            output = []
-            datadict = {}
-            ctxt_vector = torch.tensor([])
-            h_state = torch.tensor([])
-            c_state = torch.tensor([])
-            while output == []:
-                if self.current_num_batch < self.batch_size and self.sel_part < self.day_df.npartitions:  # Read a new partition
-                    self.filter_partition()
-                    self.update_len()
-                elif self.current_num_batch == 0 and self.sel_part == self.day_df.npartitions:  # Activate staggler mode
-                    self.batch_size = self.batch_size * self.num_steps
-                    self.num_steps = self.staggler_num_steps
-                    self.sel_part += 1
-                    self.update_len()
-                elif self.current_num_batch > 0:  # Output data
-                    for j in self.lst_avail_id[:self.batch_size]:
-                        output.append(
-                            self.df_id[j].iloc[0:self.num_steps].values)
-                        ctxt_vector = torch.cat(
-                            (ctxt_vector, torch.unsqueeze(self.saved_lstm[j][0], dim=0)), dim=0)
-                        h_state = torch.cat((h_state, torch.unsqueeze(
-                            self.saved_lstm[j][1], dim=0)), dim=0)
-                        c_state = torch.cat((c_state, torch.unsqueeze(
-                            self.saved_lstm[j][2], dim=0)), dim=0)
-                        self.df_id[j] = self.df_id[j].iloc[self.num_steps:, :]
-                        self.len_id[j] = len(self.df_id[j])
-                    self.pre_lst_avail_id = self.lst_avail_id
-                    self.update_len()
-                    output = torch.tensor(output).long()
-                    batch = torch.transpose(output, 0, 1)
-                    endx = batch.shape[2] - int(not self.bidir)
-                    endt = batch.shape[2] - int(self.bidir)
-                    datadict = {'line': batch[:, :, 0],
-                                'second': batch[:, :, 1],
-                                'day': batch[:, :, 2],
-                                'user': batch[:, :, 3],
-                                'red': batch[:, :, 4],
-                                'x': [batch[0, :, 5 + self.jagged + self.skipsos:endx]] * self.num_steps,
-                                't': [batch[0, :, 6 + self.jagged + self.skipsos:endt]] * self.num_steps,
-                                # ,['context_vector'],
-                                'context_vector': ctxt_vector,
-                                # state_triple['c_state_init'],
-                                'c_state_init': torch.transpose(h_state, 0, 1),
-                                'h_state_init': torch.transpose(c_state, 0, 1)}  # state_triple['h_state_init']}
-                    if self.jagged:
-                        datadict['length'] = [batch[0, :, 5] -
-                                              int(self.skipsos)] * self.num_steps
-                        datadict['mask'] = [get_mask(seq_length.view(-1, 1) - 2 * self.bidir, self.sentence_length - 2 * self.bidir) for
-                                            seq_length in datadict['length']]
-                else:  # Empty dataset.
-                    self.empty = True
-                    return None
+        for f in self.datafile:
+            self.flush = False
+            self.empty = False
+            self.mb_size = self.init_mb_size
+            self.num_steps = self.init_num_steps
+            self.data = open(f, 'r')
+            for i in range(self.skiprows):
+                garbage = self.data.readline()
 
-            yield datadict
+            while True:
+                output = []
+                while output == []:
+                    if self.flush == False:
+                        l = self.data.readline()
+                        self.line_num += 1
+                        if l == '':
+                            self.flush = True
+                        else:
+                            rowtext = [int(k) for k in l.strip().split(self.delimiter)]
+                            user = int(rowtext[3])
+
+                            if self.user_logs.get(user) is None:
+                                self.user_logs[user] = []
+                                self.saved_lstm[user] = (torch.zeros((self.context_size[0])),
+                                                torch.zeros((len(self.context_size), self.context_size[0])),
+                                                torch.zeros((len(self.context_size), self.context_size[0])))
+
+                            self.user_logs[user].append(rowtext)
+
+                    self.users_ge_num_steps = [key for key in self.user_logs if len(self.user_logs[key]) >= self.num_steps]
+
+                    if len(self.users_ge_num_steps) >= self.mb_size and self.flush == False: # Before the data loader read the last line of the log. 
+                        output, ctxt_vector, h_state, c_state = self.load_lines()
+
+                    elif len(self.users_ge_num_steps) > 0 and self.flush == True: # When the data loader read the last line of the log. 
+                        output, ctxt_vector, h_state, c_state = self.load_lines()
+                        
+                    elif len(self.users_ge_num_steps) == 0 and self.flush == True: # Activate the staggler mode. 
+                        if self.num_steps == self.staggler_num_steps:
+                            self.empty = True
+                            break
+                        self.mb_size = self.num_steps * self.mb_size
+                        self.num_steps = self.staggler_num_steps     
+                    self.num_steps = self.staggler_num_steps
+                        self.num_steps = self.staggler_num_steps     
+
+                if self.empty == True:
+                    break
+
+                output = torch.tensor(output).long()
+                batch = torch.transpose(output, 0, 1)
+                endx = batch.shape[2] - int(not self.bidir)
+                endt = batch.shape[2] - int(self.bidir)
+                datadict = {'line': batch[:, :, 0],
+                            'second': batch[:, :, 1],
+                            'day': batch[:, :, 2],
+                            'user': batch[:, :, 3],
+                            'red': batch[:, :, 4],
+                            'x': [batch[0, :, 5 + self.jagged + self.skipsos:endx]] * self.num_steps,
+                            't': [batch[0, :, 6 + self.jagged + self.skipsos:endt]] * self.num_steps,
+                            'context_vector': ctxt_vector,
+                            'c_state_init': torch.transpose(h_state, 0, 1),
+                            'h_state_init': torch.transpose(c_state, 0, 1)}  # state_triple['h_state_init']}
+                if self.jagged:
+                    datadict['length'] = [batch[0, :, 5] -
+                                            int(self.skipsos)] * self.num_steps
+                    datadict['mask'] = [get_mask(seq_length.view(-1, 1) - 2 * self.bidir, self.sentence_length - 2 * self.bidir) for
+                                        seq_length in datadict['length']]            
+                                            seq_length in datadict['length']]
+                                        seq_length in datadict['length']]            
+                yield datadict
+
+    def load_lines(self):
+        output = []
+        ctxt_vector = torch.tensor([])
+        h_state = torch.tensor([])
+        c_state = torch.tensor([])
+        for user in self.users_ge_num_steps[:self.mb_size]:
+            output.append(self.user_logs[user][0:self.num_steps])
+            self.user_logs[user] = self.user_logs[user][self.num_steps:]
+            ctxt_vector = torch.cat((ctxt_vector, torch.unsqueeze(self.saved_lstm[user][0], dim=0)), dim=0)
+            h_state = torch.cat((h_state, torch.unsqueeze(self.saved_lstm[user][1], dim=0)), dim=0)
+            c_state = torch.cat((c_state, torch.unsqueeze(self.saved_lstm[user][2], dim=0)), dim=0)
+        return output, ctxt_vector, h_state, c_state
 
     def update_state(self, ctxt_vectors, h_states, c_states):
         ctxt_vectors = ctxt_vectors.data
         h_states = torch.transpose(h_states.data, 0, 1)
         c_states = torch.transpose(c_states.data, 0, 1)
-        for usr, ctxt_v, h_state, c_state in zip(self.pre_lst_avail_id[:self.batch_size], ctxt_vectors, h_states, c_states):
+        for usr, ctxt_v, h_state, c_state in zip(self.users_ge_num_steps[:self.mb_size], ctxt_vectors, h_states, c_states):
             self.saved_lstm[usr] = (ctxt_v, h_state, c_state)
