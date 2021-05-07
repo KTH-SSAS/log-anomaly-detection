@@ -20,6 +20,7 @@ class Trainer():
         self.jagged = args.jagged
         self.bidirectional = args.bidirectional
         self.data_handler = data_handler
+        self.checkpoint_dir = checkpoint_dir
 
         if self.cuda:
             self.model.cuda()
