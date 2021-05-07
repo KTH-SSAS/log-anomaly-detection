@@ -201,6 +201,8 @@ class Tiered_LSTM(nn.Module):
             for sequences in user_sequences:
                 tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
                     sequences, lengths=lengths, context_vectors=self.ctxt_vector)
+                if self.bid:
+                    final_hidden = final_hidden.view(1, final_hidden.shape[1],-1)
                 self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
                     low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len=lengths)
                 tag_output.append(tag_size)
@@ -209,6 +211,8 @@ class Tiered_LSTM(nn.Module):
             for sequences, length in zip(user_sequences, lengths):
                 tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
                     sequences, lengths=length, context_vectors=self.ctxt_vector)
+                if self.bid:
+                    final_hidden = final_hidden.view(1, final_hidden.shape[1],-1)
                 self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
                     low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len=length)
                 tag_output.append(tag_size)
