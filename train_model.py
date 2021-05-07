@@ -17,24 +17,24 @@ Entrypoint script for training
 """
 
 def create_identifier_string(model_name, comment=""):
+    #TODO have model name be set by config, args or something else
     current_time = datetime.now().strftime('%b%d_%H-%M-%S')
     id = f'{model_name}_{current_time}_{socket.gethostname()}_{comment}'
     return id
 
 
-def train(args):
-
+def create_model(args):
     base_logdir = './runs/'
-    id_string = create_identifier_string("lstm") #TODO have model name be set by config, args or something else
+    id_string = create_identifier_string("lstm")
     log_dir = os.path.join(base_logdir, id_string)
+    os.mkdir(log_dir)
 
     # Read a config file.   
     with open(args.config, 'r') as f:
         conf = json.load(f)
 
+    # Settings for dataloader.
     sentence_length = conf["sentence_length"] - 1 - int(args.skipsos) + int(args.bidirectional)
-    
-    # Settings for dataloader.   
     train_days = conf['train_files']
     test_days = conf['test_files']
     train_loader, test_loader = data_utils.load_data(train_days, test_days, args, sentence_length)
@@ -47,10 +47,25 @@ def train(args):
     
     lm_trainer = trainer_class(args, conf, log_dir, verbose = True, data_handler = train_loader)
 
-    jag = int(args.jagged)
-    skipsos = int(args.skipsos)
+    return lm_trainer
+
+
+def train(args, lm_trainer):
+    """Perform 1 epoch of training on lm_trainer"""
+
+    # Read a config file.   
+    with open(args.config, 'r') as f:
+        conf = json.load(f)
+
+    # Settings for dataloader.
+    sentence_length = conf["sentence_length"] - 1 - int(args.skipsos) + int(args.bidirectional)
+    train_days = conf['train_files']
+    test_days = conf['test_files']
+    train_loader, test_loader = data_utils.load_data(train_days, test_days, args, sentence_length)
+
     outfile = None
     verbose = False
+    log_dir = lm_trainer.checkpoint_dir
     writer = SummaryWriter(os.path.join(log_dir, 'metrics'))
 
     train_losses = []
@@ -88,7 +103,15 @@ def train(args):
     with open(os.path.join(log_dir, 'config.json'), 'w') as f:
         json.dump(conf, f)
     return train_losses, test_losses
-                                     
+
+
+def main(args):
+    # Create the trainer+model
+    trainer = create_model(args)
+    # Train the model
+    train(args, trainer)
+
+
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--data-folder", type=str, help="Path to data files.")
@@ -112,4 +135,4 @@ if __name__ == "__main__":
     parser.add_argument('--model_dir', type=str, help='Directory to save stats and checkpoints to', default='runs')
     parser.add_argument('--load_from_checkpoint', type=str, help='Checkpoint to resume training from')
     args = parser.parse_args()
-    train(args)
+    main(args)
