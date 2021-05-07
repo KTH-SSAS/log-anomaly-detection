@@ -142,7 +142,7 @@ class Context_LSTM(nn.Module):
 
         # Layers
         self.context_lstm_layers = nn.LSTM(input_dim, self.ctxt_lv_layers[0], len(
-            ctxt_lv_layers), batch_first=True, bidirectional=bid)
+            ctxt_lv_layers), batch_first=True)
 
         # Weight initialization
         initialize_weights(self)
