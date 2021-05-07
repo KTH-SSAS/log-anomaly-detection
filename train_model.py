@@ -53,15 +53,19 @@ def train(args):
     verbose = False
     writer = SummaryWriter(os.path.join(log_dir, 'metrics'))
 
+    train_losses = []
     for iteration, batch in enumerate(train_loader):
         loss, done= lm_trainer.train_step(batch)
+        train_losses.append(loss.item())
         writer.add_scalar(f'Loss/train_day_{batch["day"][0]}', loss, iteration)
         if done:
             print("Early stopping.")
             break
 
+    test_losses = []
     for iteration, batch in enumerate(test_loader):
         loss, _ = lm_trainer.eval_step(batch)
+        test_losses.append(loss.item())
         writer.add_scalar(f'Loss/test_day_{batch["day"][0]}', loss, iteration)
 
         if outfile is not None:
@@ -83,6 +87,7 @@ def train(args):
     torch.save(lm_trainer.model, os.path.join(log_dir,'model.pt'))
     with open(os.path.join(log_dir, 'config.json'), 'w') as f:
         json.dump(conf, f)
+    return train_losses, test_losses
                                      
 if __name__ == "__main__":
     parser = ArgumentParser()
