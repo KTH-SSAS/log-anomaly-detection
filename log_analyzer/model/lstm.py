@@ -142,7 +142,7 @@ class Context_LSTM(nn.Module):
 
         # Layers
         self.context_lstm_layers = nn.LSTM(input_dim, self.ctxt_lv_layers[0], len(
-            ctxt_lv_layers), batch_first=True, bidirectional=bid)
+            ctxt_lv_layers), batch_first=True)
 
         # Weight initialization
         initialize_weights(self)
@@ -182,8 +182,11 @@ class Tiered_LSTM(nn.Module):
         # Layers
         self.low_lv_lstm = self.model(self.low_lv_layers, self.vocab_size, self.embedding_dim,
                                       jagged=self.jagged, tiered=True, context_vector_size=self.ctxt_lv_layers[-1])
-        self.ctxt_lv_lstm = Context_LSTM(
-            self.ctxt_lv_layers, low_lv_layers[-1] * 2, self.bid)
+        if self.bid:
+            input_features =  low_lv_layers[-1] * 4
+        else:
+            input_features =  low_lv_layers[-1] * 2
+        self.ctxt_lv_lstm = Context_LSTM(self.ctxt_lv_layers, input_features, self.bid)
 
         # Weight initialization
         initialize_weights(self)
@@ -198,6 +201,8 @@ class Tiered_LSTM(nn.Module):
             for sequences in user_sequences:
                 tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
                     sequences, lengths=lengths, context_vectors=self.ctxt_vector)
+                if self.bid:
+                    final_hidden = final_hidden.view(1, final_hidden.shape[1],-1)
                 self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
                     low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len=lengths)
                 tag_output.append(tag_size)
@@ -206,6 +211,8 @@ class Tiered_LSTM(nn.Module):
             for sequences, length in zip(user_sequences, lengths):
                 tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
                     sequences, lengths=length, context_vectors=self.ctxt_vector)
+                if self.bid:
+                    final_hidden = final_hidden.view(1, final_hidden.shape[1],-1)
                 self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
                     low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len=length)
                 tag_output.append(tag_size)
