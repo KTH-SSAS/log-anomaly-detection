@@ -61,7 +61,7 @@ def train(args):
             break
 
     for iteration, batch in enumerate(test_loader):
-        loss = lm_trainer.eval_step(batch)
+        loss, _ = lm_trainer.eval_step(batch)
         writer.add_scalar(f'Loss/test_day_{batch["day"][0]}', loss, iteration)
 
         if outfile is not None:
