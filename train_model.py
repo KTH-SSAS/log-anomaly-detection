@@ -74,7 +74,7 @@ def train(args, lm_trainer):
             if train_loader.flush is False:
                 loss, done= lm_trainer.train_step(batch)
             else:
-                loss = lm_trainer.eval_step(batch)
+                loss, _ = lm_trainer.eval_step(batch)
                 print(f'Due to flush, training stopped... Current loss: {loss:.3f}')
         else: 
             loss, done= lm_trainer.train_step(batch)
