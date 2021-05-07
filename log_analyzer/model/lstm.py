@@ -182,8 +182,11 @@ class Tiered_LSTM(nn.Module):
         # Layers
         self.low_lv_lstm = self.model(self.low_lv_layers, self.vocab_size, self.embedding_dim,
                                       jagged=self.jagged, tiered=True, context_vector_size=self.ctxt_lv_layers[-1])
-        self.ctxt_lv_lstm = Context_LSTM(
-            self.ctxt_lv_layers, low_lv_layers[-1] * 2, self.bid)
+        if self.bid:
+            input_features =  low_lv_layers[-1] * 4
+        else:
+            input_features =  low_lv_layers[-1] * 2
+        self.ctxt_lv_lstm = Context_LSTM(self.ctxt_lv_layers, input_features, self.bid)
 
         # Weight initialization
         initialize_weights(self)
