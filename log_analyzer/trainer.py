@@ -20,6 +20,7 @@ class Trainer():
         self.jagged = args.jagged
         self.bidirectional = args.bidirectional
         self.data_handler = data_handler
+        self.checkpoint_dir = checkpoint_dir
 
         if self.cuda:
             self.model.cuda()
@@ -50,7 +51,7 @@ class Trainer():
             line_losses = torch.mean(token_losses, dim=1)
         loss = torch.mean(line_losses, dim=0)
 
-        return loss
+        return loss, output
 
     def optimizer_step(self, loss):
         loss.backward()
@@ -85,7 +86,7 @@ class Trainer():
 
         X, Y, L, M = self.split_batch(batch)
 
-        loss = self.compute_loss(
+        loss, _ = self.compute_loss(
             X, Y, lengths=L, mask=M)
 
         self.optimizer_step(loss)
@@ -99,10 +100,10 @@ class Trainer():
 
         X, Y, L, M = self.split_batch(batch)
 
-        token_losses = self.compute_loss(
+        token_losses, predicted_tokens = self.compute_loss(
             X, Y, lengths=L, mask=M)
 
-        return token_losses
+        return token_losses, predicted_tokens
 
 
 class LSTMTrainer(Trainer):

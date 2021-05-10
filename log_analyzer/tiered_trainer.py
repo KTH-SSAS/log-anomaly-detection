@@ -37,7 +37,7 @@ class TieredTrainer(Trainer):
             step_loss = torch.mean(line_losses, dim=0)
             loss += step_loss
         loss /= len(X)
-        return loss
+        return loss, output
 
     def split_batch(self, batch):
         """Splits a batch into variables containing relevant data."""
@@ -61,10 +61,10 @@ class TieredTrainer(Trainer):
 
         X, Y, L, M, C_V, C_H, C_C = self.split_batch(batch)
 
-        token_losses = self.compute_loss(
+        token_losses, output = self.compute_loss(
             X, Y, lengths=L, mask=M, ctxt_vector=C_V, ctxt_hidden=C_H, ctxt_cell=C_C)
 
-        return token_losses
+        return token_losses, output
 
     def train_step(self, batch):
         """Defines a single training step. Feeds data through the model, computes the loss and makes an optimization step."""
@@ -74,7 +74,7 @@ class TieredTrainer(Trainer):
 
         X, Y, L, M, C_V, C_H, C_C = self.split_batch(batch)
 
-        loss = self.compute_loss(
+        loss, _ = self.compute_loss(
             X, Y, lengths=L, mask=M, ctxt_vector=C_V, ctxt_hidden=C_H, ctxt_cell=C_C)
 
         self.optimizer_step(loss)
