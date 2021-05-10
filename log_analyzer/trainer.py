@@ -122,6 +122,6 @@ class LSTMTrainer(Trainer):
             model = Fwd_LSTM
         # Create a model
         self.lstm = model(
-            args.lstm_layers, conf['token_set_size'], args.embed_dim, jagged=args.jagged)
+            args.lstm_layers, conf['token_set_size'], args.embed_dim, jagged=args.jagged, attention_type=conf['attention_type'], attention_dim=conf['attention_dim'])
 
         super().__init__(args, conf, checkpoint_dir, data_handler=data_handler, verbose=verbose)
