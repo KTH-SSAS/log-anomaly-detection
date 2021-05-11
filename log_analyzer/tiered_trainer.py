@@ -55,17 +55,6 @@ class TieredTrainer(Trainer):
 
         return X, Y, L, M, C_V, C_H, C_C
 
-    def eval_step(self, batch):
-        """Defines a single evaluation step. Feeds data through the model and computes the loss."""
-        self.model.eval()
-
-        X, Y, L, M, C_V, C_H, C_C = self.split_batch(batch)
-
-        token_losses, output = self.compute_loss(
-            X, Y, lengths=L, mask=M, ctxt_vector=C_V, ctxt_hidden=C_H, ctxt_cell=C_C)
-
-        return token_losses, output
-
     def train_step(self, batch):
         """Defines a single training step. Feeds data through the model, computes the loss and makes an optimization step."""
 
@@ -80,3 +69,14 @@ class TieredTrainer(Trainer):
         self.optimizer_step(loss)
 
         return loss, self.early_stopping.early_stop
+
+    def eval_step(self, batch):
+        """Defines a single evaluation step. Feeds data through the model and computes the loss."""
+        self.model.eval()
+
+        X, Y, L, M, C_V, C_H, C_C = self.split_batch(batch)
+
+        token_losses, output = self.compute_loss(
+            X, Y, lengths=L, mask=M, ctxt_vector=C_V, ctxt_hidden=C_H, ctxt_cell=C_C)
+
+        return token_losses, output
