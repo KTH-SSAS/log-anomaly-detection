@@ -77,9 +77,7 @@ class LSTMLanguageModel(nn.Module):
             lstm_out = pad_packed_sequence(lstm_out, batch_first=True)
             lstm_out = lstm_out[0]
 
-        output = self.tanh(lstm_out)
-
-        return output, lstm_out, hx
+        return lstm_out, hx
 
 
 class Fwd_LSTM(LSTMLanguageModel):
@@ -91,9 +89,9 @@ class Fwd_LSTM(LSTMLanguageModel):
         self.hidden2tag = nn.Linear(self.layers[-1], self.vocab_size)
 
     def forward(self, sequences, lengths=None, context_vectors=None):
-        output, lstm_out, hx = super().forward(sequences, lengths, context_vectors)
+        lstm_out, hx = super().forward(sequences, lengths, context_vectors)
 
-        tag_size = self.hidden2tag(output)
+        tag_size = self.hidden2tag(lstm_out)
 
         return tag_size, lstm_out, hx
 
@@ -107,14 +105,14 @@ class Bid_LSTM(LSTMLanguageModel):
         self.hidden2tag = nn.Linear(self.layers[-1] * 2, self.vocab_size)
 
     def forward(self, sequences, lengths=None, context_vectors=None):
-        output, lstm_out, hx = super().forward(sequences, lengths, context_vectors)
-        # Reshape output to make forward/backward into seperate dims
+        lstm_out, hx = super().forward(sequences, lengths, context_vectors)
+        # Reshape lstm_out to make forward/backward into seperate dims
         if self.jagged:
-            split = output.view(
-                sequences.shape[0], max(lengths), 2, output.shape[-1]//2)
+            split = lstm_out.view(
+                sequences.shape[0], max(lengths), 2, lstm_out.shape[-1]//2)
         else:
-            split = output.view(
-                sequences.shape[0], sequences.shape[-1], 2, output.shape[-1]//2)
+            split = lstm_out.view(
+                sequences.shape[0], sequences.shape[-1], 2, lstm_out.shape[-1]//2)
 
         # Seperate forward and backward hidden states
         forward_hidden_states = split[:, :, 0]

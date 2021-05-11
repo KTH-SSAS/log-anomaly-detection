@@ -33,9 +33,8 @@ class Trainer():
         self.scheduler = torch.optim.lr_scheduler.StepLR(
             self.optimizer, step_size=conf['step_size'], gamma=conf['gamma'])
 
-    def compute_loss(self, X, Y, lengths, mask):
-        """Computes the loss for the given input."""
-        output, _, _ = self.model(X, lengths=lengths)
+    def compute_loss(self, output, Y, lengths, mask):
+        """Computes the loss for the given model output and ground truth."""
         if self.jagged:
             if self.bidirectional:
                 token_losses = self.criterion(
@@ -51,9 +50,10 @@ class Trainer():
             line_losses = torch.mean(token_losses, dim=1)
         loss = torch.mean(line_losses, dim=0)
 
-        return loss, output
+        return loss
 
     def optimizer_step(self, loss):
+        """Performs one step of optimization on the given loss."""
         loss.backward()
         self.optimizer.step()
         self.scheduler.step()
@@ -84,11 +84,17 @@ class Trainer():
         self.model.train()
         self.optimizer.zero_grad()
 
+        # Split the batch into input, ground truth, etc.
         X, Y, L, M = self.split_batch(batch)
 
-        loss, _ = self.compute_loss(
-            X, Y, lengths=L, mask=M)
+        # Apply the model to input to produce the output
+        output, _, _ = self.model(X, lengths=L)
 
+        # Compute the loss for the output
+        loss = self.compute_loss(
+            output, Y, lengths=L, mask=M)
+
+        # Take an optimization step based on the loss
         self.optimizer_step(loss)
 
         return loss, self.early_stopping.early_stop
@@ -98,12 +104,18 @@ class Trainer():
         # TODO add more metrics, like perplexity.
         self.model.eval()
 
+        # Split the batch into input, ground truth, etc.
         X, Y, L, M = self.split_batch(batch)
 
-        token_losses, predicted_tokens = self.compute_loss(
-            X, Y, lengths=L, mask=M)
+        # Apply the model to input to produce the output
+        output, _, _ = self.model(X, lengths=L)
 
-        return token_losses, predicted_tokens
+        # Compute the loss for the output
+        loss = self.compute_loss(
+            output, Y, lengths=L, mask=M)
+
+        # Return both the loss and the output token probabilities
+        return loss, output
 
 
 class LSTMTrainer(Trainer):
