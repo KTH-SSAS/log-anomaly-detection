@@ -19,6 +19,7 @@ class TieredTrainer(Trainer):
     def compute_loss(self, output, Y, lengths, mask):
         """Computes the loss for the given model output and ground truth."""
         loss = 0
+        line_losses_list = []
         # output (num_steps x batch x length x embedding dimension)  Y (num_steps x batch x length)
         for i, (step_output, true_y) in enumerate(zip(output, Y)):
             if self.jagged:  # On notebook, I checked it with forward LSTM and word tokenization. Further checks have to be done...
@@ -30,10 +31,11 @@ class TieredTrainer(Trainer):
                 token_losses = self.criterion(
                     step_output.transpose(1, 2), true_y)
                 line_losses = torch.mean(token_losses, dim=1)
+            line_losses_list.append(line_losses)
             step_loss = torch.mean(line_losses, dim=0)
             loss += step_loss
         loss /= len(Y)
-        return loss
+        return loss, line_losses_list
 
     def split_batch(self, batch):
         """Splits a batch into variables containing relevant data."""
@@ -65,7 +67,7 @@ class TieredTrainer(Trainer):
         self.data_handler.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
 
         # Compute the loss for the output
-        loss = self.compute_loss(
+        loss, _ = self.compute_loss(
             output, Y, lengths=L, mask=M)
 
         # Take an optimization step based on the loss
@@ -86,7 +88,7 @@ class TieredTrainer(Trainer):
         self.data_handler.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
 
         # Compute the loss for the output
-        loss = self.compute_loss(
+        loss, _ = self.compute_loss(
             output, Y, lengths=L, mask=M)
 
         return loss, output

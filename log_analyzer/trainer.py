@@ -50,7 +50,7 @@ class Trainer():
             line_losses = torch.mean(token_losses, dim=1)
         loss = torch.mean(line_losses, dim=0)
 
-        return loss
+        return loss, line_losses
 
     def optimizer_step(self, loss):
         """Performs one step of optimization on the given loss."""
@@ -91,7 +91,7 @@ class Trainer():
         output, _, _ = self.model(X, lengths=L)
 
         # Compute the loss for the output
-        loss = self.compute_loss(
+        loss, _ = self.compute_loss(
             output, Y, lengths=L, mask=M)
 
         # Take an optimization step based on the loss
@@ -111,7 +111,7 @@ class Trainer():
         output, _, _ = self.model(X, lengths=L)
 
         # Compute the loss for the output
-        loss = self.compute_loss(
+        loss, _ = self.compute_loss(
             output, Y, lengths=L, mask=M)
 
         # Return both the loss and the output token probabilities
