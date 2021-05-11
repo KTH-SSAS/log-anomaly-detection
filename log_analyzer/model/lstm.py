@@ -101,10 +101,8 @@ class Fwd_LSTM(LSTMLanguageModel):
         if self.attention is not None:
             attention, _ = self.attention(lstm_out)
             output = torch.cat((lstm_out, attention.squeeze()), dim=-1)
-
-        if self.attention is not None:
-            attention, _ = self.attention(lstm_out)
-            output = torch.cat((lstm_out, attention.squeeze()), dim=-1)
+        else:
+            output = lstm_out
 
         tag_size = self.hidden2tag(output)
 
