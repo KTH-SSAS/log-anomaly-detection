@@ -1,4 +1,6 @@
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
+from log_analyzer.config.model_config import LSTMConfig, TieredLSTMConfig
+from log_analyzer.config.trainer_config import TrainerConfig
 import os
 import json
 import socket
@@ -15,6 +17,20 @@ except ImportError:
 """
 Helper functions for model creation and training
 """
+
+def generate_configs(args : Namespace, conf):
+    """Generate configs based on args and conf file. Intermediary function while refactoring"""
+    trainer_config : TrainerConfig = TrainerConfig(batch_size=args.batch_size, jagged=args.jagged, bidirectional=args.bidirectional,
+        tiered=args.tiered, learning_rate=conf['lr'], early_stopping=True,
+        early_stop_patience=conf['patience'], scheduler_gamma=conf['gamma'],
+        scheduler_step_size=conf['step_size'])
+
+    if args.tiered:
+        model_config = TieredLSTMConfig(args.lstm_layers, conf['token_set_size'], args.embed_dim, args.bidirectional, None, 0, args.jagged, args.context_layers)
+    else:
+        model_config = LSTMConfig(args.lstm_layers, conf['token_set_size'], args.embed_dim, args.bidirectional, None, 0, args.jagged)
+    return trainer_config, model_config
+
 
 def create_identifier_string(model_name, comment=""):
     #TODO have model name be set by config, args or something else
@@ -34,19 +50,21 @@ def create_model(args):
     with open(args.config, 'r') as f:
         conf = json.load(f)
 
+    trainer_config, model_config = generate_configs(args, conf)
+
     # Settings for dataloader.
     sentence_length = conf["sentence_length"] - 1 - int(args.skipsos) + int(args.bidirectional)
     train_days = conf['train_files']
     test_days = conf['test_files']
-    train_loader, test_loader = data_utils.load_data(train_days, test_days, args, sentence_length)
+
+    verbose = True
 
     # Settings for LSTM.
     if args.tiered:
-        trainer_class = TieredTrainer
+        train_loader, _ = data_utils.load_data(train_days, test_days, args, sentence_length)
+        lm_trainer = TieredTrainer(trainer_config, model_config, log_dir, train_loader, verbose)
     else:
-        trainer_class = LSTMTrainer
-    
-    lm_trainer = trainer_class(args, conf, log_dir, verbose = True, data_handler = train_loader)
+        lm_trainer = LSTMTrainer(trainer_config, model_config, log_dir, verbose)
 
     return lm_trainer
 

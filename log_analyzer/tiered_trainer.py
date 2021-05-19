@@ -1,3 +1,4 @@
+from log_analyzer.config.model_config import TieredLSTMConfig
 import torch
 from log_analyzer.trainer import Trainer
 from log_analyzer.model.lstm import Tiered_LSTM
@@ -10,11 +11,11 @@ class TieredTrainer(Trainer):
             raise RuntimeError("Model not intialized!")
         return self.lstm
 
-    def __init__(self, args, conf, checkpoint_dir, data_handler, verbose):
+    def __init__(self, config, lstm_config : TieredLSTMConfig, checkpoint_dir, data_handler, verbose):
 
-        self.lstm = Tiered_LSTM(args.lstm_layers, args.context_layers,
-                                 conf['token_set_size'], args.embed_dim, jagged=args.jagged, bid=args.bidirectional)
-        super().__init__(args, conf, checkpoint_dir, data_handler=data_handler, verbose=verbose)
+        self.lstm = Tiered_LSTM(lstm_config)
+        self.data_handler = data_handler
+        super().__init__(config, verbose, checkpoint_dir)
 
     def compute_loss(self, output, Y, lengths, mask):
         """Computes the loss for the given model output and ground truth."""
