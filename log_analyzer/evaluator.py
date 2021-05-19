@@ -7,11 +7,12 @@ class Evaluator:
     def __init__(self):
         """Creates an Evaluator instance that provides methods for model evaluation"""
         self.data = {
+            "log_lines": [],
             "predictions": [],
             "losses": [],
-            "red_flags": [],
-            "days": [],
             "seconds": [],
+            "days": [],
+            "red_flags": [],
         }
         # What data needs to be stored?
         # For each line:
@@ -23,18 +24,21 @@ class Evaluator:
         # Red flag (i.e. redteam event or not)
         # Day + second
 
-    def get_evaluation_data(self, model, datafile):
-        """Computes the data required for evaluation for the given data file"""
+    def add_evaluation_data(
+        self, log_line, predictions, losses, seconds, days, red_flags
+    ):
+        """Extend the data stored in self.data with the inputs"""
+        self.data["log_lines"].extend(log_line)
+        self.data["predictions"].extend(predictions)
+        self.data["losses"].extend(losses)
+        self.data["seconds"].extend(seconds)
+        self.data["days"].extend(days)
+        self.data["red_flags"].extend(red_flags)
 
     def reset_evaluation_data(self):
         """Delete the stored evaluation data"""
-        self.data = {
-            "predictions": [],
-            "losses": [],
-            "red_flags": [],
-            "days": [],
-            "seconds": [],
-        }
+        for key in self.data.keys():
+            self.data[key] = []
 
     def get_metrics(self):
         """Computes and returns all metrics"""

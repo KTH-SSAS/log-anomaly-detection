@@ -51,7 +51,7 @@ def create_model(args):
     return lm_trainer
 
 
-def train_model(args, lm_trainer):
+def train_model(args, lm_trainer, store_eval_data=False):
     """Perform 1 epoch of training on lm_trainer"""
 
     # Read a config file.   
@@ -87,7 +87,7 @@ def train_model(args, lm_trainer):
 
     test_losses = []
     for iteration, batch in enumerate(test_loader):
-        loss, *_ = lm_trainer.eval_step(batch)
+        loss, *_ = lm_trainer.eval_step(batch, store_eval_data)
         test_losses.append(loss.item())
         writer.add_scalar(f'Loss/test_day_{batch["day"][0]}', loss, iteration)
 

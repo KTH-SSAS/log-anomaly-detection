@@ -31,26 +31,33 @@ class Trainer():
             patience=conf["patience"], verbose=verbose, path=checkpoint_dir)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=conf['lr'])
         self.scheduler = torch.optim.lr_scheduler.StepLR(
-            self.optimizer, step_size=conf['step_size'], gamma=conf['gamma'])
+        # Create evaluator
+        self.evaluator = Evaluator()
 
     def compute_loss(self, output, Y, lengths, mask):
         """Computes the loss for the given model output and ground truth."""
         if self.jagged:
             if self.bidirectional:
+                targets = Y[:, 1 : max(lengths) - 1]
                 token_losses = self.criterion(
-                    output.transpose(1, 2), Y[:, 1:max(lengths)-1])
-                masked_losses = token_losses * mask[:, 1:max(lengths)-1]
+                    output.transpose(1, 2), targets
+                )
+                masked_losses = token_losses * mask[:, 1 : max(lengths) - 1]
             else:
+                targets = Y[:, :max(lengths)]
                 token_losses = self.criterion(
-                    output.transpose(1, 2), Y[:, :max(lengths)])
-                masked_losses = token_losses * mask[:, :max(lengths)]
+                    output.transpose(1, 2), targets
+                )
+                masked_losses = token_losses * mask[:, : max(lengths)]
             line_losses = torch.sum(masked_losses, dim=1)
         else:
+            targets = Y
             token_losses = self.criterion(output.transpose(1, 2), Y)
             line_losses = torch.mean(token_losses, dim=1)
         loss = torch.mean(line_losses, dim=0)
 
-        return loss, line_losses
+        # Return the loss, as well as extra details like loss per line
+        return loss, line_losses, targets
 
     def optimizer_step(self, loss):
         """Performs one step of optimization on the given loss."""
@@ -99,7 +106,7 @@ class Trainer():
 
         return loss, self.early_stopping.early_stop
 
-    def eval_step(self, batch):
+    def eval_step(self, batch, store_eval_data=False):
         """Defines a single evaluation step. Feeds data through the model and computes the loss."""
         # TODO add more metrics, like perplexity.
         self.model.eval()
@@ -108,11 +115,17 @@ class Trainer():
         X, Y, L, M = self.split_batch(batch)
 
         # Apply the model to input to produce the output
-        output, _, _ = self.model(X, lengths=L)
+        output, *_ = self.model(X, lengths=L)
 
         # Compute the loss for the output
-        loss, _ = self.compute_loss(
-            output, Y, lengths=L, mask=M)
+        loss, line_losses, targets = self.compute_loss(output, Y, lengths=L, mask=M)
+
+        # Save the results if desired
+        if store_eval_data:
+            preds = torch.argmax(output, dim=-1)
+            self.evaluator.add_evaluation_data(
+                targets, preds, line_losses, batch["second"], batch["day"], batch["red"],
+            )
 
         # Return both the loss and the output token probabilities
         return loss, output
