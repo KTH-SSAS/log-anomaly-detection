@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from log_analyzer.model.lstm import Fwd_LSTM, Bid_LSTM
 import log_analyzer.model.auxiliary as auxiliary
+from log_analyzer.evaluator import Evaluator
 
 # TODO name this something more descriptive, it might be used as a wrapper around both transformer/LSTM
 class Trainer():
@@ -95,11 +96,10 @@ class Trainer():
         X, Y, L, M = self.split_batch(batch)
 
         # Apply the model to input to produce the output
-        output, _, _ = self.model(X, lengths=L)
+        output, *_ = self.model(X, lengths=L)
 
         # Compute the loss for the output
-        loss, _ = self.compute_loss(
-            output, Y, lengths=L, mask=M)
+        loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
 
         # Take an optimization step based on the loss
         self.optimizer_step(loss)
