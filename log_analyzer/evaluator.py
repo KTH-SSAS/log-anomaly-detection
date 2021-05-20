@@ -6,14 +6,7 @@ import numpy as np
 class Evaluator:
     def __init__(self):
         """Creates an Evaluator instance that provides methods for model evaluation"""
-        self.data = {
-            "log_lines": [],
-            "predictions": [],
-            "losses": [],
-            "seconds": [],
-            "days": [],
-            "red_flags": [],
-        }
+        self.reset_evaluation_data()
         # What data needs to be stored?
         # For each line:
         # predicted tokens
@@ -30,15 +23,23 @@ class Evaluator:
         """Extend the data stored in self.data with the inputs"""
         self.data["log_lines"].extend(log_line.detach())
         self.data["predictions"].extend(predictions.detach())
-        self.data["losses"].extend(losses.detach())
-        self.data["seconds"].extend(seconds.detach())
-        self.data["days"].extend(days.detach())
-        self.data["red_flags"].extend(red_flags.detach())
+        self.data["losses"] = np.concatenate((self.data["losses"], losses.detach()))
+        self.data["seconds"] = np.concatenate((self.data["seconds"], seconds.detach()))
+        self.data["days"] = np.concatenate((self.data["days"], days.detach()))
+        self.data["red_flags"] = np.concatenate(
+            (self.data["red_flags"], red_flags.detach())
+        )
 
     def reset_evaluation_data(self):
         """Delete the stored evaluation data"""
-        for key in self.data.keys():
-            self.data[key] = []
+        self.data = {
+            "log_lines": [],
+            "predictions": [],
+            "losses": np.array([]),
+            "seconds": np.array([], int),
+            "days": np.array([], int),
+            "red_flags": np.array([], bool),
+        }
 
     def get_metrics(self):
         """Computes and returns all metrics"""
