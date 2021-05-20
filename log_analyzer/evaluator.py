@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 
 
-#TODO: support for tiered model
+# TODO: support for tiered model
 class Evaluator:
     def __init__(self):
         """Creates an Evaluator instance that provides methods for model evaluation"""
@@ -45,6 +45,12 @@ class Evaluator:
 
     def get_metrics(self):
         """Computes and returns all metrics"""
+        metrics = [
+            self.get_token_accuracy(),
+            self.get_token_perplexity(),
+            self.get_auc_score(),
+        ]
+        return metrics
 
     def get_token_accuracy(self):
         """Computes the accuracy of the model token prediction"""
@@ -72,8 +78,10 @@ class Evaluator:
         perplexity = np.exp(average_loss)
         return perplexity
 
+    # TODO: Implement once access to redteam data has been implemented
     def get_auc_score(self):
         """Computes AUC score (area under the ROC curve)"""
+        raise NotImplementedError()
 
     def plot_losses_by_line(self, percentiles=[75, 95, 99], smoothing=1):
         """Computes and plots the given (default 75/95/99) percentiles of anomaly score
@@ -135,5 +143,7 @@ class Evaluator:
         plt.ylabel(f"y - Percentiles of loss {tuple(percentiles)}")
         plt.title("Aggregate line losses by time")
 
+    # TODO: Implement once access to redteam data has been implemented
     def plot_ROC_curve(self):
         """Plots the ROC (Receiver Operator Characteristic) curve, i.e. TP-FP tradeoff"""
+        raise NotImplementedError()
