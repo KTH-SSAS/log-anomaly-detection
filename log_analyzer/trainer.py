@@ -32,6 +32,7 @@ class Trainer():
             patience=conf["patience"], verbose=verbose, path=checkpoint_dir)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=conf['lr'])
         self.scheduler = torch.optim.lr_scheduler.StepLR(
+            self.optimizer, step_size=conf['step_size'], gamma=conf['gamma'])
         # Create evaluator
         self.evaluator = Evaluator()
 
