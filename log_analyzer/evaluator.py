@@ -28,12 +28,12 @@ class Evaluator:
         self, log_line, predictions, losses, seconds, days, red_flags
     ):
         """Extend the data stored in self.data with the inputs"""
-        self.data["log_lines"].extend(log_line)
-        self.data["predictions"].extend(predictions)
-        self.data["losses"].extend(losses)
-        self.data["seconds"].extend(seconds)
-        self.data["days"].extend(days)
-        self.data["red_flags"].extend(red_flags)
+        self.data["log_lines"].extend(log_line.detach())
+        self.data["predictions"].extend(predictions.detach())
+        self.data["losses"].extend(losses.detach())
+        self.data["seconds"].extend(seconds.detach())
+        self.data["days"].extend(days.detach())
+        self.data["red_flags"].extend(red_flags.detach())
 
     def reset_evaluation_data(self):
         """Delete the stored evaluation data"""
@@ -63,6 +63,11 @@ class Evaluator:
 
     def get_token_perplexity(self):
         """Computes and returns the perplexity of the model token prediction"""
+        # Compute the average loss
+        average_loss = np.average(self.data["losses"])
+        # Assuming the loss is cross entropy loss, the perplexity is the exponential of the loss
+        perplexity = np.exp(average_loss)
+        return perplexity
 
     def get_auc_score(self):
         """Computes AUC score (area under the ROC curve)"""
