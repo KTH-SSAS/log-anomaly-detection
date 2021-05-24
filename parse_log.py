@@ -274,14 +274,14 @@ class Word_tokenizer(Char_tokenizer):
         with open(self.record_dir + str(self.OOV_CUTOFF) + "_em_size.txt", 'w') as emsize_file:
             emsize_file.write("%s" % self.curr_ind)
 
-        for map, file in zip([self.usr_inds.items(),
-                            self.pc_inds.items(),
-                            self.domain_inds.items(),
-                            self.auth_dict.items(),
-                            self.logon_dict.items(),
-                            self.orient_dict.items(),
-                            self.success_dict.items(),
-                            self.other_inds.items()],
+        for map, file in zip([self.usr_inds,
+                            self.pc_inds,
+                            self.domain_inds,
+                            self.auth_dict,
+                            self.logon_dict,
+                            self.orient_dict,
+                            self.success_dict,
+                            self.other_inds],
                             ['pc_map.json',
                             'domain_map.json',
                             'auth_map.json',
@@ -300,14 +300,14 @@ class Word_tokenizer(Char_tokenizer):
         b_success_inds = {v: k for k, v in self.success_dict.items()}
         b_other_inds = {v: k for k, v in self.other_inds.items()}
 
-        back_mappings = dict(b_usr_inds.items() +
-                            b_pc_inds.items() +
-                            b_domain_inds.items() +
-                            b_auth_inds.items() +
-                            b_logon_inds.items() +
-                            b_orient_inds.items() +
-                            b_success_inds.items() +
-                            b_other_inds.items())
+        back_mappings = {**b_usr_inds,
+                            **b_pc_inds,
+                            **b_domain_inds,
+                            **b_auth_inds,
+                            **b_logon_inds,
+                            **b_orient_inds,
+                            **b_success_inds,
+                            **b_other_inds}
 
         json.dump(back_mappings, open(self.record_dir + 'word_token_map.json', 'w'))
 
