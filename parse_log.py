@@ -8,7 +8,7 @@ class Char_tokenizer:
         self.outpath = args.outpath
         self.authfile = args.authfile
         self.redfile = args.redfile
-        self.record_dir = args.recordpath
+        self.recordpath = args.recordpath
         self.weekend_days = weekend_days
         self.LONGEST_LEN = 120 # Length of the longest line in auth.txt, used for padding
 
