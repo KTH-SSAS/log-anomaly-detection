@@ -332,9 +332,6 @@ def arg_parser():
     parser.add_argument('-redfile',
                         type=str,
                         help='Path to a redteam file.')
-    parser.add_argument('-outfile',
-                        type=str,
-                        help='Where to write derived features.')
     parser.add_argument('-outpath',
                         type=str,
                         help='Where to write output files.')
