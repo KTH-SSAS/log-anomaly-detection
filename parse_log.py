@@ -213,7 +213,7 @@ class Word_tokenizer(Char_tokenizer):
                 self.curr_ind += 1
             return ind_dict[word]
 
-    def translate_line(self, string, usr_counts, domain_counts, pc_counts):
+    def translate_line(self, string, domain_counts, pc_counts):
         """
         Translates raw log line into sequence of integer representations for word tokens with sos and eos tokens.
         :param string: Raw log line from auth_h.txt
