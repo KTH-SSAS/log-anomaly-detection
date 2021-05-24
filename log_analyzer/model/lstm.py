@@ -1,4 +1,5 @@
 # LSTM LM model
+from log_analyzer.config.config import Config
 from log_analyzer.model.attention import SelfAttention
 from log_analyzer.config.model_config import LSTMConfig, TieredLSTMConfig
 import torch
@@ -29,11 +30,17 @@ def initialize_weights(net, initrange=1.0):
         elif isinstance(m, nn.Embedding):
             truncated_normal_(m.weight.data, mean=0.0, std=1)
 
+class LogModel(nn.Module):
+    def __init__(self, config : Config):
+        super().__init__()
+        self.config : Config = config
 
-class LSTMLanguageModel(nn.Module):
+class LSTMLanguageModel(LogModel):
 
     def __init__(self, config : LSTMConfig):
-        super().__init__()
+        super().__init__(config)
+
+        self.config = config
         # Parameter setting
         self.jagged = config.jagged
         self.tiered = None
@@ -181,10 +188,10 @@ class Context_LSTM(nn.Module):
         return output, context_hx, context_cx
 
 
-class Tiered_LSTM(nn.Module):
+class Tiered_LSTM(LogModel):
     def __init__(self, config : TieredLSTMConfig):
 
-        super().__init__()
+        super().__init__(config)
         # Parameter setting
         if config.bidirectional:
             self.model = Bid_LSTM
