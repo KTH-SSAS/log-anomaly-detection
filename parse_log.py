@@ -110,6 +110,13 @@ class Word_tokenizer(Char_tokenizer):
         self.success_dict = {}
         self.other_inds = {'sos': self.sos, 'eos': self.eos, 'usr_OOV': self.usr_OOV, 'pc_OOV': self.pc_OOV, 'domain_OOV': self.domain_OOV}
 
+    def build_record_dir(self):
+        try:
+            os.makedirs(self.recordpath)    
+            print("Directory " , self.recordpath ,  " Created ")
+        except FileExistsError:
+            print("Directory " , self.recordpath ,  " already exists")  
+
     def increment_freq(self, ind_dict, key):
         """
         Used during -make_counts to track the frequencies of each element
@@ -310,6 +317,7 @@ class Word_tokenizer(Char_tokenizer):
 
         self.delete_duplicates()
         self.build_output_dir()
+        self.build_record_dir()
         self.count_words()
         self.tokenize()
         self.save_jsons()
