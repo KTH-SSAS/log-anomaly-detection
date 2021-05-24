@@ -18,11 +18,6 @@ class Char_tokenizer:
             print("Directory " , self.outpath ,  " Created ")
         except FileExistsError:
             print("Directory " , self.outpath ,  " already exists")  
-        try:
-            os.makedirs(self.record_dir)    
-            print("Directory " , self.record_dir ,  " Created ")
-        except FileExistsError:
-            print("Directory " , self.record_dir ,  " already exists")  
 
     def tokenize_line(self, string, pad_len):
         """
