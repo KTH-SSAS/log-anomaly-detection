@@ -72,13 +72,7 @@ class Char_tokenizer:
                 pad_len = self.LONGEST_LEN - len(line_minus_time)
                 raw_line = line.split(",")
                 if len(raw_line) != 9: 
-            if len(raw_line) != 9: 
-                if len(raw_line) != 9: 
                     print('bad length') 
-                print('bad length') 
-                    print('bad length') 
-                    continue 
-                continue 
                     continue 
                 sec = raw_line[0]
                 user = raw_line[1].strip().split('@')[0]
@@ -97,20 +91,219 @@ class Char_tokenizer:
         self.build_output_dir()
         self.tokenize()
 
-                    day_outfile.close()
-                    current_day = larray[2]
-                    day_outfile = open(args.outpath + current_day + '.txt', 'w')
-                    day_outfile.write(current_line)
-        day_outfile.close()
+class Word_tokenizer(Char_tokenizer):
+    def __init__(self, args, weekend_days):
+        super().__init__(args, weekend_days)
+        self.OOV_CUTOFF = 40
+        self.sos = 0
+        self.eos = 1
+        self.usr_OOV = 2
+        self.pc_OOV = 3
+        self.domain_OOV = 4
+        self.curr_ind = 5
+        # Placeholders to count occurences of all words.
+        self.usr_counts = {}
+        self.pc_counts = {}
+        self.domain_counts = {}
+        # Placeholders to save the pairs of each word and token.
+        self.usr_inds = {}
+        self.pc_inds = {}
+        self.domain_inds = {}
+        self.auth_dict = {}
+        self.logon_dict = {}
+        self.orient_dict = {}
+        self.success_dict = {}
 
-def word_lv_tokenizer(args, weekend_days):
-    # TODO
+    def increment_freq(self, ind_dict, key):
+        """
+        Used during -make_counts to track the frequencies of each element
+
+        :param ind_dict: (dict) keys: Raw word token, values: integer representation
+        :param key: Raw word token
+        """
+        if key in ind_dict:
+            ind_dict[key] += 1
+        else:
+            ind_dict[key] = 1
+
+    def split_line(self, string):
+        """
+        Turn raw some fields of raw log line from auth_h.txt into a list of word tokens
+        (needed for consistent user ids and domain ids)
+
+        :param string: Raw log line from auth_h.txt
+        :return: (list) word tokens for some fields of auth_h.txt
+        """
+        data = string.strip().split(',')
+        src_user = data[1].split("@")[0]
+        src_domain = data[1].split("@")[1]
+        dst_user = data[2].split("@")[0]
+        dst_domain = data[2].split("@")[1]
+        src_pc = data[3]
+        dst_pc = data[4]
+        return src_user, src_domain, dst_user.replace("$", ""), dst_domain, src_pc, dst_pc
+
+    def get_line_counts(self, line):
+
+        data = line.strip().split(",")
+        if len(data) != 9:
+            return
+
+        src_user, src_domain, dst_user, dst_domain, src_pc, dst_pc = self.split_line(line)
+
+        self.increment_freq(self.usr_counts, src_user)
+        self.increment_freq(self.domain_counts, src_domain)
+        self.increment_freq(self.domain_counts, dst_domain)
+        if dst_user.startswith("U"):
+            self.increment_freq(self.usr_counts, dst_user)
+        else:
+            self.increment_freq(self.pc_counts, dst_user)
+        self.increment_freq(self.pc_counts, dst_pc)
+        self.increment_freq(self.pc_counts, src_pc)
+
+    def count_words(self):
+
+        with open(self.authfile, 'r') as infile:
+            infile.readline()
+            for line_num, line in enumerate(infile):
+                if line_num % 100000 == 0:
+                    print(line_num)
+                linevec = line.strip().split(',')
+                user = linevec[1]
+                day = int(linevec[0]) // 86400
+                if user.startswith('U') and day not in weekend_days:
+                    self.get_line_counts(line)
+        self.write_sorted_counts(self.usr_counts, self.record_dir + "usr_counts")
+        self.write_sorted_counts(self.pc_counts, self.record_dir + "pc_counts")
+        self.write_sorted_counts(self.domain_counts, self.record_dir + "domain_counts")
+
+
+    def write_sorted_counts(self, count_dict, out_fn):
+        """
+        Sorts all of the elements in a dictionary by their counts and writes them to json and plain text
+        :param count_dict: (dict) keys: word tokens, values: number of occurrences
+        :param out_fn: (str) Where to write .json and .txt files to (extensions are appended)
+        """
+        sorted_counts = sorted(count_dict.items(), key=operator.itemgetter(1))
+        json_out_file = open(out_fn + ".json", 'w')
+        json.dump(count_dict, json_out_file)
+        with open(out_fn + ".txt", 'w') as outfile:
+            for key, value in sorted_counts:
+                outfile.write("%s, %s\n" % (key, value))
+
+    def lookup(self, word, ind_dict, count_dict):
+        """
+
+        :param word: Raw text word token
+        :param ind_dict: (dict) keys: raw word tokens, values: Integer representation
+        :param count_dict: (dict) keys: raw word tokens, values: Number of occurrences
+        :return: Integer representation of word
+        """
+        if count_dict is not None and count_dict[word] < self.OOV_CUTOFF:
+            if count_dict is self.usr_counts:
+                return self.usr_OOV
+            elif count_dict is self.pc_counts:
+                return self.pc_OOV
+            elif count_dict is self.domain_counts:
+                return self.domain_OOV
+        else:
+            if word not in ind_dict:
+                ind_dict[word] = self.curr_ind
+                self.curr_ind += 1
+            return ind_dict[word]
+
+    def translate_line(self, string, usr_counts, domain_counts, pc_counts):
+        """
+        Translates raw log line into sequence of integer representations for word tokens with sos and eos tokens.
+        :param string: Raw log line from auth_h.txt
+        :return: (list) Sequence of integer representations for word tokens with sos and eos tokens.
+        """
+        data = string.split(",")
+
+        src_user, src_domain, dst_user, dst_domain, src_pc, dst_pc = self.split_line(string)
+        src_user = self.lookup(src_user, self.usr_inds, None)
+        src_domain = self.lookup(src_domain, self.domain_inds, domain_counts)
+
+        if dst_user.startswith('U'):
+            dst_user = self.lookup(dst_user, self.usr_inds, None)
+        else:
+            dst_user = self.lookup(dst_user, self.pc_inds, pc_counts)
+        dst_domain = self.lookup(dst_domain, self.domain_inds, domain_counts)
+
+        src_pc = self.lookup(src_pc, self.pc_inds, pc_counts)
+        dst_pc = self.lookup(dst_pc, self.pc_inds, pc_counts)
+
+        if data[5].startswith("MICROSOFT_AUTH"):  # Deals with file corruption for this value.
+            data[5] = "MICROSOFT_AUTH"
+        auth_type = self.lookup(data[5], self.auth_dict, None)
+        logon_type = self.lookup(data[6], self.logon_dict, None)
+        auth_orient = self.lookup(data[7], self.orient_dict, None)
+        success = self.lookup(data[8].strip(), self.success_dict, None)
+
+        return f"{self.sos} {src_user} {src_domain} {dst_user} {dst_domain} {src_pc} {dst_pc} {auth_type} {logon_type} {auth_orient} {success} {self.eos}\n"
+
+    def tokenize(self):
+        current_day = '0'
+        day_outfile = open(args.outpath + current_day + '.txt', 'w')
+
+        with open(args.redfile, 'r') as red:
+            redevents = set(red.readlines())
+
+        with open(self.authfile, 'r') as infile:
+            for line_num, line in enumerate(infile):
+                if line_num % 100000 == 0:
+                    print(line_num)
+                raw_line = line.split(",")
+                if len(raw_line) != 9:
+                    print('bad length')
+                    continue
+                sec = raw_line[0]
+                user = raw_line[1].strip().split('@')[0]
+                day = int(sec) // 86400
+                red = 0
+                red += int(line in redevents)
+                if user.startswith('U') and day not in weekend_days:
+                    index_rep = self.translate_line(line, self.usr_counts, self.domain_counts, self.pc_counts)
+                    current_line = f"{line_num} {sec} {day} {user.replace('U', '')} {red} {index_rep}"
+                    self.save_day_outfile(day_outfile, current_day, current_line, day)
+            day_outfile.close()
+
+    def run_tokenizer(self):
+
+        self.delete_duplicates()
+        self.build_output_dir()
+        self.count_words()
+        self.tokenize()
+      
+def arg_parser():
+    parser = ArgumentParser()
+    parser.add_argument('--char_lv', action='store_true',
+                        help='Whether using character-level or word-level tokenization')
+    parser.add_argument('-authfile',
+                        type=str,
+                        help='Path to an auth file.')
+    parser.add_argument('-redfile',
+                        type=str,
+                        help='Path to a redteam file.')
+    parser.add_argument('-outfile',
+                        type=str,
+                        help='Where to write derived features.')
+    parser.add_argument('-outpath',
+                        type=str,
+                        help='Where to write output files.')
+    parser.add_argument('-recordpath',
+                        type=str,
+                        help='Where to write record files.')
+    args = parser.parse_args()
+    return args
 
 if __name__ == '__main__':
     
     args = arg_parser()
     weekend_days = [3, 4, 10, 11, 17, 18, 24, 25, 31, 32, 38, 39, 45, 46, 47, 52, 53]
     if args.char_lv:
-        char_lv_tokenizer(args, weekend_days)
+        tokenizer = Char_tokenizer(args, weekend_days)
     else:
-        word_lv_tokenizer(args, weekend_days)
+        tokenizer = Word_tokenizer(args, weekend_days)
+
+    tokenizer.run_tokenizer()
