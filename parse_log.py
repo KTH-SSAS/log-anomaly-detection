@@ -60,6 +60,7 @@ class Char_tokenizer:
 
             self.current_day = '0'
             day_outfile = open(os.path.join(self.outpath, self.current_day + '.txt'), 'w')
+            
             for line_num, line in enumerate(infile):
                 if line_num % 10000 == 0:
                     print(line_num)
