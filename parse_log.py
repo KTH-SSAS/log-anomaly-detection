@@ -113,6 +113,7 @@ class Word_tokenizer(Char_tokenizer):
         self.logon_dict = {}
         self.orient_dict = {}
         self.success_dict = {}
+        self.other_inds = {'sos': self.sos, 'eos': self.eos, 'usr_OOV': self.usr_OOV, 'pc_OOV': self.pc_OOV, 'domain_OOV': self.domain_OOV}
 
     def increment_freq(self, ind_dict, key):
         """
@@ -268,12 +269,55 @@ class Word_tokenizer(Char_tokenizer):
                     self.save_day_outfile(day_outfile, current_day, current_line, day)
             day_outfile.close()
 
+    def save_jsons(self):
+
+        with open(self.record_dir + str(self.OOV_CUTOFF) + "_em_size.txt", 'w') as emsize_file:
+            emsize_file.write("%s" % self.curr_ind)
+
+        for map, file in zip([self.usr_inds.items(),
+                            self.pc_inds.items(),
+                            self.domain_inds.items(),
+                            self.auth_dict.items(),
+                            self.logon_dict.items(),
+                            self.orient_dict.items(),
+                            self.success_dict.items(),
+                            self.other_inds.items()],
+                            ['pc_map.json',
+                            'domain_map.json',
+                            'auth_map.json',
+                            'logon_map.json',
+                            'orient_map.json',
+                            'success_map.json',
+                            'other_map.json']):
+            json.dump(map, open(self.record_dir + file, 'w'))
+
+        b_usr_inds = {v: k for k, v in self.usr_inds.items()}
+        b_pc_inds = {v: k for k, v in self.pc_inds.items()}
+        b_domain_inds = {v: k for k, v in self.domain_inds.items()}
+        b_auth_inds = {v: k for k, v in self.auth_dict.items()}
+        b_logon_inds = {v: k for k, v in self.logon_dict.items()}
+        b_orient_inds = {v: k for k, v in self.orient_dict.items()}
+        b_success_inds = {v: k for k, v in self.success_dict.items()}
+        b_other_inds = {v: k for k, v in self.other_inds.items()}
+
+        back_mappings = dict(b_usr_inds.items() +
+                            b_pc_inds.items() +
+                            b_domain_inds.items() +
+                            b_auth_inds.items() +
+                            b_logon_inds.items() +
+                            b_orient_inds.items() +
+                            b_success_inds.items() +
+                            b_other_inds.items())
+
+        json.dump(back_mappings, open(self.record_dir + 'word_token_map.json', 'w'))
+
     def run_tokenizer(self):
 
         self.delete_duplicates()
         self.build_output_dir()
         self.count_words()
         self.tokenize()
+        self.save_jsons()
       
 def arg_parser():
     parser = ArgumentParser()
