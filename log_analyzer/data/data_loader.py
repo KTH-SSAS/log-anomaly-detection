@@ -3,6 +3,7 @@
 Data loading functions
 """
 
+from log_analyzer.config.trainer_config import DataConfig
 from typing import Iterator
 from torch.utils.data import DataLoader, IterableDataset
 import torch
@@ -89,25 +90,19 @@ class IterableLogDataSet(IterableDataset):
         return self.parse_lines()
 
 
-def create_data_loader(filepath, args, sentence_length, num_steps):
-    if args.tiered:
-        data_handler = OnlineLMBatcher(filepath, sentence_length, args.context_layers, args.skipsos, args.jagged, args.bidirectional,
-                                       batch_size=args.batch_size, num_steps=num_steps, delimiter=" ")
-    else:
-        ds = IterableLogDataSet(filepath, args.bidirectional,
-                                args.skipsos, args.jagged, sentence_length)
-        data_handler = DataLoader(ds, batch_size=args.batch_size)
+def create_data_loader(filepath, batch_size, bidir, skipsos, jagged, sentence_length):
+    ds = IterableLogDataSet(filepath, bidir, skipsos, jagged, sentence_length)
+    data_handler = DataLoader(ds, batch_size=batch_size)
     return data_handler
 
 
-def load_data(train_files, eval_files, args, sentence_length, num_steps=3):
+def load_data(data_folder, train_files, test_files, batch_size, bidir, skipsos, jagged, sentence_length):
 
-    filepaths_train = [path.join(args.data_folder, f) for f in train_files]
-    filepaths_eval = [path.join(args.data_folder, f) for f in eval_files]
-    train_loader = create_data_loader(
-        filepaths_train, args, sentence_length, num_steps)
-    test_loader = create_data_loader(
-        filepaths_eval, args, sentence_length, num_steps)
+    filepaths_train = [path.join(data_folder, f) for f in train_files]
+    filepaths_eval = [path.join(data_folder, f) for f in test_files]
+    args = [batch_size, bidir, skipsos, jagged, sentence_length]
+    train_loader = create_data_loader(filepaths_train, *args)
+    test_loader = create_data_loader(filepaths_eval, *args)
 
     return train_loader, test_loader
 

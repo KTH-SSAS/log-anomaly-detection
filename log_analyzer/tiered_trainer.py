@@ -1,7 +1,9 @@
+from log_analyzer.config.trainer_config import TrainerConfig
 from log_analyzer.config.model_config import TieredLSTMConfig
 import torch
 from log_analyzer.trainer import Trainer
 from log_analyzer.model.lstm import Tiered_LSTM
+from log_analyzer.data.data_loader import OnlineLMBatcher 
 
 class TieredTrainer(Trainer):
     """Trainer class for tiered LSTM model"""
@@ -11,10 +13,17 @@ class TieredTrainer(Trainer):
             raise RuntimeError("Model not intialized!")
         return self.lstm
 
-    def __init__(self, config, lstm_config : TieredLSTMConfig, checkpoint_dir, data_handler, verbose):
+    def __init__(self, config : TrainerConfig, lstm_config : TieredLSTMConfig, checkpoint_dir, verbose, num_steps=3):
 
         self.lstm = Tiered_LSTM(lstm_config)
-        self.data_handler = data_handler
+        self.data_handler = OnlineLMBatcher(config.data_config.train_files, config.data_config.sentence_length,
+        lstm_config.context_layers,
+        config.skipsos,
+        config.jagged,
+        config.bidirectional,
+        batch_size=config.batch_size, 
+        num_steps=num_steps, 
+        delimiter=" ")
         super().__init__(config, verbose, checkpoint_dir)
 
     def compute_loss(self, output, Y, lengths, mask):
