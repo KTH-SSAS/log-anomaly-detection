@@ -44,10 +44,11 @@ class Char_tokenizer:
         else:
             day_outfile.close()
             current_file_day = line_day
-            if os.path.isfile(self.outpath + current_file_day + '.txt'):
-                day_outfile = open(self.outpath + current_file_day + '.txt', 'a') # If the file exists, reopen the file and append new lines.
+            temp_path = os.path.join(self.outpath, current_file_day + '.txt')
+            if os.path.isfile(temp_path):
+                day_outfile = open(temp_path, 'a') # If the file exists, reopen the file and append new lines.
             else:
-                day_outfile = open(self.outpath + current_file_day + '.txt', 'w') # If the file doesn't exist, make new file..
+                day_outfile = open(temp_path, 'w') # If the file doesn't exist, make new file..
             day_outfile.write(current_line)
 
     def tokenize(self):
@@ -58,8 +59,7 @@ class Char_tokenizer:
             infile.readline() # Skip the first line.
 
             self.current_day = '0'
-            day_outfile = open(self.outpath + self.current_day + '.txt', 'w')
-            
+            day_outfile = open(os.path.join(self.outpath, self.current_day + '.txt'), 'w')
             for line_num, line in enumerate(infile):
                 if line_num % 10000 == 0:
                     print(line_num)
@@ -176,9 +176,10 @@ class Word_tokenizer(Char_tokenizer):
                 day = int(linevec[0]) // 86400
                 if user.startswith('U') and day not in weekend_days:
                     self.get_line_counts(line)
-        self.write_sorted_counts(self.usr_counts, self.record_dir + "usr_counts")
-        self.write_sorted_counts(self.pc_counts, self.record_dir + "pc_counts")
-        self.write_sorted_counts(self.domain_counts, self.record_dir + "domain_counts")
+        
+        self.write_sorted_counts(self.usr_counts, os.path.join(self.recordpath, "usr_counts"))
+        self.write_sorted_counts(self.pc_counts, os.path.join(self.recordpath, "pc_counts"))
+        self.write_sorted_counts(self.domain_counts, os.path.join(self.recordpath, "domain_counts"))
 
 
     def write_sorted_counts(self, count_dict, out_fn):
@@ -247,7 +248,7 @@ class Word_tokenizer(Char_tokenizer):
 
     def tokenize(self):
         current_day = '0'
-        day_outfile = open(self.outpath + current_day + '.txt', 'w')
+        day_outfile = open(os.path.join(self.outpath, current_day +'.txt'), 'w')
 
         with open(self.redfile, 'r') as red:
             redevents = set(red.readlines())
@@ -272,8 +273,8 @@ class Word_tokenizer(Char_tokenizer):
             day_outfile.close()
 
     def save_jsons(self):
-
-        with open(self.record_dir + str(self.OOV_CUTOFF) + "_em_size.txt", 'w') as emsize_file:
+        
+        with open(os.path.join(self.recordpath, str(self.OOV_CUTOFF) + "_em_size.txt"), 'w') as emsize_file:
             emsize_file.write("%s" % self.curr_ind)
 
         for map, file in zip([self.usr_inds,
@@ -291,7 +292,8 @@ class Word_tokenizer(Char_tokenizer):
                             'orient_map.json',
                             'success_map.json',
                             'other_map.json']):
-            json.dump(map, open(self.record_dir + file, 'w'))
+            
+            json.dump(map, open(os.path.join(self.recordpath, file), 'w'))
 
         b_usr_inds = {v: k for k, v in self.usr_inds.items()}
         b_pc_inds = {v: k for k, v in self.pc_inds.items()}
@@ -310,8 +312,8 @@ class Word_tokenizer(Char_tokenizer):
                             **b_orient_inds,
                             **b_success_inds,
                             **b_other_inds}
-
-        json.dump(back_mappings, open(self.record_dir + 'word_token_map.json', 'w'))
+        
+        json.dump(back_mappings, open(os.path.join(self.recordpath, 'word_token_map.json'), 'w'))
 
     def run_tokenizer(self):
 
