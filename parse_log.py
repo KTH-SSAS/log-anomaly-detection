@@ -245,9 +245,9 @@ class Word_tokenizer(Char_tokenizer):
 
     def tokenize(self):
         current_day = '0'
-        day_outfile = open(args.outpath + current_day + '.txt', 'w')
+        day_outfile = open(self.outpath + current_day + '.txt', 'w')
 
-        with open(args.redfile, 'r') as red:
+        with open(self.redfile, 'r') as red:
             redevents = set(red.readlines())
 
         with open(self.authfile, 'r') as infile:
@@ -264,7 +264,7 @@ class Word_tokenizer(Char_tokenizer):
                 red = 0
                 red += int(line in redevents)
                 if user.startswith('U') and day not in weekend_days:
-                    index_rep = self.translate_line(line, self.usr_counts, self.domain_counts, self.pc_counts)
+                    index_rep = self.translate_line(line, self.domain_counts, self.pc_counts)
                     current_line = f"{line_num} {sec} {day} {user.replace('U', '')} {red} {index_rep}"
                     self.save_day_outfile(day_outfile, current_day, current_line, day)
             day_outfile.close()
