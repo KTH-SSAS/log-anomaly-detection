@@ -74,7 +74,13 @@ class Char_tokenizer:
                 user = raw_line[1].strip().split('@')[0]
                 day = int(sec) // 86400 # 24 hours * 60 minutes * 60 seconds 
                 red = 0
-                red += int(line in redevents)
+                # Reconstruct 'line' in the format of lines in redevents
+                # Line format: second,src_user@src_domain,dst_user@dst_domain,src_pc,dst_pc,auth_type,logon,auth_orient,success
+                # redevent_line format: second,src_user@src_domain,src_pc,dst_pc\n
+                red_style_line = (
+                    ",".join((sec, raw_line[1].strip(), raw_line[3], raw_line[4])) + "\n"
+                )
+                red += int(red_style_line in redevents)
                 if user.startswith('U') and day not in weekend_days:
                     index_rep = self.tokenize_line(line_minus_time, pad_len)
                     current_line = f"{line_num} {sec} {day} {user.replace('U', '')} {red} {len(line_minus_time)+1} {index_rep}"
@@ -266,7 +272,13 @@ class Word_tokenizer(Char_tokenizer):
                 user = raw_line[1].strip().split('@')[0]
                 day = int(sec) // 86400
                 red = 0
-                red += int(line in redevents)
+                # Reconstruct 'line' in the format of lines in redevents
+                # Line format: second,src_user@src_domain,dst_user@dst_domain,src_pc,dst_pc,auth_type,logon,auth_orient,success
+                # redevent_line format: second,src_user@src_domain,src_pc,dst_pc\n
+                red_style_line = (
+                    ",".join((sec, raw_line[1].strip(), raw_line[3], raw_line[4])) + "\n"
+                )
+                red += int(red_style_line in redevents)
                 if user.startswith('U') and day not in weekend_days:
                     index_rep = self.translate_line(line, self.domain_counts, self.pc_counts)
                     current_line = f"{line_num} {sec} {day} {user.replace('U', '')} {red} {index_rep}"
