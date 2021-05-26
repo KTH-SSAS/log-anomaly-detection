@@ -8,6 +8,8 @@
     "step_size": 20,
     "gamma": 0.99,
     "patience": 20,
+    "attention_type": "fixed",
+    "attention_dim": 15,
     "train_files": ["0.txt", "1.txt"],
     "test_files": ["2.txt"],
     "weekend_days": [3, 4, 10, 11, 17, 18, 24, 25]
