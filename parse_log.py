@@ -28,15 +28,18 @@ class Char_tokenizer:
         return "0 " + " ".join([str(ord(c) - 30) for c in string]) + " 1 " + " ".join(["0"] * pad_len) + "\n"
         
     def delete_duplicates(self):
-        for filename in os.listdir(self.outpath):
-            file_path = os.path.join(self.outpath, filename)
-            try:
-                if os.path.isfile(file_path) or os.path.islink(file_path):
-                    os.unlink(file_path)
-                elif os.path.isdir(file_path):
-                    shutil.rmtree(file_path)
-            except Exception as e:
-                print('Failed to delete %s. Reason: %s' % (file_path, e))
+        try:
+            for filename in os.listdir(self.outpath):
+                file_path = os.path.join(self.outpath, filename)
+                try:
+                    if os.path.isfile(file_path) or os.path.islink(file_path):
+                        os.unlink(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                except Exception as e:
+                    print('Failed to delete %s. Reason: %s' % (file_path, e))
+        except FileNotFoundError:
+            print('Nothing to delete.')
 
     def save_day_outfile(self, day_outfile, current_file_day, current_line, line_day):
         if int(line_day) == int(current_file_day):
