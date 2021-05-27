@@ -74,6 +74,9 @@ def create_model(model_type, model_config_file, trainer_config_file, data_folder
     trainer_config = TrainerConfig.init_from_file(trainer_config_file)
     bidir = bidirectional
     trainer_config.bidirectional = bidir
+    model_config.bidirectional = bidir
+    trainer_config.jagged = jagged
+    model_config.jagged = jagged
 
     verbose = True
 
