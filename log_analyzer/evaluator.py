@@ -68,10 +68,15 @@ class Evaluator:
         perplexity = np.exp(average_loss)
         return perplexity
 
-    # TODO: Implement once access to redteam data has been implemented
-    def get_auc_score(self):
+    def get_auc_score(self, fp_rate=None, tp_rate=None):
         """Computes AUC score (area under the ROC curve)"""
-        raise NotImplementedError()
+        # Compute fp and tp rates if not supplied
+        if fp_rate == None or tp_rate == None:
+            fp_rate, tp_rate, _ = metrics.roc_curve(
+                self.data["red_flags"], self.data["losses"], pos_label=1
+            )
+        auc_score = metrics.auc(fp_rate, tp_rate)
+        return auc_score
 
     def plot_losses_by_line(
         self,
@@ -168,7 +173,22 @@ class Evaluator:
         plt.ylabel(f"y - Percentiles of loss {tuple(percentiles)}")
         plt.title("Aggregate line losses by time")
 
-    # TODO: Implement once access to redteam data has been implemented
     def plot_ROC_curve(self):
-        """Plots the ROC (Receiver Operator Characteristic) curve, i.e. TP-FP tradeoff"""
-        raise NotImplementedError()
+        """Plots the ROC (Receiver Operating Characteristic) curve, i.e. TP-FP tradeoff
+        Also returns the corresponding auc score"""
+        fp_rate, tp_rate, _ = metrics.roc_curve(
+            self.data["red_flags"], self.data["losses"], pos_label=1
+        )
+        auc_score = self.get_auc_score()
+        plt.plot(
+            fp_rate,
+            tp_rate,
+            color="orange",
+            lw=2,
+            label=f"ROC curve (area = {auc_score}",
+        )
+        plt.plot([0, 1], [0, 1], lw=2, linestyle="--")
+        plt.xlabel("x - False Positive Rate")
+        plt.ylabel("y - True Positive Rate")
+        plt.title("Receiver Operating Characteristic curve")
+        return auc_score
