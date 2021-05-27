@@ -16,8 +16,12 @@ class Evaluator:
         """Extend the data stored in self.data with the inputs"""
         self.data["log_lines"].extend(log_line.cpu().detach())
         self.data["predictions"].extend(predictions.cpu().detach())
-        self.data["losses"] = np.concatenate((self.data["losses"], losses.cpu().detach()))
-        self.data["seconds"] = np.concatenate((self.data["seconds"], seconds.cpu().detach()))
+        self.data["losses"] = np.concatenate(
+            (self.data["losses"], losses.cpu().detach())
+        )
+        self.data["seconds"] = np.concatenate(
+            (self.data["seconds"], seconds.cpu().detach())
+        )
         self.data["days"] = np.concatenate((self.data["days"], days.cpu().detach()))
         self.data["red_flags"] = np.concatenate(
             (self.data["red_flags"], red_flags.cpu().detach())
@@ -37,7 +41,7 @@ class Evaluator:
         }
         if reset_caches:
             self.reset_caches()
-    
+
     def reset_caches(self):
         """Resets all the caches"""
         self.get_token_accuracy_cache = None
@@ -60,7 +64,7 @@ class Evaluator:
             tokens = 0
             for line_num, line in enumerate(tqdm(self.data["log_lines"])):
                 for token_num, token in enumerate(line):
-                    matches += (token == self.data["predictions"][line_num][token_num])
+                    matches += token == self.data["predictions"][line_num][token_num]
                     tokens += 1
 
             # % accuracy = 1 - number_of_non_matches/number_of_tokens
@@ -84,11 +88,21 @@ class Evaluator:
         """Computes AUC score (area under the ROC curve)"""
         raise NotImplementedError()
 
-    def plot_losses_by_line(self, percentiles=[75, 95, 99], smoothing=1, colors=["darkorange", "gold"], caching=False):
+    def plot_losses_by_line(
+        self,
+        percentiles=[75, 95, 99],
+        smoothing=1,
+        colors=["darkorange", "gold"],
+        caching=False,
+    ):
         """Computes and plots the given (default 75/95/99) percentiles of anomaly score
         (loss) by line for each second"""
         # TODO: support for data spanning more than one day (the data["days"] entry is currently ignored)
-        if not caching or self.plot_losses_by_line_cache is None or self.plot_losses_by_line_cache[2] != percentiles:
+        if (
+            not caching
+            or self.plot_losses_by_line_cache is None
+            or self.plot_losses_by_line_cache[2] != percentiles
+        ):
             smoothing = min(
                 max(1, int(smoothing)), len(self.data["losses"])
             )  # Ensure smoothing is an int and in the range [1, len(losses)]
@@ -107,9 +121,15 @@ class Evaluator:
                     seconds.append(second)
                 else:
                     idx = seconds.index(second)
-                    losses_by_second[idx] = np.concatenate((losses_by_second[idx], [loss]))
+                    losses_by_second[idx] = np.concatenate(
+                        (losses_by_second[idx], [loss])
+                    )
             if caching:
-                self.plot_losses_by_line_cache = (seconds, losses_by_second, percentiles)
+                self.plot_losses_by_line_cache = (
+                    seconds,
+                    losses_by_second,
+                    percentiles,
+                )
 
         if caching:
             seconds, losses_by_second, percentiles = self.plot_losses_by_line_cache
@@ -149,7 +169,9 @@ class Evaluator:
 
         # plot the percentile ranges
         for idx in range(len(plotting_data) - 1):
-            plt.fill_between(seconds, plotting_data[idx], plotting_data[idx + 1], color=colors[idx])
+            plt.fill_between(
+                seconds, plotting_data[idx], plotting_data[idx + 1], color=colors[idx]
+            )
         # plot the redteam events
         plt.plot(red_seconds, red_losses, "r+", label="Red team events")
         # plot the non-redteam outliers
