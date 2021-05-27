@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-
+from tqdm import tqdm
 
 
 # TODO: support for tiered model
@@ -56,15 +56,15 @@ class Evaluator:
         """Computes the accuracy of the model token prediction"""
         # Flatten the log_line and predictions lists
         if not caching or self.get_token_accuracy_cache is None:
-        matches = 0
-        tokens = 0
-        for line_num, line in enumerate(self.data["log_lines"]):
-            for token_num, token in enumerate(line):
-                matches += (token == self.data["predictions"][line_num][token_num])
-                tokens += 1
+            matches = 0
+            tokens = 0
+            for line_num, line in enumerate(tqdm(self.data["log_lines"])):
+                for token_num, token in enumerate(line):
+                    matches += (token == self.data["predictions"][line_num][token_num])
+                    tokens += 1
 
-        # % accuracy = 1 - number_of_non_matches/number_of_tokens
-        accuracy = float(matches) / tokens
+            # % accuracy = 1 - number_of_non_matches/number_of_tokens
+            accuracy = float(matches) / tokens
             if caching:
                 self.get_token_accuracy_cache = accuracy
         else:
@@ -89,25 +89,25 @@ class Evaluator:
         (loss) by line for each second"""
         # TODO: support for data spanning more than one day (the data["days"] entry is currently ignored)
         if not caching or self.plot_losses_by_line_cache is None or self.plot_losses_by_line_cache[2] != percentiles:
-        smoothing = min(
-            max(1, int(smoothing)), len(self.data["losses"])
-        )  # Ensure smoothing is an int and in the range [1, len(losses)]
-        if not smoothing % 2:
-            smoothing += 1  # Ensure smoothing is odd
+            smoothing = min(
+                max(1, int(smoothing)), len(self.data["losses"])
+            )  # Ensure smoothing is an int and in the range [1, len(losses)]
+            if not smoothing % 2:
+                smoothing += 1  # Ensure smoothing is odd
 
-        losses_by_second = []
-        seconds = []
+            losses_by_second = []
+            seconds = []
 
-        # Create a list of losses for each second
+            # Create a list of losses for each second
             for second, loss in tqdm(zip(self.data["seconds"], self.data["losses"])):
-            second = second
-            loss = loss
-            if second not in seconds:
-                losses_by_second.append(np.array([loss]))
-                seconds.append(second)
-            else:
-                idx = seconds.index(second)
-                losses_by_second[idx] = np.concatenate((losses_by_second[idx], [loss]))
+                second = second
+                loss = loss
+                if second not in seconds:
+                    losses_by_second.append(np.array([loss]))
+                    seconds.append(second)
+                else:
+                    idx = seconds.index(second)
+                    losses_by_second[idx] = np.concatenate((losses_by_second[idx], [loss]))
             if caching:
                 self.plot_losses_by_line_cache = (seconds, losses_by_second, percentiles)
 
