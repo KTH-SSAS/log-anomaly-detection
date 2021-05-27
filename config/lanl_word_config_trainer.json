@@ -1,11 +1,11 @@
 {
 	"data_config": {
 		"train_files": [
-			"0.txt",
-			"1.txt"
+			"0head.txt",
+			"1head.txt"
 		],
 		"test_files": [
-			"2.txt"
+			"2head.txt"
 		],
 		"sentence_length": 12,
 		"vocab_size": 28199,
