@@ -9,6 +9,7 @@ class Evaluator:
     def __init__(self):
         """Creates an Evaluator instance that provides methods for model evaluation"""
         self.reset_evaluation_data()
+        self.plot_losses_by_line_cache = None
         # What data needs to be stored?
         # For each line:
         # predicted tokens
@@ -79,10 +80,11 @@ class Evaluator:
         """Computes AUC score (area under the ROC curve)"""
         raise NotImplementedError()
 
-    def plot_losses_by_line(self, percentiles=[75, 95, 99], smoothing=1):
+    def plot_losses_by_line(self, percentiles=[75, 95, 99], smoothing=1, colors=["darkorange", "gold"], caching=False):
         """Computes and plots the given (default 75/95/99) percentiles of anomaly score
         (loss) by line for each second"""
         # TODO: support for data spanning more than one day (the data["days"] entry is currently ignored)
+        if not caching or self.plot_losses_by_line_cache is None or self.plot_losses_by_line_cache[2] != percentiles:
         smoothing = min(
             max(1, int(smoothing)), len(self.data["losses"])
         )  # Ensure smoothing is an int and in the range [1, len(losses)]
@@ -93,7 +95,7 @@ class Evaluator:
         seconds = []
 
         # Create a list of losses for each second
-        for second, loss in zip(self.data["seconds"], self.data["losses"]):
+            for second, loss in tqdm(zip(self.data["seconds"], self.data["losses"])):
             second = second
             loss = loss
             if second not in seconds:
@@ -102,6 +104,11 @@ class Evaluator:
             else:
                 idx = seconds.index(second)
                 losses_by_second[idx] = np.concatenate((losses_by_second[idx], [loss]))
+            if caching:
+                self.plot_losses_by_line_cache = (seconds, losses_by_second, percentiles)
+
+        if caching:
+            seconds, losses_by_second, percentiles = self.plot_losses_by_line_cache
 
         plotting_data = []
         for p in percentiles:
@@ -129,11 +136,20 @@ class Evaluator:
         red_seconds = self.data["seconds"][self.data["red_flags"] != 0]
         red_losses = self.data["losses"][self.data["red_flags"] != 0]
 
+        # Extract outlier non-red team events
+        blue_losses = self.data["losses"][self.data["red_flags"] == 0]
+        blue_seconds = self.data["seconds"][self.data["red_flags"] == 0]
+        indices = blue_losses > 10
+        blue_losses = blue_losses[indices]
+        blue_seconds = blue_seconds[indices]
+
         # plot the percentile ranges
         for idx in range(len(plotting_data) - 1):
-            plt.fill_between(seconds, plotting_data[idx], plotting_data[idx + 1])
+            plt.fill_between(seconds, plotting_data[idx], plotting_data[idx + 1], color=colors[idx])
         # plot the redteam events
-        plt.plot(red_seconds, red_losses, "r+")
+        plt.plot(red_seconds, red_losses, "r+", label="Red team events")
+        # plot the non-redteam outliers
+        plt.plot(blue_seconds, blue_losses, "bo", label="Outlier normal events")
 
         plt.xlabel("x - Time (seconds)")
         plt.ylabel(f"y - Percentiles of loss {tuple(percentiles)}")
