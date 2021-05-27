@@ -3,6 +3,19 @@ from log_analyzer.helper_functions import create_model, train_model
 
 """
 Entrypoint script for training
+Example:
+train_model.py
+--model-type
+lstm,
+--model-config,
+config/lanl_char_config_model.json,
+--trainer-config,
+config/lanl_char_config_trainer.json,
+--data-folder,
+data/data_examples/raw_day_split,
+--jagged,
+--skipsos,
+--bidir
 """
 
 def main(args):
