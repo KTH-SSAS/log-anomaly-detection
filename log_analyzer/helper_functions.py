@@ -29,12 +29,12 @@ TIERED_LSTM = 'tiered-lstm'
 def generate_trainer_config(args : Namespace):
     """Generate configs based on args and conf file. Intermediary function while refactoring"""
 
-    data_config = DataConfig(args.train_files, test_files=conf['test_files'], sentence_length=conf['sentence_length'], 
+    data_config = DataConfig(train_files, test_files=conf['test_files'], sentence_length=conf['sentence_length'], 
     vocab_size=conf['token_set_size'], number_of_days=conf['num_days'])
 
     trainer_config : TrainerConfig = TrainerConfig(data_config.__dict__,
-        batch_size=args.batch_size, jagged=args.jagged, bidirectional=args.bidirectional,
-        tiered=args.tiered, learning_rate=conf['lr'], early_stopping=True,
+        batch_size=batch_size, jagged=jagged, bidirectional=bidirectional,
+        tiered=tiered, learning_rate=conf['lr'], early_stopping=True,
         early_stop_patience=conf['patience'], scheduler_gamma=conf['gamma'],
         scheduler_step_size=conf['step_size'])
 
@@ -57,22 +57,27 @@ def create_identifier_string(model_name, comment=""):
     return id
 
 
-def create_model(args):
+def create_model_args(args):
+    return create_model(args.model_type, args.model_config, args.trainer_config, args.data_folder, 
+    args.bidirectional, args.skipsos, args.jagged)
+
+def create_model(model_type, model_config_file, trainer_config_file, data_folder, bidirectional, skipsos, jagged):
     """Creates a model plus trainer given the specifications in args"""
-    base_logdir = './runs/'
-    id_string = create_identifier_string(args.model_type)
+    base_logdir = 'runs'
+    if not os.path.isdir(base_logdir):
+        os.mkdir(base_logdir)
+    id_string = create_identifier_string(model_type)
     log_dir = os.path.join(base_logdir, id_string)
     os.mkdir(log_dir)
 
-    model_config : Config = get_model_config(args.model_config, args.model_type)
-    trainer_config = TrainerConfig.init_from_file(args.trainer_config)
-    bidir = args.bidirectional
+    model_config : Config = get_model_config(model_config_file, model_type)
+    trainer_config = TrainerConfig.init_from_file(trainer_config_file)
+    bidir = bidirectional
     trainer_config.bidirectional = bidir
 
     verbose = True
 
     # Settings for dataloader.
-    skipsos = args.skipsos
     
     data_config = trainer_config.data_config
     max_input_length = data_config.sentence_length - 1 - int(skipsos) + int(bidir)
@@ -80,14 +85,14 @@ def create_model(args):
     test_days = data_config.test_files
 
     # Settings for LSTM.
-    if args.model_type == TIERED_LSTM:
+    if model_type == TIERED_LSTM:
         model_config: TieredLSTMConfig = model_config
-        train_loader, test_loader = data_utils.load_data_tiered(args.data_folder, train_days, test_days,
-        trainer_config.batch_size, bidir, skipsos, args.jagged, max_input_length, num_steps=3, context_layers=model_config.context_layers)
+        train_loader, test_loader = data_utils.load_data_tiered(data_folder, train_days, test_days,
+        trainer_config.batch_size, bidir, skipsos, jagged, max_input_length, num_steps=3, context_layers=model_config.context_layers)
         lm_trainer = TieredTrainer(trainer_config, model_config, log_dir, verbose, train_loader)
     else:
-        train_loader, test_loader = data_utils.load_data(args.data_folder, train_days, test_days,
-        trainer_config.batch_size, bidir, skipsos, args.jagged, max_input_length)
+        train_loader, test_loader = data_utils.load_data(data_folder, train_days, test_days,
+        trainer_config.batch_size, bidir, skipsos, jagged, max_input_length)
         lm_trainer = LSTMTrainer(trainer_config, model_config, log_dir, verbose)
 
     return lm_trainer, train_loader, test_loader

@@ -1,5 +1,5 @@
 from argparse import ArgumentParser
-from log_analyzer.helper_functions import create_model, train_model
+from log_analyzer.helper_functions import create_model_args, train_model
 
 """
 Entrypoint script for training
@@ -20,7 +20,7 @@ data/data_examples/raw_day_split,
 
 def main(args):
     # Create the trainer+model
-    trainer, train_loader, test_loader = create_model(args)
+    trainer, train_loader, test_loader = create_model_args(args)
     # Train the model
     train_model(trainer, train_loader, test_loader)
 
