@@ -89,20 +89,33 @@ class IterableLogDataSet(IterableDataset):
     def __iter__(self):
         return self.parse_lines()
 
-
-def create_data_loader(filepath, batch_size, bidir, skipsos, jagged, sentence_length):
-    ds = IterableLogDataSet(filepath, bidir, skipsos, jagged, sentence_length)
-    data_handler = DataLoader(ds, batch_size=batch_size)
-    return data_handler
-
-
-def load_data(data_folder, train_files, test_files, batch_size, bidir, skipsos, jagged, sentence_length):
-
+def load_data_tiered(data_folder, train_files, test_files, batch_size, bidir, skipsos, jagged, sentence_length, num_steps, context_layers):
+    def create_data_loader(filepath):
+        data_handler = OnlineLMBatcher(filepath, 
+        sentence_length,
+        context_layers,
+        skipsos,
+        jagged,
+        bidir,
+        batch_size=batch_size, 
+        num_steps=num_steps, 
+        delimiter=" ")
+        return data_handler
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
-    args = [batch_size, bidir, skipsos, jagged, sentence_length]
-    train_loader = create_data_loader(filepaths_train, *args)
-    test_loader = create_data_loader(filepaths_eval, *args)
+    train_loader = create_data_loader(filepaths_train)
+    test_loader = create_data_loader(filepaths_eval)
+    return train_loader, test_loader
+    
+def load_data(data_folder, train_files, test_files, batch_size, bidir, skipsos, jagged, sentence_length):
+    def create_data_loader(filepath):
+        dataset = IterableLogDataSet(filepath, bidir, skipsos, jagged, sentence_length)
+        data_handler = DataLoader(dataset, batch_size=batch_size)
+        return data_handler
+    filepaths_train = [path.join(data_folder, f) for f in train_files]
+    filepaths_eval = [path.join(data_folder, f) for f in test_files]
+    train_loader = create_data_loader(filepaths_train)
+    test_loader = create_data_loader(filepaths_eval)
 
     return train_loader, test_loader
 

@@ -13,17 +13,10 @@ class TieredTrainer(Trainer):
             raise RuntimeError("Model not intialized!")
         return self.lstm
 
-    def __init__(self, config : TrainerConfig, lstm_config : TieredLSTMConfig, checkpoint_dir, verbose, num_steps=3):
+    def __init__(self, config : TrainerConfig, lstm_config : TieredLSTMConfig, checkpoint_dir, verbose, data_handler):
 
         self.lstm = Tiered_LSTM(lstm_config)
-        self.data_handler = OnlineLMBatcher(config.data_config.train_files, config.data_config.sentence_length,
-        lstm_config.context_layers,
-        config.skipsos,
-        config.jagged,
-        config.bidirectional,
-        batch_size=config.batch_size, 
-        num_steps=num_steps, 
-        delimiter=" ")
+        self.data_handler = data_handler
         super().__init__(config, verbose, checkpoint_dir)
 
     def compute_loss(self, output, Y, lengths, mask):

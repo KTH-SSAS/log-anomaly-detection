@@ -71,12 +71,6 @@ def create_model(args):
 
     verbose = True
 
-    # Settings for LSTM.
-    if args.model_type == TIERED_LSTM:
-        lm_trainer = TieredTrainer(trainer_config, model_config, log_dir, verbose)
-    else:
-        lm_trainer = LSTMTrainer(trainer_config, model_config, log_dir, verbose)
-
     # Settings for dataloader.
     skipsos = args.skipsos
     
@@ -84,8 +78,17 @@ def create_model(args):
     max_input_length = data_config.sentence_length - 1 - int(skipsos) + int(bidir)
     train_days = data_config.train_files
     test_days = data_config.test_files
-    train_loader, test_loader = data_utils.load_data(args.data_folder, train_days, test_days,
-    trainer_config.batch_size, bidir, skipsos, args.jagged, max_input_length)
+
+    # Settings for LSTM.
+    if args.model_type == TIERED_LSTM:
+        model_config: TieredLSTMConfig = model_config
+        train_loader, test_loader = data_utils.load_data_tiered(args.data_folder, train_days, test_days,
+        trainer_config.batch_size, bidir, skipsos, args.jagged, max_input_length, num_steps=3, context_layers=model_config.context_layers)
+        lm_trainer = TieredTrainer(trainer_config, model_config, log_dir, verbose, train_loader)
+    else:
+        train_loader, test_loader = data_utils.load_data(args.data_folder, train_days, test_days,
+        trainer_config.batch_size, bidir, skipsos, args.jagged, max_input_length)
+        lm_trainer = LSTMTrainer(trainer_config, model_config, log_dir, verbose)
 
     return lm_trainer, train_loader, test_loader
 
