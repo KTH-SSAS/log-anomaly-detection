@@ -15,8 +15,12 @@ class Evaluator:
         self, log_line, predictions, losses, seconds, days, red_flags
     ):
         """Extend the data stored in self.data with the inputs"""
-        self.data["log_lines"].extend(log_line.cpu().detach())
-        self.data["predictions"].extend(predictions.cpu().detach())
+        self.data["log_lines"] = np.concatenate(
+            (self.data["log_lines"], log_line.cpu().detach().flatten())
+        )
+        self.data["predictions"] = np.concatenate(
+            (self.data["predictions"], predictions.cpu().detach().flatten())
+        )
         self.data["losses"] = np.concatenate(
             (self.data["losses"], losses.cpu().detach())
         )
@@ -33,8 +37,8 @@ class Evaluator:
     def reset_evaluation_data(self, reset_caches=True):
         """Delete the stored evaluation data"""
         self.data = {
-            "log_lines": [],
-            "predictions": [],
+            "log_lines": np.array([], int),
+            "predictions": np.array([], int),
             "losses": np.array([]),
             "seconds": np.array([], int),
             "days": np.array([], int),
