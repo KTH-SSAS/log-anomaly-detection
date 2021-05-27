@@ -46,7 +46,7 @@ class Char_tokenizer:
             day_outfile.write(current_line)
         else:
             day_outfile.close()
-            current_file_day = line_day
+            current_file_day = str(line_day)
             temp_path = os.path.join(self.outpath, current_file_day + '.txt')
             if os.path.isfile(temp_path):
                 day_outfile = open(temp_path, 'a') # If the file exists, reopen the file and append new lines.
