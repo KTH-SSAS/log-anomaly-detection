@@ -1,0 +1,23 @@
+{
+	"data_config": {
+		"train_files": [
+			"0.txt",
+			"1.txt"
+		],
+		"test_files": [
+			"2.txt"
+		],
+		"sentence_length": 12,
+		"vocab_size": 28199,
+		"number_of_days": 30
+	},
+	"bidirectional": false,
+	"batch_size": 15,
+	"learning_rate": 0.001,
+	"early_stopping": true,
+	"early_stop_patience": 20,
+	"scheduler_gamma": 0.99,
+	"scheduler_step_size": 20,
+	"jagged": true,
+	"skipsos": true
+}
