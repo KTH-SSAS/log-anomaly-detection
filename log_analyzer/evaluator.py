@@ -114,8 +114,6 @@ class Evaluator:
 
             # Create a list of losses for each second
             for second, loss in tqdm(zip(self.data["seconds"], self.data["losses"])):
-                second = second
-                loss = loss
                 if second not in seconds:
                     losses_by_second.append(np.array([loss]))
                     seconds.append(second)
@@ -160,12 +158,16 @@ class Evaluator:
         red_seconds = self.data["seconds"][self.data["red_flags"] != 0]
         red_losses = self.data["losses"][self.data["red_flags"] != 0]
 
-        # Extract outlier non-red team events
+        # Extract the top X outlier non-red team events
+        # X is 1 per minute
+        outlier_count = len(seconds) // 60
         blue_losses = self.data["losses"][self.data["red_flags"] == 0]
         blue_seconds = self.data["seconds"][self.data["red_flags"] == 0]
-        indices = blue_losses > 10
-        blue_losses = blue_losses[indices]
-        blue_seconds = blue_seconds[indices]
+        # Negate the list so we can pick the highest values (i.e. the lowest -ve values)
+        outlier_indices = np.argpartition(-blue_losses, outlier_count)[:outlier_count]
+        blue_losses = blue_losses[outlier_indices]
+        blue_seconds = blue_seconds[outlier_indices]
+        print(len(blue_losses))
 
         # plot the percentile ranges
         for idx in range(len(plotting_data) - 1):
