@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from sklearn import metrics
 
 
 # TODO: support for tiered model
@@ -44,7 +45,6 @@ class Evaluator:
 
     def reset_caches(self):
         """Resets all the caches"""
-        self.get_token_accuracy_cache = None
         self.plot_losses_by_line_cache = None
 
     def get_metrics(self):
@@ -56,24 +56,9 @@ class Evaluator:
         ]
         return metrics
 
-    def get_token_accuracy(self, caching=True):
+    def get_token_accuracy(self):
         """Computes the accuracy of the model token prediction"""
-        # Flatten the log_line and predictions lists
-        if not caching or self.get_token_accuracy_cache is None:
-            matches = 0
-            tokens = 0
-            for line_num, line in enumerate(tqdm(self.data["log_lines"])):
-                for token_num, token in enumerate(line):
-                    matches += token == self.data["predictions"][line_num][token_num]
-                    tokens += 1
-
-            # % accuracy = 1 - number_of_non_matches/number_of_tokens
-            accuracy = float(matches) / tokens
-            if caching:
-                self.get_token_accuracy_cache = accuracy
-        else:
-            accuracy = self.get_token_accuracy_cache
-        return accuracy
+        return metrics.accuracy_score(self.data["log_lines"], self.data["predictions"])
 
     def get_token_perplexity(self):
         """Computes and returns the perplexity of the model token prediction"""
