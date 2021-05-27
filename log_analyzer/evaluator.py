@@ -55,19 +55,15 @@ class Evaluator:
     def get_token_accuracy(self):
         """Computes the accuracy of the model token prediction"""
         # Flatten the log_line and predictions lists
-        flattened_lines = np.array([])
-        for line in self.data["log_lines"]:
-            flattened_lines = np.concatenate((flattened_lines, line.numpy()))
-        flattened_preds = np.array([])
-        for pred in self.data["predictions"]:
-            flattened_preds = np.concatenate((flattened_preds, pred.numpy()))
-
-        # Subtract each predicted token from the actual token
-        # Thus a value of 0 in matches indicates a correct prediction
-        matches = flattened_lines - flattened_preds
+        matches = 0
+        tokens = 0
+        for line_num, line in enumerate(self.data["log_lines"]):
+            for token_num, token in enumerate(line):
+                matches += (token == self.data["predictions"][line_num][token_num])
+                tokens += 1
 
         # % accuracy = 1 - number_of_non_matches/number_of_tokens
-        accuracy = 1 - (np.count_nonzero(matches) / len(matches))
+        accuracy = float(matches) / tokens
         return accuracy
 
     def get_token_perplexity(self):
