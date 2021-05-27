@@ -8,17 +8,7 @@ import matplotlib.pyplot as plt
 class Evaluator:
     def __init__(self):
         """Creates an Evaluator instance that provides methods for model evaluation"""
-        self.reset_evaluation_data()
-        self.plot_losses_by_line_cache = None
-        # What data needs to be stored?
-        # For each line:
-        # predicted tokens
-        # Loss for the line
-
-        # Can be streamed from the data reader on demand?
-        # Ground Truth,
-        # Red flag (i.e. redteam event or not)
-        # Day + second
+        self.reset_evaluation_data(reset_caches=True)
 
     def add_evaluation_data(
         self, log_line, predictions, losses, seconds, days, red_flags
@@ -32,8 +22,10 @@ class Evaluator:
         self.data["red_flags"] = np.concatenate(
             (self.data["red_flags"], red_flags.cpu().detach())
         )
+        # Reset the caches whenever new data is added
+        self.reset_caches()
 
-    def reset_evaluation_data(self):
+    def reset_evaluation_data(self, reset_caches=True):
         """Delete the stored evaluation data"""
         self.data = {
             "log_lines": [],
@@ -43,6 +35,13 @@ class Evaluator:
             "days": np.array([], int),
             "red_flags": np.array([], bool),
         }
+        if reset_caches:
+            self.reset_caches()
+    
+    def reset_caches(self):
+        """Resets all the caches"""
+        self.get_token_accuracy_cache = None
+        self.plot_losses_by_line_cache = None
 
     def get_metrics(self):
         """Computes and returns all metrics"""
@@ -53,9 +52,10 @@ class Evaluator:
         ]
         return metrics
 
-    def get_token_accuracy(self):
+    def get_token_accuracy(self, caching=True):
         """Computes the accuracy of the model token prediction"""
         # Flatten the log_line and predictions lists
+        if not caching or self.get_token_accuracy_cache is None:
         matches = 0
         tokens = 0
         for line_num, line in enumerate(self.data["log_lines"]):
@@ -65,6 +65,10 @@ class Evaluator:
 
         # % accuracy = 1 - number_of_non_matches/number_of_tokens
         accuracy = float(matches) / tokens
+            if caching:
+                self.get_token_accuracy_cache = accuracy
+        else:
+            accuracy = self.get_token_accuracy_cache
         return accuracy
 
     def get_token_perplexity(self):
