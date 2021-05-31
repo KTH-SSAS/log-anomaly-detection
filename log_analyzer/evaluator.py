@@ -158,10 +158,11 @@ class Evaluator:
             tp_rate,
             color="orange",
             lw=2,
-            label=f"ROC curve (area = {auc_score})",
+            label=f"ROC curve (area = {auc_score:.2f})",
         )
         plt.plot([0, 1], [0, 1], lw=2, linestyle="--")
         plt.xlabel("False Positive Rate")
         plt.ylabel("True Positive Rate")
         plt.title("Receiver Operating Characteristic curve")
+        plt.legend()
         return auc_score
