@@ -92,14 +92,14 @@ class Evaluator:
         """Computes and plots the given (default 75/95/99) percentiles of anomaly score
         (loss) by line for each second"""
         # TODO: support for data spanning more than one day (the data["days"] entry is currently ignored)
-            smoothing = min(
-                max(1, int(smoothing)), len(self.data["losses"])
-            )  # Ensure smoothing is an int and in the range [1, len(losses)]
-            if not smoothing % 2:
-                smoothing += 1  # Ensure smoothing is odd
+        smoothing = min(
+            max(1, int(smoothing)), len(self.data["losses"])
+        )  # Ensure smoothing is an int and in the range [1, len(losses)]
+        if not smoothing % 2:
+            smoothing += 1  # Ensure smoothing is odd
 
         plotting_data = [[] for _ in percentiles]
-            # Create a list of losses for each second
+        # Create a list of losses for each second
         seconds = np.unique(self.data["seconds"])
         for second in tqdm(seconds):
             losses = self.data["losses"][self.data["seconds"] == second]
@@ -107,11 +107,16 @@ class Evaluator:
                 percentile_data = np.percentile(losses, p)
                 plotting_data[idx].append(percentile_data)
 
-            # apply the desired smoothing
+        # apply the desired smoothing
         for idx, _ in enumerate(plotting_data):
             smoothed_data = (
                 np.convolve(plotting_data[idx], np.ones(smoothing), "same") / smoothing
             )
+            # Adjust the first and last (smoothing-1)/2 entries to avoid boundary effects
+            for i in range(int((smoothing-1)/2)):
+                # The first and last few entries are only averaged over (smoothing+1)/2 + i entries
+                smoothed_data[i] *= smoothing/((smoothing+1)/2 + i)
+                smoothed_data[-(i+1)] *= smoothing/((smoothing+1)/2 + i)
             plotting_data[idx] = smoothed_data
 
         # Extract all red team events
