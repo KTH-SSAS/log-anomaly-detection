@@ -69,12 +69,12 @@ class Evaluator:
         self.data_is_trimmed = False
         if reset_caches:
             self.reset_caches()
-    
+
     def trim_evaluation_data(self):
         """Trims any remaining allocated entries for the evaluation data lists"""
         self.data_is_trimmed = True
         for key in self.data.keys():
-            self.data[key] = self.data[key][:self.index[key]]
+            self.data[key] = self.data[key][: self.index[key]]
 
     def reset_caches(self):
         """Resets all the caches"""
@@ -144,7 +144,8 @@ class Evaluator:
             # apply the desired smoothing
             for idx, _ in enumerate(plotting_data):
                 smoothed_data = (
-                    np.convolve(plotting_data[idx], np.ones(smoothing), "same") / smoothing
+                    np.convolve(plotting_data[idx], np.ones(smoothing), "same")
+                    / smoothing
                 )
                 # Adjust the first and last (smoothing-1)/2 entries to avoid boundary effects
                 for i in range(int((smoothing - 1) / 2)):
