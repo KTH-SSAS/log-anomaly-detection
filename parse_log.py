@@ -372,15 +372,16 @@ if __name__ == '__main__':
 
 
 # For char-level tokenization:
-# python parse_log.py --char_lv
-# -authfile /home/fox_kim/Project/log-data-ml/data/auth_h.txt
-# -redfile /home/fox_kim/Project/log-data-ml/data/redteam.txt
-# -outpath log-data-ml/parsed_data/char_token/
+# python parse_log.py 
+# --char_lv 
+# -authfile data/auth_h.txt 
+# -redfile data/redteam.txt 
+# -outpath log-data-ml/parsed_data/char_token/ 
 # -recordpath log-data-ml/parsed_data/char_token/records/
-
+                    
 # For word-level tokenization:
 # python parse_log.py
-# -authfile /home/fox_kim/Project/log-data-ml/data/auth_h.txt 
-# -redfile /home/fox_kim/Project/log-data-ml/data/redteam.txt
+# -authfile data/auth_h.txt 
+# -redfile data/redteam.txt
 # -outpath log-data-ml/parsed_data/word_token/
 # -recordpath log-data-ml/parsed_data/word_token/records/
