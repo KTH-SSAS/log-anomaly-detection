@@ -7,6 +7,8 @@ from torch.utils.tensorboard import SummaryWriter
 import log_analyzer.data.data_loader as data_utils
 from log_analyzer.trainer import LSTMTrainer
 from log_analyzer.tiered_trainer import TieredTrainer
+from tqdm import tqdm
+
 try:
     import torch
 except ImportError:
@@ -70,7 +72,7 @@ def train_model(args, lm_trainer, store_eval_data=False):
     writer = SummaryWriter(os.path.join(log_dir, 'metrics'))
 
     train_losses = []
-    for iteration, batch in enumerate(train_loader):
+    for iteration, batch in enumerate(tqdm(train_loader)):
         if args.tiered:
             if train_loader.flush is False:
                 loss, done= lm_trainer.train_step(batch)
@@ -86,7 +88,7 @@ def train_model(args, lm_trainer, store_eval_data=False):
             break
 
     test_losses = []
-    for iteration, batch in enumerate(test_loader):
+    for iteration, batch in enumerate(tqdm(test_loader)):
         loss, *_ = lm_trainer.eval_step(batch, store_eval_data)
         test_losses.append(loss.item())
         writer.add_scalar(f'Loss/test_day_{batch["day"][0]}', loss, iteration)
