@@ -1,11 +1,17 @@
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
+from log_analyzer.model.lstm import Tiered_LSTM
+from log_analyzer.config.config import Config
+
+from torch.utils.data.dataset import ConcatDataset
+from log_analyzer.config.model_config import LSTMConfig, TieredLSTMConfig
+from log_analyzer.config.trainer_config import DataConfig, TrainerConfig
 import os
 import json
 import socket
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 import log_analyzer.data.data_loader as data_utils
-from log_analyzer.trainer import LSTMTrainer
+from log_analyzer.trainer import LSTMTrainer, Trainer
 from log_analyzer.tiered_trainer import TieredTrainer
 from tqdm import tqdm
 
@@ -18,6 +24,34 @@ except ImportError:
 Helper functions for model creation and training
 """
 
+LSTM = 'lstm'
+TRANSFORMER = 'transformer'
+TIERED_LSTM = 'tiered-lstm' 
+
+def generate_trainer_config(args : Namespace):
+    """Generate configs based on args and conf file. Intermediary function while refactoring"""
+
+    data_config = DataConfig(train_files, test_files=conf['test_files'], sentence_length=conf['sentence_length'], 
+    vocab_size=conf['token_set_size'], number_of_days=conf['num_days'])
+
+    trainer_config : TrainerConfig = TrainerConfig(data_config.__dict__,
+        batch_size=batch_size, jagged=jagged, bidirectional=bidirectional,
+        tiered=tiered, learning_rate=conf['lr'], early_stopping=True,
+        early_stop_patience=conf['patience'], scheduler_gamma=conf['gamma'],
+        scheduler_step_size=conf['step_size'])
+
+    return trainer_config, model_config
+
+def get_model_config(filename, model_type) -> Config:
+    if model_type == TIERED_LSTM:
+        return TieredLSTMConfig.init_from_file(filename)
+    elif model_type == LSTM:
+        return LSTMConfig.init_from_file(filename)
+    elif model_type == TRANSFORMER:
+        raise NotImplementedError("Transformer not yet implemented.")
+    else:
+        raise RuntimeError('Invalid model type.')
+
 def create_identifier_string(model_name, comment=""):
     #TODO have model name be set by config, args or something else
     current_time = datetime.now().strftime('%b%d_%H-%M-%S')
@@ -25,46 +59,52 @@ def create_identifier_string(model_name, comment=""):
     return id
 
 
-def create_model(args):
+def create_model_args(args):
+    return create_model(args.model_type, args.model_config, args.trainer_config, args.data_folder, 
+    args.bidirectional, args.skipsos, args.jagged)
+
+def create_model(model_type, model_config_file, trainer_config_file, data_folder, bidirectional, skipsos, jagged):
     """Creates a model plus trainer given the specifications in args"""
-    base_logdir = './runs/'
-    id_string = create_identifier_string("lstm")
+    base_logdir = 'runs'
+    if not os.path.isdir(base_logdir):
+        os.mkdir(base_logdir)
+    id_string = create_identifier_string(model_type)
     log_dir = os.path.join(base_logdir, id_string)
     os.mkdir(log_dir)
 
-    # Read a config file.   
-    with open(args.config, 'r') as f:
-        conf = json.load(f)
+    model_config : Config = get_model_config(model_config_file, model_type)
+    trainer_config = TrainerConfig.init_from_file(trainer_config_file)
+    bidir = bidirectional
+    trainer_config.bidirectional = bidir
+    model_config.bidirectional = bidir
+    trainer_config.jagged = jagged
+    model_config.jagged = jagged
+
+    verbose = True
 
     # Settings for dataloader.
-    sentence_length = conf["sentence_length"] - 1 - int(args.skipsos) + int(args.bidirectional)
-    train_days = conf['train_files']
-    test_days = conf['test_files']
-    train_loader, test_loader = data_utils.load_data(train_days, test_days, args, sentence_length)
+    
+    data_config = trainer_config.data_config
+    max_input_length = data_config.sentence_length - 1 - int(skipsos) + int(bidir)
+    train_days = data_config.train_files
+    test_days = data_config.test_files
 
     # Settings for LSTM.
-    if args.tiered:
-        trainer_class = TieredTrainer
+    if model_type == TIERED_LSTM:
+        model_config: TieredLSTMConfig = model_config
+        train_loader, test_loader = data_utils.load_data_tiered(data_folder, train_days, test_days,
+        trainer_config.batch_size, bidir, skipsos, jagged, max_input_length, num_steps=3, context_layers=model_config.context_layers)
+        lm_trainer = TieredTrainer(trainer_config, model_config, log_dir, verbose, train_loader)
     else:
-        trainer_class = LSTMTrainer
-    
-    lm_trainer = trainer_class(args, conf, log_dir, verbose = True, data_handler = train_loader)
+        train_loader, test_loader = data_utils.load_data(data_folder, train_days, test_days,
+        trainer_config.batch_size, bidir, skipsos, jagged, max_input_length)
+        lm_trainer = LSTMTrainer(trainer_config, model_config, log_dir, verbose)
 
-    return lm_trainer
+    return lm_trainer, train_loader, test_loader
 
 
-def train_model(args, lm_trainer, store_eval_data=False):
+def train_model(lm_trainer : Trainer, train_loader, test_loader, store_eval_data=False):
     """Perform 1 epoch of training on lm_trainer"""
-
-    # Read a config file.   
-    with open(args.config, 'r') as f:
-        conf = json.load(f)
-
-    # Settings for dataloader.
-    sentence_length = conf["sentence_length"] - 1 - int(args.skipsos) + int(args.bidirectional)
-    train_days = conf['train_files']
-    test_days = conf['test_files']
-    train_loader, test_loader = data_utils.load_data(train_days, test_days, args, sentence_length)
 
     outfile = None
     verbose = False
@@ -73,14 +113,14 @@ def train_model(args, lm_trainer, store_eval_data=False):
 
     train_losses = []
     for iteration, batch in enumerate(tqdm(train_loader)):
-        if args.tiered:
+        if lm_trainer is TieredTrainer:
             if train_loader.flush is False:
-                loss, done= lm_trainer.train_step(batch)
+                loss, done = lm_trainer.train_step(batch)
             else:
                 loss, *_ = lm_trainer.eval_step(batch)
                 print(f'Due to flush, training stopped... Current loss: {loss:.3f}')
         else: 
-            loss, done= lm_trainer.train_step(batch)
+            loss, done = lm_trainer.train_step(batch)
         train_losses.append(loss.item())
         writer.add_scalar(f'Loss/train_day_{batch["day"][0]}', loss, iteration)
         if done:
@@ -110,6 +150,6 @@ def train_model(args, lm_trainer, store_eval_data=False):
     
     writer.close()
     torch.save(lm_trainer.model, os.path.join(log_dir,'model.pt'))
-    with open(os.path.join(log_dir, 'config.json'), 'w') as f:
-        json.dump(conf, f)
+    lm_trainer.config.save_config(os.path.join(log_dir, 'trainer_config.json'))
+    lm_trainer.model.config.save_config(os.path.join(log_dir, 'model_config.json'))
     return train_losses, test_losses

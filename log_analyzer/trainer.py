@@ -1,26 +1,29 @@
+from log_analyzer.config.model_config import LSTMConfig
+from log_analyzer.config.trainer_config import TrainerConfig
 import torch
 import torch.nn as nn
-from log_analyzer.model.lstm import Fwd_LSTM, Bid_LSTM
+from log_analyzer.model.lstm import Fwd_LSTM, Bid_LSTM, LogModel
 import log_analyzer.model.auxiliary as auxiliary
 from log_analyzer.evaluator import Evaluator
+from abc import ABC, abstractmethod
 
 # TODO name this something more descriptive, it might be used as a wrapper around both transformer/LSTM
-class Trainer():
+class Trainer(ABC):
 
     @property
-    def model(self):
-        raise NotImplementedError(
-            "Model type to be overriddden in child class.")
+    @abstractmethod
+    def model(self) -> LogModel:
+        pass
 
+    def __init__(self, config : TrainerConfig, verbose, checkpoint_dir):
 
-    def __init__(self, args, conf, checkpoint_dir, data_handler=None, verbose=False):
-
+        self.config = config
+        
         # Check GPU
         self.cuda = torch.cuda.is_available()
 
-        self.jagged = args.jagged
-        self.bidirectional = args.bidirectional
-        self.data_handler = data_handler
+        self.jagged = config.jagged
+        self.bidirectional = config.bidirectional
         self.checkpoint_dir = checkpoint_dir
 
         if self.cuda:
@@ -29,10 +32,10 @@ class Trainer():
         # Create settings for training.
         self.criterion = nn.CrossEntropyLoss(reduction='none', ignore_index=0)
         self.early_stopping = auxiliary.EarlyStopping(
-            patience=conf["patience"], verbose=verbose, path=checkpoint_dir)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=conf['lr'])
+            patience=config.early_stop_patience, verbose=verbose, path=checkpoint_dir)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=config.learning_rate)
         self.scheduler = torch.optim.lr_scheduler.StepLR(
-            self.optimizer, step_size=conf['step_size'], gamma=conf['gamma'])
+            self.optimizer, step_size=config.scheduler_step_size, gamma=config.scheduler_gamma)
         # Create evaluator
         self.evaluator = Evaluator()
 
@@ -140,14 +143,10 @@ class LSTMTrainer(Trainer):
             raise RuntimeError("Model not intialized!")
         return self.lstm
 
-    def __init__(self, args, conf, checkpoint_dir, data_handler, verbose):
+    def __init__(self, config : TrainerConfig, lstm_config : LSTMConfig, checkpoint_dir, verbose):
 
-        if args.bidirectional:
-            model = Bid_LSTM
-        else:
-            model = Fwd_LSTM
+        model = Bid_LSTM if config.bidirectional else Fwd_LSTM
         # Create a model
-        self.lstm = model(
-            args.lstm_layers, conf['token_set_size'], args.embed_dim, jagged=args.jagged, attention_type=conf['attention_type'], attention_dim=conf['attention_dim'])
+        self.lstm = model(lstm_config)
 
-        super().__init__(args, conf, checkpoint_dir, data_handler=data_handler, verbose=verbose)
+        super().__init__(config, verbose, checkpoint_dir)

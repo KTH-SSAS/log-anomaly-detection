@@ -28,22 +28,25 @@ class Char_tokenizer:
         return "0 " + " ".join([str(ord(c) - 30) for c in string]) + " 1 " + " ".join(["0"] * pad_len) + "\n"
         
     def delete_duplicates(self):
-        for filename in os.listdir(self.outpath):
-            file_path = os.path.join(self.outpath, filename)
-            try:
-                if os.path.isfile(file_path) or os.path.islink(file_path):
-                    os.unlink(file_path)
-                elif os.path.isdir(file_path):
-                    shutil.rmtree(file_path)
-            except Exception as e:
-                print('Failed to delete %s. Reason: %s' % (file_path, e))
+        try:
+            for filename in os.listdir(self.outpath):
+                file_path = os.path.join(self.outpath, filename)
+                try:
+                    if os.path.isfile(file_path) or os.path.islink(file_path):
+                        os.unlink(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                except Exception as e:
+                    print('Failed to delete %s. Reason: %s' % (file_path, e))
+        except FileNotFoundError:
+            print('Nothing to delete.')
 
     def save_day_outfile(self, day_outfile, current_file_day, current_line, line_day):
         if int(line_day) == int(current_file_day):
             day_outfile.write(current_line)
         else:
             day_outfile.close()
-            current_file_day = line_day
+            current_file_day = str(line_day)
             temp_path = os.path.join(self.outpath, current_file_day + '.txt')
             if os.path.isfile(temp_path):
                 day_outfile = open(temp_path, 'a') # If the file exists, reopen the file and append new lines.
@@ -74,7 +77,13 @@ class Char_tokenizer:
                 user = raw_line[1].strip().split('@')[0]
                 day = int(sec) // 86400 # 24 hours * 60 minutes * 60 seconds 
                 red = 0
-                red += int(line in redevents)
+                # Reconstruct 'line' in the format of lines in redevents
+                # Line format: second,src_user@src_domain,dst_user@dst_domain,src_pc,dst_pc,auth_type,logon,auth_orient,success
+                # redevent_line format: second,src_user@src_domain,src_pc,dst_pc\n
+                red_style_line = (
+                    ",".join((sec, raw_line[1].strip(), raw_line[3], raw_line[4])) + "\n"
+                )
+                red += int(red_style_line in redevents)
                 if user.startswith('U') and day not in weekend_days:
                     index_rep = self.tokenize_line(line_minus_time, pad_len)
                     current_line = f"{line_num} {sec} {day} {user.replace('U', '')} {red} {len(line_minus_time)+1} {index_rep}"
@@ -266,7 +275,13 @@ class Word_tokenizer(Char_tokenizer):
                 user = raw_line[1].strip().split('@')[0]
                 day = int(sec) // 86400
                 red = 0
-                red += int(line in redevents)
+                # Reconstruct 'line' in the format of lines in redevents
+                # Line format: second,src_user@src_domain,dst_user@dst_domain,src_pc,dst_pc,auth_type,logon,auth_orient,success
+                # redevent_line format: second,src_user@src_domain,src_pc,dst_pc\n
+                red_style_line = (
+                    ",".join((sec, raw_line[1].strip(), raw_line[3], raw_line[4])) + "\n"
+                )
+                red += int(red_style_line in redevents)
                 if user.startswith('U') and day not in weekend_days:
                     index_rep = self.translate_line(line, self.domain_counts, self.pc_counts)
                     current_line = f"{line_num} {sec} {day} {user.replace('U', '')} {red} {index_rep}"

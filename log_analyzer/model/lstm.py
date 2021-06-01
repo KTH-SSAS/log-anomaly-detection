@@ -1,5 +1,7 @@
 # LSTM LM model
+from log_analyzer.config.config import Config
 from log_analyzer.model.attention import SelfAttention
+from log_analyzer.config.model_config import LSTMConfig, TieredLSTMConfig
 import torch
 import torch.nn as nn
 import numpy as np
@@ -28,28 +30,42 @@ def initialize_weights(net, initrange=1.0):
         elif isinstance(m, nn.Embedding):
             truncated_normal_(m.weight.data, mean=0.0, std=1)
 
-
-class LSTMLanguageModel(nn.Module):
-
-    def __init__(self, layers, vocab_size, embedding_dim, jagged=False, tiered=False, context_vector_size=0):
+class LogModel(nn.Module):
+    def __init__(self, config : Config):
         super().__init__()
+        self.config : Config = config
+
+class LSTMLanguageModel(LogModel):
+
+    def __init__(self, config : LSTMConfig):
+        super().__init__(config)
+
+        self.config = config
         # Parameter setting
-        self.layers = layers
-        self.jagged = jagged
-        self.vocab_size = vocab_size
-        self.embedding_dim = embedding_dim
-        self.tiered = tiered
+        self.jagged = config.jagged
+        self.tiered = None
 
         # Layers
-        self.embeddings = nn.Embedding(self.vocab_size, self.embedding_dim)
-        if self.tiered:
-            self.embedding_dim += context_vector_size
-        self.stacked_lstm = nn.LSTM(self.embedding_dim, self.layers[0], len(
-            self.layers), batch_first=True, bidirectional=self.bid)
-        self.tanh = nn.Tanh()
+        self.embeddings = nn.Embedding(config.vocab_size, config.embedding_dim)
+        self.stacked_lstm = nn.LSTM(config.input_dim, config.layers[0], len(config.layers), batch_first=True, bidirectional=self.bidirectional)
+        
+        fc_input_dim = config.layers[-1]
+        if self.bidirectional: # If LSMTM is bidirectional, its output hidden states will be twice as large
+            fc_input_dim *= 2
+        if config.attention_type is not None: # If LSTM is using attention, its hidden states will be even wider.
+            fc_input_dim *= 2
+            self.attention = SelfAttention(fc_input_dim, config.attention_dim, attention_type=config.attention_type)
+        else:
+            self.attention = None
+        
+        self.hidden2tag = nn.Linear(fc_input_dim, config.vocab_size)
 
         # Weight initialization
         initialize_weights(self)
+    
+    @property
+    def bidirectional(self):
+        raise NotImplementedError("Bidirectional property has to be set in child class.")
 
     def forward(self, sequences, lengths=None, context_vectors=None):
         # batch size, sequence length, embedded dimension
@@ -82,18 +98,9 @@ class LSTMLanguageModel(nn.Module):
 
 
 class Fwd_LSTM(LSTMLanguageModel):
-    def __init__(self, layers, vocab_size, embedding_dim, jagged=False, tiered=False, context_vector_size=0, attention_type=None, attention_dim=0):
-        self.bid = False
+    def __init__(self, config : LSTMConfig):
         self.name = "LSTM"
-        super().__init__(layers, vocab_size, embedding_dim,
-                         jagged, tiered, context_vector_size)
-
-        if attention_type is not None:
-            self.attention = SelfAttention(self.layers[-1], attention_dim, attention_type=attention_type)
-            self.hidden2tag = nn.Linear(self.layers[-1] * 2, self.vocab_size)
-        else:
-            self.attention = None
-            self.hidden2tag = nn.Linear(self.layers[-1], self.vocab_size)
+        super().__init__(config)
 
     def forward(self, sequences, lengths=None, context_vectors=None):
         lstm_out, hx = super().forward(sequences, lengths, context_vectors)
@@ -107,21 +114,15 @@ class Fwd_LSTM(LSTMLanguageModel):
         tag_size = self.hidden2tag(output)
 
         return tag_size, lstm_out, hx
-
+    
+    @property
+    def bidirectional(self):
+        return False
 
 class Bid_LSTM(LSTMLanguageModel):
-    def __init__(self, layers, vocab_size, embedding_dim, jagged=False, tiered=False, context_vector_size=0, attention_type=None, attention_dim=0):
-        self.bid = True
+    def __init__(self, config : LSTMConfig):
         self.name = "LSTM-Bid"
-        super().__init__(layers, vocab_size, embedding_dim,
-                         jagged, tiered, context_vector_size)
-
-        if attention_type is not None:
-            self.attention = SelfAttention(self.layers[-1] * 2, attention_dim, attention_type=attention_type)
-            self.hidden2tag = nn.Linear(self.layers[-1] * 4, self.vocab_size)
-        else:
-            self.attention = None
-            self.hidden2tag = nn.Linear(self.layers[-1] * 2, self.vocab_size)
+        super().__init__(config)
 
     def forward(self, sequences, lengths=None, context_vectors=None):
         lstm_out, hx = super().forward(sequences, lengths, context_vectors)
@@ -152,6 +153,10 @@ class Bid_LSTM(LSTMLanguageModel):
         tag_size = self.hidden2tag(b_f_concat)
 
         return tag_size, lstm_out, hx
+    
+    @property
+    def bidirectional(self):
+        return True
 
 
 class Context_LSTM(nn.Module):
@@ -183,31 +188,31 @@ class Context_LSTM(nn.Module):
         return output, context_hx, context_cx
 
 
-class Tiered_LSTM(nn.Module):
-    def __init__(self, low_lv_layers, ctxt_lv_layers, vocab_size, embedding_dim,
-                 jagged=False, bid=False):
+class Tiered_LSTM(LogModel):
+    def __init__(self, config : TieredLSTMConfig):
 
-        super().__init__()
+        super().__init__(config)
         # Parameter setting
-        self.bid = bid
-        if self.bid:
+        if config.bidirectional:
             self.model = Bid_LSTM
         else:
             self.model = Fwd_LSTM
-        self.low_lv_layers = low_lv_layers
-        self.ctxt_lv_layers = ctxt_lv_layers
-        self.jagged = jagged
-        self.vocab_size = vocab_size
-        self.embedding_dim = embedding_dim
+        
+        self.bid = config.bidirectional
+        low_lv_layers = config.layers
+
+        self.ctxt_vector = None
+        self.ctxt_h = None
+        self.ctxt_c = None
 
         # Layers
-        self.low_lv_lstm = self.model(self.low_lv_layers, self.vocab_size, self.embedding_dim,
-                                      jagged=self.jagged, tiered=True, context_vector_size=self.ctxt_lv_layers[-1])
-        if self.bid:
+        self.low_lv_lstm = self.model(config)
+        self.low_lv_lstm.tiered = True #TODO make this more elegant
+        if config.bidirectional:
             input_features =  low_lv_layers[-1] * 4
         else:
             input_features =  low_lv_layers[-1] * 2
-        self.ctxt_lv_lstm = Context_LSTM(self.ctxt_lv_layers, input_features, self.bid)
+        self.ctxt_lv_lstm = Context_LSTM(config.context_layers, input_features, config.bidirectional)
 
         # Weight initialization
         initialize_weights(self)
