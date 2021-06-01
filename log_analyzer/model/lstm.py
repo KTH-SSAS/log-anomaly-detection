@@ -72,6 +72,8 @@ class LSTMLanguageModel(LogModel):
         x_lookups = self.embeddings(sequences)
         if self.tiered:
             cat_x_lookups = torch.tensor([])
+            if torch.cuda.is_available():
+                cat_x_lookups = cat_x_lookups.cuda()
             # x_lookups (seq len x batch x embedding)
             x_lookups = x_lookups.transpose(0, 1)
             for x_lookup in x_lookups:  # x_lookup (batch x embedding).
