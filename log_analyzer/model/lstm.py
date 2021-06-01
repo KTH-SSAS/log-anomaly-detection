@@ -1,4 +1,5 @@
 # LSTM LM model
+from log_analyzer.model.attention import SelfAttention
 import torch
 import torch.nn as nn
 import numpy as np
@@ -81,28 +82,46 @@ class LSTMLanguageModel(nn.Module):
 
 
 class Fwd_LSTM(LSTMLanguageModel):
-    def __init__(self, layers, vocab_size, embedding_dim, jagged=False, tiered=False, context_vector_size=0):
+    def __init__(self, layers, vocab_size, embedding_dim, jagged=False, tiered=False, context_vector_size=0, attention_type=None, attention_dim=0):
         self.bid = False
         self.name = "LSTM"
         super().__init__(layers, vocab_size, embedding_dim,
                          jagged, tiered, context_vector_size)
-        self.hidden2tag = nn.Linear(self.layers[-1], self.vocab_size)
+
+        if attention_type is not None:
+            self.attention = SelfAttention(self.layers[-1], attention_dim, attention_type=attention_type)
+            self.hidden2tag = nn.Linear(self.layers[-1] * 2, self.vocab_size)
+        else:
+            self.attention = None
+            self.hidden2tag = nn.Linear(self.layers[-1], self.vocab_size)
 
     def forward(self, sequences, lengths=None, context_vectors=None):
         lstm_out, hx = super().forward(sequences, lengths, context_vectors)
 
-        tag_size = self.hidden2tag(lstm_out)
+        if self.attention is not None:
+            attention, _ = self.attention(lstm_out)
+            output = torch.cat((lstm_out, attention.squeeze()), dim=-1)
+        else:
+            output = lstm_out
+
+        tag_size = self.hidden2tag(output)
 
         return tag_size, lstm_out, hx
 
 
 class Bid_LSTM(LSTMLanguageModel):
-    def __init__(self, layers, vocab_size, embedding_dim, jagged=False, tiered=False, context_vector_size=0):
+    def __init__(self, layers, vocab_size, embedding_dim, jagged=False, tiered=False, context_vector_size=0, attention_type=None, attention_dim=0):
         self.bid = True
         self.name = "LSTM-Bid"
         super().__init__(layers, vocab_size, embedding_dim,
                          jagged, tiered, context_vector_size)
-        self.hidden2tag = nn.Linear(self.layers[-1] * 2, self.vocab_size)
+
+        if attention_type is not None:
+            self.attention = SelfAttention(self.layers[-1] * 2, attention_dim, attention_type=attention_type)
+            self.hidden2tag = nn.Linear(self.layers[-1] * 4, self.vocab_size)
+        else:
+            self.attention = None
+            self.hidden2tag = nn.Linear(self.layers[-1] * 2, self.vocab_size)
 
     def forward(self, sequences, lengths=None, context_vectors=None):
         lstm_out, hx = super().forward(sequences, lengths, context_vectors)
@@ -125,6 +144,10 @@ class Bid_LSTM(LSTMLanguageModel):
         # Concat them back together
         b_f_concat = torch.cat(
             [forward_hidden_states, backward_hidden_states], -1)
+
+        if self.attention is not None:
+            attention, _ = self.attention(b_f_concat)
+            b_f_concat = torch.cat((b_f_concat, attention.squeeze()), dim=-1)
 
         tag_size = self.hidden2tag(b_f_concat)
 
