@@ -72,6 +72,8 @@ class LSTMLanguageModel(LogModel):
         x_lookups = self.embeddings(sequences)
         if self.tiered:
             cat_x_lookups = torch.tensor([])
+            if torch.cuda.is_available():
+                cat_x_lookups = cat_x_lookups.cuda()
             # x_lookups (seq len x batch x embedding)
             x_lookups = x_lookups.transpose(0, 1)
             for x_lookup in x_lookups:  # x_lookup (batch x embedding).
@@ -221,29 +223,30 @@ class Tiered_LSTM(LogModel):
         self.ctxt_vector = context_vectors
         self.ctxt_h = context_h
         self.ctxt_c = context_c
-        tag_output = []
+        tag_output = torch.empty_like(user_sequences, dtype=torch.float).unsqueeze(3).repeat(1,1,1,self.vocab_size)
+        if torch.cuda.is_available():
+            tag_output = tag_output.cuda()
         # number of steps (e.g., 3), number of users (e.g., 64), lengths of sequences (e.g., 10)
         if lengths is None:
-            for sequences in user_sequences:
+            for idx, sequences in enumerate(user_sequences):
                 tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
                     sequences, lengths=lengths, context_vectors=self.ctxt_vector)
                 if self.bid:
                     final_hidden = final_hidden.view(1, final_hidden.shape[1],-1)
                 self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
                     low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len=lengths)
-                tag_output.append(tag_size)
+                tag_output[idx] = tag_size
                 self.ctxt_vector = torch.squeeze(self.ctxt_vector, dim=1)
         else:
-            for sequences, length in zip(user_sequences, lengths):
+            for idx, (sequences, length) in enumerate(zip(user_sequences, lengths)):
                 tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
                     sequences, lengths=length, context_vectors=self.ctxt_vector)
                 if self.bid:
                     final_hidden = final_hidden.view(1, final_hidden.shape[1],-1)
                 self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
                     low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len=length)
-                tag_output.append(tag_size)
+                tag_output[idx] = tag_size
                 self.ctxt_vector = torch.squeeze(self.ctxt_vector, dim=1)
-
         return tag_output, self.ctxt_vector, self.ctxt_h, self.ctxt_c
 
 

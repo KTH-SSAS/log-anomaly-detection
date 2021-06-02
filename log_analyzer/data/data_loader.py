@@ -220,8 +220,8 @@ class OnlineLMBatcher:
                             'day': batch[:, :, 2],
                             'user': batch[:, :, 3],
                             'red': batch[:, :, 4],
-                            'x': [batch[0, :, 5 + self.jagged + self.skipsos:endx]] * self.num_steps,
-                            't': [batch[0, :, 6 + self.jagged + self.skipsos:endt]] * self.num_steps,
+                            'x': batch[0, :, 5 + self.jagged + self.skipsos:endx].unsqueeze(0).repeat(self.num_steps, 1, 1),
+                            't': batch[0, :, 6 + self.jagged + self.skipsos:endt].unsqueeze(0).repeat(self.num_steps, 1, 1),
                             'context_vector': ctxt_vector,
                             'c_state_init': torch.transpose(h_state, 0, 1),
                             'h_state_init': torch.transpose(c_state, 0, 1)}  # state_triple['h_state_init']}
