@@ -85,7 +85,6 @@ class Trainer(ABC):
             X = X.cuda()
             Y = Y.cuda()
             if self.jagged:
-                L = L.cuda()
                 M = M.cuda()
 
         return X, Y, L, M
