@@ -5,7 +5,6 @@ from tqdm import tqdm
 from sklearn import metrics
 
 
-# TODO: support for tiered model
 class Evaluator:
     def __init__(self):
         """Creates an Evaluator instance that provides methods for model evaluation"""
