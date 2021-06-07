@@ -9,6 +9,7 @@ class Char_tokenizer:
         self.authfile = args.authfile
         self.redfile = args.redfile
         self.recordpath = args.recordpath
+        self.max_lines = args.max_lines
         self.weekend_days = weekend_days
         self.LONGEST_LEN = 120 # Length of the longest line in auth.txt, used for padding
 
@@ -88,6 +89,9 @@ class Char_tokenizer:
                     index_rep = self.tokenize_line(line_minus_time, pad_len)
                     current_line = f"{line_num} {sec} {day} {user.replace('U', '')} {red} {len(line_minus_time)+1} {index_rep}"
                     self.save_day_outfile(day_outfile, self.current_day, current_line, day)
+                if self.max_lines is not None:
+                    if line_num > self.max_lines:
+                        break
             day_outfile.close()
 
     def run_tokenizer(self):
@@ -187,6 +191,9 @@ class Word_tokenizer(Char_tokenizer):
                 day = int(linevec[0]) // 86400
                 if user.startswith('U') and day not in self.weekend_days:
                     self.get_line_counts(line)
+                if self.max_lines is not None:
+                    if line_num > self.max_lines:
+                        break
         
         self.write_sorted_counts(self.usr_counts, os.path.join(self.recordpath, "usr_counts"))
         self.write_sorted_counts(self.pc_counts, os.path.join(self.recordpath, "pc_counts"))
@@ -302,6 +309,9 @@ class Word_tokenizer(Char_tokenizer):
                     index_rep = self.translate_line(line, self.domain_counts, self.pc_counts)
                     current_line = f"{line_num} {sec} {day} {user.replace('U', '')} {red} {index_rep}"
                     self.save_day_outfile(day_outfile, current_day, current_line, day)
+                if self.max_lines is not None:
+                    if line_num > self.max_lines:
+                        break
             day_outfile.close()
 
     def save_jsons(self):
