@@ -316,6 +316,7 @@ class Word_tokenizer(Char_tokenizer):
                     if line_num > self.max_lines:
                         break
             day_outfile.close()
+        self.save_jsons()
 
     def save_jsons(self):
         
