@@ -94,11 +94,9 @@ class Char_tokenizer:
                         break
             day_outfile.close()
 
-    def run_tokenizer(self):
-
+    def prepare_routes(self):
         self.delete_duplicates()
         self.build_output_dir()
-        self.tokenize()
 
 
 class Word_tokenizer(Char_tokenizer):
@@ -361,11 +359,9 @@ class Word_tokenizer(Char_tokenizer):
         
         json.dump(back_mappings, open(os.path.join(self.recordpath, 'word_token_map.json'), 'w'))
 
-    def run_tokenizer(self):
+    def prepare_routes(self, key):
 
-        self.delete_duplicates()
+        if key != 'word_level_translate':
+            self.delete_duplicates()
         self.build_output_dir()
         self.build_record_dir()
-        self.count_words()
-        self.tokenize()
-        self.save_jsons()
