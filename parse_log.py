@@ -34,7 +34,15 @@ if __name__ == '__main__':
     else:
         tokenizer = Word_tokenizer(args, weekend_days)
 
-    tokenizer.run_tokenizer()
+    tokenizer.prepare_routes(args.type)
+
+    if args.type == 'word_level_count':
+        tokenizer.count_words()
+    elif args.type in ['char_level', 'word_level_translate']: 
+        tokenizer.tokenize()
+    elif args.type == 'word_level_both':
+        tokenizer.count_words()
+        tokenizer.tokenize()
 
 
 # For char-level tokenization:
