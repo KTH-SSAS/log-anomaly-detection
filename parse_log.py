@@ -3,8 +3,9 @@ from log_analyzer.tokenizer.tokenizer import Char_tokenizer, Word_tokenizer
       
 def arg_parser():
     parser = ArgumentParser()
-    parser.add_argument('--char_lv', action='store_true',
-                        help='Whether using character-level or word-level tokenization')
+    parser.add_argument('--type', 
+                        choices=['char_level', 'word_level_count', 'word_level_translate', 'word_level_both'], 
+                        required=True)
     parser.add_argument('-authfile',
                         type=str,
                         help='Path to an auth file.')
@@ -17,6 +18,10 @@ def arg_parser():
     parser.add_argument('-recordpath',
                         type=str,
                         help='Where to write record files.')
+    parser.add_argument('-max_lines',
+                        type=int,
+                        default=None,
+                        help='Maximum number of parsed lines.')
     args = parser.parse_args()
     return args
 
