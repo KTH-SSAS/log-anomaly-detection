@@ -124,6 +124,9 @@ class Word_tokenizer(Char_tokenizer):
         self.orient_dict = {}
         self.success_dict = {}
         self.other_inds = {'sos': self.sos, 'eos': self.eos, 'usr_OOV': self.usr_OOV, 'pc_OOV': self.pc_OOV, 'domain_OOV': self.domain_OOV}
+        self.path_usr_cnts =  os.path.join(self.recordpath, "usr_counts")
+        self.path_pc_cnts = os.path.join(self.recordpath, "pc_counts")
+        self.path_domain_cnts = os.path.join(self.recordpath, "domain_counts")
 
     def build_record_dir(self):
         try:
@@ -195,9 +198,9 @@ class Word_tokenizer(Char_tokenizer):
                     if line_num > self.max_lines:
                         break
         
-        self.write_sorted_counts(self.usr_counts, os.path.join(self.recordpath, "usr_counts"))
-        self.write_sorted_counts(self.pc_counts, os.path.join(self.recordpath, "pc_counts"))
-        self.write_sorted_counts(self.domain_counts, os.path.join(self.recordpath, "domain_counts"))
+        self.write_sorted_counts(self.usr_counts, self.path_usr_cnts)
+        self.write_sorted_counts(self.pc_counts, self.path_pc_cnts)
+        self.write_sorted_counts(self.domain_counts, self.path_domain_cnts)
 
 
     def write_sorted_counts(self, count_dict, out_fn):
