@@ -1,6 +1,7 @@
 import os, shutil
 import json
 import operator
+import sys
 
 class Char_tokenizer:
     def __init__(self, args, weekend_days):
@@ -257,6 +258,21 @@ class Word_tokenizer(Char_tokenizer):
         return f"{self.sos} {src_user} {src_domain} {dst_user} {dst_domain} {src_pc} {dst_pc} {auth_type} {logon_type} {auth_orient} {success} {self.eos}\n"
 
     def tokenize(self):
+
+        try:
+            if not self.usr_counts:
+                with open(self.path_usr_cnts + ".json") as json_file:
+                    self.usr_counts = json.load(json_file)
+            if not self.pc_counts:
+                with open(self.path_pc_cnts + ".json") as json_file:
+                    self.pc_counts = json.load(json_file)
+            if not self.domain_counts:
+                with open(self.path_domain_cnts + ".json") as json_file:
+                    self.domain_counts = json.load(json_file)
+        except FileNotFoundError:
+            print('No count files. Run word_level_count or word_level_both')
+            sys.exit()
+
         current_day = '0'
         day_outfile = open(os.path.join(self.outpath, current_day +'.txt'), 'w')
 
