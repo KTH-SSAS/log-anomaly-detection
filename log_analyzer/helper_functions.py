@@ -26,20 +26,6 @@ LSTM = 'lstm'
 TRANSFORMER = 'transformer'
 TIERED_LSTM = 'tiered-lstm' 
 
-def generate_trainer_config(args : Namespace):
-    """Generate configs based on args and conf file. Intermediary function while refactoring"""
-
-    data_config = DataConfig(train_files, test_files=conf['test_files'], sentence_length=conf['sentence_length'], 
-    vocab_size=conf['token_set_size'], number_of_days=conf['num_days'])
-
-    trainer_config : TrainerConfig = TrainerConfig(data_config.__dict__,
-        batch_size=batch_size, jagged=jagged, bidirectional=bidirectional,
-        tiered=tiered, learning_rate=conf['lr'], early_stopping=True,
-        early_stop_patience=conf['patience'], scheduler_gamma=conf['gamma'],
-        scheduler_step_size=conf['step_size'])
-
-    return trainer_config, model_config
-
 def get_model_config(filename, model_type) -> Config:
     if model_type == TIERED_LSTM:
         return TieredLSTMConfig.init_from_file(filename)
