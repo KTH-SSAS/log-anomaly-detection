@@ -11,14 +11,16 @@ class DataConfig(Config):
         self.vocab_size = vocab_size
         self.number_of_days = number_of_days
 
+
 class TrainerConfig(Config):
 
-    def __init__(self, data_config, batch_size, skipsos, jagged, bidirectional, learning_rate, early_stopping, 
-    early_stop_patience, scheduler_gamma, scheduler_step_size) -> None:
+    def __init__(self, data_config, batch_size, skipsos, jagged, bidirectional, learning_rate, early_stopping,
+                 early_stop_patience, scheduler_gamma, scheduler_step_size) -> None:
         super().__init__()
 
         # Data settings
-        self._data_config = data_config.__dict__ if data_config is DataConfig else data_config # Store this as a dict to facilitate serialization
+        # Store this as a dict to facilitate serialization
+        self._data_config = data_config.__dict__ if data_config is DataConfig else data_config
 
         # Model settings
         self.bidirectional = bidirectional

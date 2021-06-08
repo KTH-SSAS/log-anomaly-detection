@@ -29,14 +29,16 @@ def initialize_weights(net, initrange=1.0):
         elif isinstance(m, nn.Embedding):
             truncated_normal_(m.weight.data, mean=0.0, std=1)
 
+
 class LogModel(nn.Module):
-    def __init__(self, config : Config):
+    def __init__(self, config: Config):
         super().__init__()
-        self.config : Config = config
+        self.config: Config = config
+
 
 class LSTMLanguageModel(LogModel):
 
-    def __init__(self, config : LSTMConfig):
+    def __init__(self, config: LSTMConfig):
         super().__init__(config)
 
         self.config = config
@@ -46,25 +48,29 @@ class LSTMLanguageModel(LogModel):
 
         # Layers
         self.embeddings = nn.Embedding(config.vocab_size, config.embedding_dim)
-        self.stacked_lstm = nn.LSTM(config.input_dim, config.layers[0], len(config.layers), batch_first=True, bidirectional=self.bidirectional)
-        
+        self.stacked_lstm = nn.LSTM(config.input_dim, config.layers[0], len(
+            config.layers), batch_first=True, bidirectional=self.bidirectional)
+
         fc_input_dim = config.layers[-1]
-        if self.bidirectional: # If LSMTM is bidirectional, its output hidden states will be twice as large
+        if self.bidirectional:  # If LSMTM is bidirectional, its output hidden states will be twice as large
             fc_input_dim *= 2
-        if config.attention_type is not None: # If LSTM is using attention, its hidden states will be even wider.
+        # If LSTM is using attention, its hidden states will be even wider.
+        if config.attention_type is not None:
             fc_input_dim *= 2
-            self.attention = SelfAttention(fc_input_dim, config.attention_dim, attention_type=config.attention_type)
+            self.attention = SelfAttention(
+                fc_input_dim, config.attention_dim, attention_type=config.attention_type)
         else:
             self.attention = None
-        
+
         self.hidden2tag = nn.Linear(fc_input_dim, config.vocab_size)
 
         # Weight initialization
         initialize_weights(self)
-    
+
     @property
     def bidirectional(self):
-        raise NotImplementedError("Bidirectional property has to be set in child class.")
+        raise NotImplementedError(
+            "Bidirectional property has to be set in child class.")
 
     def forward(self, sequences, lengths=None, context_vectors=None):
         # batch size, sequence length, embedded dimension
@@ -99,7 +105,7 @@ class LSTMLanguageModel(LogModel):
 
 
 class Fwd_LSTM(LSTMLanguageModel):
-    def __init__(self, config : LSTMConfig):
+    def __init__(self, config: LSTMConfig):
         self.name = "LSTM"
         super().__init__(config)
 
@@ -115,13 +121,14 @@ class Fwd_LSTM(LSTMLanguageModel):
         tag_size = self.hidden2tag(output)
 
         return tag_size, lstm_out, hx
-    
+
     @property
     def bidirectional(self):
         return False
 
+
 class Bid_LSTM(LSTMLanguageModel):
-    def __init__(self, config : LSTMConfig):
+    def __init__(self, config: LSTMConfig):
         self.name = "LSTM-Bid"
         super().__init__(config)
 
@@ -154,7 +161,7 @@ class Bid_LSTM(LSTMLanguageModel):
         tag_size = self.hidden2tag(b_f_concat)
 
         return tag_size, lstm_out, hx
-    
+
     @property
     def bidirectional(self):
         return True
@@ -190,7 +197,7 @@ class Context_LSTM(nn.Module):
 
 
 class Tiered_LSTM(LogModel):
-    def __init__(self, config : TieredLSTMConfig):
+    def __init__(self, config: TieredLSTMConfig):
 
         super().__init__(config)
         # Parameter setting
@@ -198,7 +205,7 @@ class Tiered_LSTM(LogModel):
             self.model = Bid_LSTM
         else:
             self.model = Fwd_LSTM
-        
+
         self.bid = config.bidirectional
         low_lv_layers = config.layers
 
@@ -208,12 +215,13 @@ class Tiered_LSTM(LogModel):
 
         # Layers
         self.low_lv_lstm = self.model(config)
-        self.low_lv_lstm.tiered = True #TODO make this more elegant
+        self.low_lv_lstm.tiered = True  # TODO make this more elegant
         if config.bidirectional:
-            input_features =  low_lv_layers[-1] * 4
+            input_features = low_lv_layers[-1] * 4
         else:
-            input_features =  low_lv_layers[-1] * 2
-        self.ctxt_lv_lstm = Context_LSTM(config.context_layers, input_features, config.bidirectional)
+            input_features = low_lv_layers[-1] * 2
+        self.ctxt_lv_lstm = Context_LSTM(
+            config.context_layers, input_features, config.bidirectional)
 
         # Weight initialization
         initialize_weights(self)
@@ -222,7 +230,8 @@ class Tiered_LSTM(LogModel):
         self.ctxt_vector = context_vectors
         self.ctxt_h = context_h
         self.ctxt_c = context_c
-        tag_output = torch.empty_like(user_sequences, dtype=torch.float).unsqueeze(3).repeat(1,1,1,self.vocab_size)
+        tag_output = torch.empty_like(user_sequences, dtype=torch.float).unsqueeze(
+            3).repeat(1, 1, 1, self.vocab_size)
         if torch.cuda.is_available():
             tag_output = tag_output.cuda()
         # number of steps (e.g., 3), number of users (e.g., 64), lengths of sequences (e.g., 10)
@@ -231,7 +240,8 @@ class Tiered_LSTM(LogModel):
                 tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
                     sequences, lengths=lengths, context_vectors=self.ctxt_vector)
                 if self.bid:
-                    final_hidden = final_hidden.view(1, final_hidden.shape[1],-1)
+                    final_hidden = final_hidden.view(
+                        1, final_hidden.shape[1], -1)
                 self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
                     low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len=lengths)
                 tag_output[idx] = tag_size
@@ -241,7 +251,8 @@ class Tiered_LSTM(LogModel):
                 tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
                     sequences, lengths=length, context_vectors=self.ctxt_vector)
                 if self.bid:
-                    final_hidden = final_hidden.view(1, final_hidden.shape[1],-1)
+                    final_hidden = final_hidden.view(
+                        1, final_hidden.shape[1], -1)
                 self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
                     low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len=length)
                 tag_output[idx] = tag_size
