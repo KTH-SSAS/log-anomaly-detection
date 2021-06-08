@@ -3,7 +3,7 @@ from log_analyzer.config.trainer_config import TrainerConfig
 import torch
 import torch.nn as nn
 from log_analyzer.model.lstm import Fwd_LSTM, Bid_LSTM, LogModel
-import log_analyzer.model.auxiliary as auxiliary
+import log_analyzer.model.early_stopping as early_stopping
 from abc import ABC, abstractmethod
 
 # TODO name this something more descriptive, it might be used as a wrapper around both transformer/LSTM
@@ -30,7 +30,7 @@ class Trainer(ABC):
 
         # Create settings for training.
         self.criterion = nn.CrossEntropyLoss(reduction='none', ignore_index=0)
-        self.early_stopping = auxiliary.EarlyStopping(
+        self.early_stopping = early_stopping.EarlyStopping(
             patience=config.early_stop_patience, verbose=verbose, path=checkpoint_dir)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=config.learning_rate)
         self.scheduler = torch.optim.lr_scheduler.StepLR(

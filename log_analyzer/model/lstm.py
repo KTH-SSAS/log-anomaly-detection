@@ -6,7 +6,6 @@ import torch
 import torch.nn as nn
 import numpy as np
 from collections import OrderedDict
-import log_analyzer.model.auxiliary as auxiliary
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 

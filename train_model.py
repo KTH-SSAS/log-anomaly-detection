@@ -1,5 +1,5 @@
 from argparse import ArgumentParser
-from log_analyzer.helper_functions import create_model_args, train_model
+from log_analyzer.train_loop import create_model_args, train_model
 
 """
 Entrypoint script for training
