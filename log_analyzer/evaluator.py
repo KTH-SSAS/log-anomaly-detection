@@ -18,17 +18,7 @@ class Evaluator:
         losses = losses.cpu().detach()
         seconds = seconds.cpu().detach()
         red_flags = red_flags.cpu().detach()
-        # First check that there's enough space left for all the entries
-        # log_lines and predictions are always the same length, so check them together
-        if len(self.data["log_lines"]) < self.index["log_lines"] + len(log_line):
-            # Days are usually slightly more than 7million lines, so add lines 1050,000 at a time
-            self.data["log_lines"] = np.concatenate(
-                (self.data["log_lines"], np.zeros(1050000, int))
-            )
-            self.data["predictions"] = np.concatenate(
-                (self.data["predictions"], np.zeros(1050000, int))
-            )
-        # losses, seconds and red_flags are always the same length, so check them together
+        # Check that there's enough space left for all the entries
         if len(self.data["losses"]) < self.index["losses"] + len(log_line):
             self.data["losses"] = np.concatenate(
                 (self.data["losses"], np.zeros(1050000, float))
@@ -41,39 +31,46 @@ class Evaluator:
             )
 
         for key, new_data in zip(
-            ["log_lines", "predictions", "losses", "seconds", "red_flags"],
-            [log_line, predictions, losses, seconds, red_flags],
+            ["losses", "seconds", "red_flags"], [losses, seconds, red_flags],
         ):
             self.data[key][self.index[key] : self.index[key] + len(new_data)] = new_data
             self.index[key] += len(new_data)
+
+        # Compute the token accuracy for this batch
+        batch_token_accuracy = metrics.accuracy_score(log_line, predictions)
+        new_token_count = self.token_count + len(log_line)
+        new_token_accuracy = (
+            self.token_accuracy * self.token_count
+            + batch_token_accuracy * len(log_line)
+        ) / new_token_count
+        self.token_count = new_token_count
+        self.token_accuracy = new_token_accuracy
         # Reset the caches whenever new data is added
         self.reset_caches()
 
     def reset_evaluation_data(self, reset_caches=True):
         """Delete the stored evaluation data"""
         self.data = {
-            "log_lines": np.zeros(0, int),
-            "predictions": np.zeros(0, int),
             "losses": np.zeros(0, float),
             "seconds": np.zeros(0, int),
             "red_flags": np.zeros(0, bool),
         }
         self.index = {
-            "log_lines": 0,
-            "predictions": 0,
             "losses": 0,
             "seconds": 0,
             "red_flags": 0,
         }
+        self.token_accuracy = 0
+        self.token_count = 0
         self.data_is_trimmed = False
         if reset_caches:
             self.reset_caches()
 
     def trim_evaluation_data(self):
         """Trims any remaining allocated entries for the evaluation data lists"""
-        self.data_is_trimmed = True
         for key in self.data.keys():
             self.data[key] = self.data[key][: self.index[key]]
+        self.data_is_trimmed = True
 
     def reset_caches(self):
         """Resets all the caches"""
@@ -89,10 +86,8 @@ class Evaluator:
         return metrics
 
     def get_token_accuracy(self):
-        """Computes the accuracy of the model token prediction"""
-        if not self.data_is_trimmed:
-            self.trim_evaluation_data()
-        return metrics.accuracy_score(self.data["log_lines"], self.data["predictions"])
+        """Returns the accuracy of the model token prediction"""
+        return self.token_accuracy
 
     def get_token_perplexity(self):
         """Computes and returns the perplexity of the model token prediction"""
