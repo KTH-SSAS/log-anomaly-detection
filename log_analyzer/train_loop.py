@@ -46,13 +46,12 @@ def create_identifier_string(model_name, comment=""):
 
 
 def create_model_args(args):
-    return create_model(args.model_type, args.model_config, args.trainer_config, args.data_folder,
+    return create_model(args.model_type, args.model_config, args.data_config, args.trainer_config, args.data_folder,
                         args.bidirectional, args.skipsos, args.jagged)
 
 
-def create_model(model_type, model_config_file, trainer_config_file, data_folder, bidirectional, skipsos, jagged):
+def create_model(model_type, model_config_file, data_config_file, trainer_config_file, data_folder, bidirectional, skipsos, jagged, base_logdir='runs'):
     """Creates a model plus trainer given the specifications in args"""
-    base_logdir = 'runs'
     if not os.path.isdir(base_logdir):
         os.mkdir(base_logdir)
     id_string = create_identifier_string(model_type)
@@ -71,11 +70,11 @@ def create_model(model_type, model_config_file, trainer_config_file, data_folder
 
     # Settings for dataloader.
 
-    data_config = trainer_config.data_config
+    data_config: DataConfig = DataConfig.init_from_file(data_config_file)
     max_input_length = data_config.sentence_length - \
         1 - int(skipsos) + int(bidir)
-    train_days = data_config.train_files
-    test_days = data_config.test_files
+    train_days = trainer_config.train_files
+    test_days = trainer_config.test_files
 
     # Settings for LSTM.
     if model_type == TIERED_LSTM:
