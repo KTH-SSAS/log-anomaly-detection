@@ -116,30 +116,39 @@ class Evaluator:
         percentiles=[75, 95, 99],
         smoothing=1,
         colors=["darkorange", "gold"],
-        ylim = (-1, -1),
+        ylim=(-1, -1),
         caching=False,
     ):
         """Computes and plots the given (default 75/95/99) percentiles of anomaly score
-        (loss) by line for each second"""
+        (loss) by line for each second. Smoothing indicates how many seconds are processed
+        as one batch for percentile calculations (e.g. 60 means percentiles are computed
+        for every minute)."""
         if not self.data_is_trimmed:
             self.trim_evaluation_data()
-        if smoothing > 0 and not smoothing % 2:
-            smoothing += 1  # Ensure smoothing is odd (unless it's <= 0)
 
         # Check whether to use the cache or compute new data
         if (
             not caching
             or self.plot_losses_by_line_cache is None
+            or smoothing != self.plot_losses_by_line_cache["smoothing"]
             or percentiles != self.plot_losses_by_line_cache["percentiles"]
         ):
             plotting_data = [[] for _ in percentiles]
-            # Create a list of losses for each second
+            # Create a list of losses for each segment
             seconds = np.unique(self.data["seconds"])
-            for second in tqdm(seconds):
-                losses = self.data["losses"][self.data["seconds"] == second]
-                for idx, p in enumerate(percentiles):
-                    percentile_data = np.percentile(losses, p)
-                    plotting_data[idx].append(percentile_data)
+            segments = [seconds[i] for i in range(0, len(seconds), smoothing)]
+            for idx in tqdm(range(len(segments))):
+                segment_start = np.searchsorted(self.data["seconds"], segments[idx])
+                if idx == len(segments) - 1:
+                    segment_end = len(self.data["losses"])
+                else:
+                    segment_end = np.searchsorted(
+                        self.data["seconds"], segments[idx + 1]
+                    )
+                segment_losses = self.data["losses"][segment_start:segment_end]
+                for perc_idx, p in enumerate(percentiles):
+                    percentile_data = np.percentile(segment_losses, p)
+                    plotting_data[perc_idx].append(percentile_data)
 
             # Extract all red team events
             red_seconds = self.data["seconds"][self.data["red_flags"] != 0]
@@ -159,8 +168,9 @@ class Evaluator:
             if caching:
                 self.plot_losses_by_line_cache = {
                     "plotting_data": plotting_data[:],
-                    "seconds": seconds[:],
                     "percentiles": percentiles[:],
+                    "smoothing": smoothing,
+                    "segments": segments[:],
                     "blue_seconds": blue_seconds[:],
                     "blue_losses": blue_losses[:],
                     "red_seconds": red_seconds[:],
@@ -169,7 +179,8 @@ class Evaluator:
         else:
             plotting_data = self.plot_losses_by_line_cache["plotting_data"]
             percentiles = self.plot_losses_by_line_cache["percentiles"]
-            seconds = self.plot_losses_by_line_cache["seconds"]
+            smoothing = self.plot_losses_by_line_cache["smoothing"]
+            segments = self.plot_losses_by_line_cache["segments"]
             blue_seconds = self.plot_losses_by_line_cache["blue_seconds"]
             blue_losses = self.plot_losses_by_line_cache["blue_losses"]
             red_seconds = self.plot_losses_by_line_cache["red_seconds"]
@@ -192,7 +203,7 @@ class Evaluator:
         # plot the percentile ranges
         for idx in range(len(plotting_data) - 1):
             plt.fill_between(
-                seconds, plotting_data[idx], plotting_data[idx + 1], color=colors[idx]
+                segments, plotting_data[idx], plotting_data[idx + 1], color=colors[idx]
             )
         # plot the non-redteam outliers
         plt.plot(blue_seconds, blue_losses, "bo", label="Outlier normal events")
