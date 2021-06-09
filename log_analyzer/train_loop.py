@@ -46,8 +46,10 @@ def create_identifier_string(model_name, comment=""):
 
 
 def init_from_args(args):
-    return init_from_config_files(args.model_type, args.model_config, args.data_config, args.trainer_config, args.data_folder,
-                                  args.bidirectional, args)
+    return init_from_config_files(
+        args.model_type, args.bidirectional,
+        args.model_config, args.data_config,
+        args.trainer_config, args.data_folder)
 
 def init_from_config_classes(model_type, bidirectional, model_config, trainer_config: TrainerConfig, data_config: DataConfig, data_folder, base_logdir='runs'):
     """Creates a model plus trainer given the specifications in args"""
@@ -104,7 +106,7 @@ def init_from_config_classes(model_type, bidirectional, model_config, trainer_co
 
 def init_from_config_files(model_type, bidirectional, model_config_file, data_config_file, trainer_config_file, data_folder, base_logdir='runs'):
     """Creates a model plus trainer given the specifications in args"""
-    model_config = get_model_config(model_type, model_config_file)
+    model_config = get_model_config(model_config_file, model_type)
     data_config = DataConfig.init_from_file(data_config_file)
     trainer_config = TrainerConfig.init_from_file(trainer_config_file)
     return init_from_config_classes(model_type, bidirectional, model_config, trainer_config, data_config, data_folder, base_logdir)
