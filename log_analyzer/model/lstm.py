@@ -25,7 +25,8 @@ def initialize_weights(net, initrange=1.0):
             initrange *= 1.0/np.sqrt(m.weight.data.shape[1])
             m.weight.data = initrange * \
                 truncated_normal_(m.weight.data, mean=0.0, std=1)
-            m.bias.data.zero_()
+            if m.bias is not None:
+                m.bias.data.zero_()
         elif isinstance(m, nn.Embedding):
             truncated_normal_(m.weight.data, mean=0.0, std=1)
 
