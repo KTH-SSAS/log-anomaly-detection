@@ -9,7 +9,7 @@ class Evaluator:
     def __init__(self):
         """Creates an Evaluator instance that provides methods for model evaluation"""
         self.data_is_trimmed = False
-        self.reset_evaluation_data(reset_caches=True)
+        self.reset_evaluation_data()
 
     def add_evaluation_data(self, log_line, predictions, losses, seconds, red_flags):
         """Extend the data stored in self.data with the inputs"""
@@ -45,10 +45,8 @@ class Evaluator:
         ) / new_token_count
         self.token_count = new_token_count
         self.token_accuracy = new_token_accuracy
-        # Reset the caches whenever new data is added
-        self.reset_caches()
 
-    def reset_evaluation_data(self, reset_caches=True):
+    def reset_evaluation_data(self):
         """Delete the stored evaluation data"""
         self.data = {
             "losses": np.zeros(0, float),
@@ -63,18 +61,12 @@ class Evaluator:
         self.token_accuracy = 0
         self.token_count = 0
         self.data_is_trimmed = False
-        if reset_caches:
-            self.reset_caches()
 
     def trim_evaluation_data(self):
         """Trims any remaining allocated entries for the evaluation data lists"""
         for key in self.data.keys():
             self.data[key] = self.data[key][: self.index[key]]
         self.data_is_trimmed = True
-
-    def reset_caches(self):
-        """Resets all the caches"""
-        self.plot_losses_by_line_cache = None
 
     def get_metrics(self):
         """Computes and returns all metrics"""
@@ -126,65 +118,37 @@ class Evaluator:
         if not self.data_is_trimmed:
             self.trim_evaluation_data()
 
-        # Check whether to use the cache or compute new data
-        if (
-            not caching
-            or self.plot_losses_by_line_cache is None
-            or smoothing != self.plot_losses_by_line_cache["smoothing"]
-            or percentiles != self.plot_losses_by_line_cache["percentiles"]
-        ):
-            plotting_data = [[] for _ in percentiles]
-            # Create a list of losses for each segment
-            seconds = np.unique(self.data["seconds"])
-            segments = [seconds[i] for i in range(0, len(seconds), smoothing)]
-            for idx in tqdm(range(len(segments))):
-                segment_start = np.searchsorted(self.data["seconds"], segments[idx])
-                if idx == len(segments) - 1:
-                    segment_end = len(self.data["losses"])
-                else:
-                    segment_end = np.searchsorted(
-                        self.data["seconds"], segments[idx + 1]
-                    )
-                segment_losses = self.data["losses"][segment_start:segment_end]
-                for perc_idx, p in enumerate(percentiles):
-                    percentile_data = np.percentile(segment_losses, p)
-                    plotting_data[perc_idx].append(percentile_data)
+        plotting_data = [[] for _ in percentiles]
+        # Create a list of losses for each segment
+        seconds = np.unique(self.data["seconds"])
+        segments = [seconds[i] for i in range(0, len(seconds), smoothing)]
+        for idx in tqdm(range(len(segments))):
+            segment_start = np.searchsorted(self.data["seconds"], segments[idx])
+            if idx == len(segments) - 1:
+                segment_end = len(self.data["losses"])
+            else:
+                segment_end = np.searchsorted(
+                    self.data["seconds"], segments[idx + 1]
+                )
+            segment_losses = self.data["losses"][segment_start:segment_end]
+            for perc_idx, p in enumerate(percentiles):
+                percentile_data = np.percentile(segment_losses, p)
+                plotting_data[perc_idx].append(percentile_data)
 
-            # Extract all red team events
-            red_seconds = self.data["seconds"][self.data["red_flags"] != 0]
-            red_losses = self.data["losses"][self.data["red_flags"] != 0]
+        # Extract all red team events
+        red_seconds = self.data["seconds"][self.data["red_flags"] != 0]
+        red_losses = self.data["losses"][self.data["red_flags"] != 0]
 
-            # Extract the top X (1 per minute of data) outlier non-red team events
-            outlier_count = len(seconds) // 60
-            blue_losses = self.data["losses"][self.data["red_flags"] == 0]
-            blue_seconds = self.data["seconds"][self.data["red_flags"] == 0]
-            # Negate the list so we can pick the highest values (i.e. the lowest -ve values)
-            outlier_indices = np.argpartition(-blue_losses, outlier_count)[
-                :outlier_count
-            ]
-            blue_losses = blue_losses[outlier_indices]
-            blue_seconds = blue_seconds[outlier_indices]
-
-            if caching:
-                self.plot_losses_by_line_cache = {
-                    "plotting_data": plotting_data[:],
-                    "percentiles": percentiles[:],
-                    "smoothing": smoothing,
-                    "segments": segments[:],
-                    "blue_seconds": blue_seconds[:],
-                    "blue_losses": blue_losses[:],
-                    "red_seconds": red_seconds[:],
-                    "red_losses": red_losses[:],
-                }
-        else:
-            plotting_data = self.plot_losses_by_line_cache["plotting_data"]
-            percentiles = self.plot_losses_by_line_cache["percentiles"]
-            smoothing = self.plot_losses_by_line_cache["smoothing"]
-            segments = self.plot_losses_by_line_cache["segments"]
-            blue_seconds = self.plot_losses_by_line_cache["blue_seconds"]
-            blue_losses = self.plot_losses_by_line_cache["blue_losses"]
-            red_seconds = self.plot_losses_by_line_cache["red_seconds"]
-            red_losses = self.plot_losses_by_line_cache["red_losses"]
+        # Extract the top X (1 per minute of data) outlier non-red team events
+        outlier_count = len(seconds) // 60
+        blue_losses = self.data["losses"][self.data["red_flags"] == 0]
+        blue_seconds = self.data["seconds"][self.data["red_flags"] == 0]
+        # Negate the list so we can pick the highest values (i.e. the lowest -ve values)
+        outlier_indices = np.argpartition(-blue_losses, outlier_count)[
+            :outlier_count
+        ]
+        blue_losses = blue_losses[outlier_indices]
+        blue_seconds = blue_seconds[outlier_indices]
 
         if smoothing > 0:
             # apply the desired smoothing
