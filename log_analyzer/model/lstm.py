@@ -231,7 +231,7 @@ class Tiered_LSTM(LogModel):
         self.ctxt_h = context_h
         self.ctxt_c = context_c
         tag_output = torch.empty_like(user_sequences, dtype=torch.float).unsqueeze(
-            3).repeat(1, 1, 1, self.vocab_size)
+            3).repeat(1, 1, 1, self.config.vocab_size)
         if torch.cuda.is_available():
             tag_output = tag_output.cuda()
         # number of steps (e.g., 3), number of users (e.g., 64), lengths of sequences (e.g., 10)
