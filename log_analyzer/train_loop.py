@@ -45,12 +45,11 @@ def create_identifier_string(model_name, comment=""):
     return id
 
 
-def create_model_args(args):
-    return create_model(args.model_type, args.model_config, args.data_config, args.trainer_config, args.data_folder,
-                        args.bidirectional, args.skipsos, args.jagged)
+def init_from_args(args):
+    return init_from_config_files(args.model_type, args.model_config, args.data_config, args.trainer_config, args.data_folder,
+                                  args.bidirectional, args)
 
-
-def create_model(model_type, model_config_file, data_config_file, trainer_config_file, data_folder, bidirectional, skipsos, jagged, base_logdir='runs'):
+def init_from_config_classes(model_type, bidirectional, model_config, trainer_config: TrainerConfig, data_config: DataConfig, data_folder, base_logdir='runs'):
     """Creates a model plus trainer given the specifications in args"""
     if not os.path.isdir(base_logdir):
         os.mkdir(base_logdir)
@@ -58,8 +57,17 @@ def create_model(model_type, model_config_file, data_config_file, trainer_config
     log_dir = os.path.join(base_logdir, id_string)
     os.mkdir(log_dir)
 
-    model_config: Config = get_model_config(model_config_file, model_type)
-    trainer_config = TrainerConfig.init_from_file(trainer_config_file)
+    skipsos = False
+    tokenization_type = data_config.tokenization
+    if tokenization_type == 'char':
+        jagged = True
+    elif tokenization_type == 'word':
+        jagged = False
+        if not bidirectional:
+            skipsos = True
+    else:
+        raise RuntimeError("Invalid tokenization.")
+
     bidir = bidirectional
     trainer_config.bidirectional = bidir
     model_config.bidirectional = bidir
@@ -70,9 +78,8 @@ def create_model(model_type, model_config_file, data_config_file, trainer_config
 
     # Settings for dataloader.
 
-    data_config: DataConfig = DataConfig.init_from_file(data_config_file)
     max_input_length = data_config.sentence_length - \
-        1 - int(skipsos) + int(bidir)
+                       1 - int(skipsos) + int(bidir)
     train_days = trainer_config.train_files
     test_days = trainer_config.test_files
 
@@ -80,16 +87,27 @@ def create_model(model_type, model_config_file, data_config_file, trainer_config
     if model_type == TIERED_LSTM:
         model_config: TieredLSTMConfig = model_config
         train_loader, test_loader = data_utils.load_data_tiered(data_folder, train_days, test_days,
-                                                                trainer_config.batch_size, bidir, skipsos, jagged, max_input_length, num_steps=3, context_layers=model_config.context_layers)
+                                                                trainer_config.batch_size, bidir, skipsos, jagged,
+                                                                max_input_length, num_steps=3,
+                                                                context_layers=model_config.context_layers)
         lm_trainer = TieredTrainer(
             trainer_config, model_config, log_dir, verbose, train_loader)
     else:
         train_loader, test_loader = data_utils.load_data(data_folder, train_days, test_days,
-                                                         trainer_config.batch_size, bidir, skipsos, jagged, max_input_length)
+                                                         trainer_config.batch_size, bidir, skipsos, jagged,
+                                                         max_input_length)
         lm_trainer = LSTMTrainer(
             trainer_config, model_config, log_dir, verbose)
 
     return lm_trainer, train_loader, test_loader
+
+
+def init_from_config_files(model_type, bidirectional, model_config_file, data_config_file, trainer_config_file, data_folder, base_logdir='runs'):
+    """Creates a model plus trainer given the specifications in args"""
+    model_config = get_model_config(model_type, model_config_file)
+    data_config = DataConfig.init_from_file(data_config_file)
+    trainer_config = TrainerConfig.init_from_file(trainer_config_file)
+    return init_from_config_classes(model_type, bidirectional, model_config, trainer_config, data_config, data_folder, base_logdir)
 
 
 def train_model(lm_trainer: Trainer, train_loader, test_loader):

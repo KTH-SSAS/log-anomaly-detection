@@ -3,8 +3,9 @@ from log_analyzer.config.config import Config
 
 class DataConfig(Config):
 
-    def __init__(self, sentence_length, vocab_size, number_of_days) -> None:
+    def __init__(self, sentence_length, vocab_size, number_of_days, tokenization) -> None:
         super().__init__()
+        self.tokenization = tokenization
         self.sentence_length = sentence_length
         self.vocab_size = vocab_size
         self.number_of_days = number_of_days
