@@ -78,11 +78,11 @@ class Evaluator:
 
     def get_metrics(self):
         """Computes and returns all metrics"""
-        metrics = [
-            self.get_token_accuracy(),
-            self.get_token_perplexity(),
-            self.get_auc_score(),
-        ]
+        metrics = {
+            "token_accuracy": self.get_token_accuracy(),
+            "token_perplexity": self.get_token_perplexity(),
+            "auc_score": self.get_auc_score(),
+        }
         return metrics
 
     def get_token_accuracy(self):
@@ -116,6 +116,7 @@ class Evaluator:
         percentiles=[75, 95, 99],
         smoothing=1,
         colors=["darkorange", "gold"],
+        ylim = (-1, -1),
         caching=False,
     ):
         """Computes and plots the given (default 75/95/99) percentiles of anomaly score
@@ -125,14 +126,54 @@ class Evaluator:
         if smoothing > 0 and not smoothing % 2:
             smoothing += 1  # Ensure smoothing is odd (unless it's <= 0)
 
-        plotting_data = [[] for _ in percentiles]
-        # Create a list of losses for each second
-        seconds = np.unique(self.data["seconds"])
-        for second in tqdm(seconds):
-            losses = self.data["losses"][self.data["seconds"] == second]
-            for idx, p in enumerate(percentiles):
-                percentile_data = np.percentile(losses, p)
-                plotting_data[idx].append(percentile_data)
+        # Check whether to use the cache or compute new data
+        if (
+            not caching
+            or self.plot_losses_by_line_cache is None
+            or percentiles != self.plot_losses_by_line_cache["percentiles"]
+        ):
+            plotting_data = [[] for _ in percentiles]
+            # Create a list of losses for each second
+            seconds = np.unique(self.data["seconds"])
+            for second in tqdm(seconds):
+                losses = self.data["losses"][self.data["seconds"] == second]
+                for idx, p in enumerate(percentiles):
+                    percentile_data = np.percentile(losses, p)
+                    plotting_data[idx].append(percentile_data)
+
+            # Extract all red team events
+            red_seconds = self.data["seconds"][self.data["red_flags"] != 0]
+            red_losses = self.data["losses"][self.data["red_flags"] != 0]
+
+            # Extract the top X (1 per minute of data) outlier non-red team events
+            outlier_count = len(seconds) // 60
+            blue_losses = self.data["losses"][self.data["red_flags"] == 0]
+            blue_seconds = self.data["seconds"][self.data["red_flags"] == 0]
+            # Negate the list so we can pick the highest values (i.e. the lowest -ve values)
+            outlier_indices = np.argpartition(-blue_losses, outlier_count)[
+                :outlier_count
+            ]
+            blue_losses = blue_losses[outlier_indices]
+            blue_seconds = blue_seconds[outlier_indices]
+
+            if caching:
+                self.plot_losses_by_line_cache = {
+                    "plotting_data": plotting_data[:],
+                    "seconds": seconds[:],
+                    "percentiles": percentiles[:],
+                    "blue_seconds": blue_seconds[:],
+                    "blue_losses": blue_losses[:],
+                    "red_seconds": red_seconds[:],
+                    "red_losses": red_losses[:],
+                }
+        else:
+            plotting_data = self.plot_losses_by_line_cache["plotting_data"]
+            percentiles = self.plot_losses_by_line_cache["percentiles"]
+            seconds = self.plot_losses_by_line_cache["seconds"]
+            blue_seconds = self.plot_losses_by_line_cache["blue_seconds"]
+            blue_losses = self.plot_losses_by_line_cache["blue_losses"]
+            red_seconds = self.plot_losses_by_line_cache["red_seconds"]
+            red_losses = self.plot_losses_by_line_cache["red_losses"]
 
         if smoothing > 0:
             # apply the desired smoothing
@@ -148,19 +189,6 @@ class Evaluator:
                     smoothed_data[-(i + 1)] *= smoothing / ((smoothing + 1) / 2 + i)
                 plotting_data[idx] = smoothed_data
 
-        # Extract all red team events
-        red_seconds = self.data["seconds"][self.data["red_flags"] != 0]
-        red_losses = self.data["losses"][self.data["red_flags"] != 0]
-
-        # Extract the top X (1 per minute of data) outlier non-red team events
-        outlier_count = len(seconds) // 60
-        blue_losses = self.data["losses"][self.data["red_flags"] == 0]
-        blue_seconds = self.data["seconds"][self.data["red_flags"] == 0]
-        # Negate the list so we can pick the highest values (i.e. the lowest -ve values)
-        outlier_indices = np.argpartition(-blue_losses, outlier_count)[:outlier_count]
-        blue_losses = blue_losses[outlier_indices]
-        blue_seconds = blue_seconds[outlier_indices]
-
         # plot the percentile ranges
         for idx in range(len(plotting_data) - 1):
             plt.fill_between(
@@ -170,9 +198,10 @@ class Evaluator:
         plt.plot(blue_seconds, blue_losses, "bo", label="Outlier normal events")
         # plot the redteam events
         plt.plot(red_seconds, red_losses, "r+", label="Red team events")
-
+        if ylim[0] >= 0 and ylim[1] > 0:
+            plt.ylim(ylim)
         plt.xlabel("Time (seconds)")
-        plt.ylabel(f"Percentiles of loss {tuple(percentiles)}")
+        plt.ylabel(f"Loss, {tuple(percentiles)} percentiles")
         plt.title("Aggregate line losses by time")
 
     def plot_ROC_curve(self):
