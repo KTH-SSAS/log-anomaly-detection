@@ -127,7 +127,7 @@ class Trainer(ABC):
         if store_eval_data:
             preds = torch.argmax(output, dim=-1)
             self.evaluator.add_evaluation_data(
-                targets, preds, line_losses, batch["second"], batch["red"],
+                targets, preds, batch["user"], line_losses, batch["second"], batch["red"],
             )
 
         # Return both the loss and the output token probabilities

@@ -107,6 +107,7 @@ class TieredTrainer(Trainer):
             self.evaluator.add_evaluation_data(
                 torch.flatten(targets, end_dim=1),
                 torch.flatten(preds, end_dim=1),
+                torch.flatten(batch["user"], end_dim=1),
                 torch.flatten(line_losses, end_dim=1),
                 torch.flatten(batch["second"], end_dim=1),
                 torch.flatten(batch["red"], end_dim=1),

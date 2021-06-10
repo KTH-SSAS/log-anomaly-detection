@@ -9,9 +9,12 @@ class Evaluator:
     def __init__(self):
         """Creates an Evaluator instance that provides methods for model evaluation"""
         self.data_is_trimmed = False
+        self.data_is_normalized = False
         self.reset_evaluation_data()
 
-    def add_evaluation_data(self, log_line, predictions, losses, seconds, red_flags):
+    def add_evaluation_data(
+        self, log_line, predictions, users, losses, seconds, red_flags
+    ):
         """Extend the data stored in self.data with the inputs"""
         log_line = log_line.cpu().detach().flatten()
         predictions = predictions.cpu().detach().flatten()
@@ -20,6 +23,9 @@ class Evaluator:
         red_flags = red_flags.cpu().detach()
         # Check that there's enough space left for all the entries
         if len(self.data["losses"]) < self.index["losses"] + len(log_line):
+            self.data["users"] = np.concatenate(
+                (self.data["users"], np.zeros(1050000, float))
+            )
             self.data["losses"] = np.concatenate(
                 (self.data["losses"], np.zeros(1050000, float))
             )
@@ -31,7 +37,8 @@ class Evaluator:
             )
 
         for key, new_data in zip(
-            ["losses", "seconds", "red_flags"], [losses, seconds, red_flags],
+            ["users", "losses", "seconds", "red_flags"],
+            [users, losses, seconds, red_flags],
         ):
             self.data[key][self.index[key] : self.index[key] + len(new_data)] = new_data
             self.index[key] += len(new_data)
@@ -49,11 +56,13 @@ class Evaluator:
     def reset_evaluation_data(self):
         """Delete the stored evaluation data"""
         self.data = {
+            "users": np.zeros(0, int),
             "losses": np.zeros(0, float),
             "seconds": np.zeros(0, int),
             "red_flags": np.zeros(0, bool),
         }
         self.index = {
+            "users": 0,
             "losses": 0,
             "seconds": 0,
             "red_flags": 0,
@@ -67,6 +76,25 @@ class Evaluator:
         for key in self.data.keys():
             self.data[key] = self.data[key][: self.index[key]]
         self.data_is_trimmed = True
+
+    def normalize_losses(self):
+        """Performs user-level anomaly score normalization by subtracting the average
+        anomaly score of the user from each event (log line).
+        Mainly relevant to word tokenization"""
+        # Do not re-normalize data
+        if self.data_is_normalized:
+            return
+        # Loop over every user
+        for user in tqdm(self.data["users"]):
+            # Compute the average loss for this user
+            average_loss = np.average(self.data["losses"][self.data["users"] == user])
+            # Normalize the losses
+            self.data["losses"] = np.where(
+                self.data["users"] == user, # For the indices of losses where user == user
+                self.data["losses"] - average_loss, # set the loss equal to normalized loss
+                self.data["losses"], # otherwise don't change the loss
+            )
+        self.data_is_normalized = True
 
     def get_metrics(self):
         """Computes and returns all metrics"""
