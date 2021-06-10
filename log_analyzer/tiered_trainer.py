@@ -29,10 +29,7 @@ class TieredTrainer(Trainer):
                 skip_len = 2 if self.bidirectional else 0
                 token_losses = self.criterion(
                     step_output.transpose(1, 2), true_y[:, :max(lengths)-skip_len])
-                try:
-                    masked_losses = token_losses * mask[i, :max(lengths-skip_len)]
-                except IndexError: # This seems to happen when the batch size is 1:
-                    masked_losses = token_losses * mask[:max(lengths-skip_len)]
+                masked_losses = token_losses * mask[i][:max(lengths-skip_len)]
                 line_losses = torch.sum(masked_losses, dim=1)
             else:
                 token_losses = self.criterion(
