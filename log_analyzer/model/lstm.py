@@ -235,7 +235,7 @@ class Tiered_LSTM(LogModel):
             tag_output = tag_output.cuda()
         # number of steps (e.g., 3), number of users (e.g., 64), lengths of sequences (e.g., 10)
         for idx, sequences in enumerate(user_sequences):
-            length = None if lengths is None else lengths[idx]
+            length = None if lengths is None else lengths
             tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
                 sequences, lengths=length, context_vectors=self.ctxt_vector)
             if self.bid:
