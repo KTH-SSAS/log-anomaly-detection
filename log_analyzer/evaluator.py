@@ -202,15 +202,30 @@ class Evaluator:
         plt.ylabel(f"Loss, {tuple(percentiles)} percentiles")
         plt.title("Aggregate line losses by time")
 
-    def plot_ROC_curve(self):
+    def plot_ROC_curve(self, xaxis="FPR"):
         """Plots the ROC (Receiver Operating Characteristic) curve, i.e. TP-FP tradeoff
-        Also returns the corresponding auc score"""
+        Also returns the corresponding auc score. Options for xaxis are:
+        'FPR': False-positive rate. The default.
+        'alerts': # of alerts per second (average) the FPR would be equivalent to.
+        'alerts-FPR': What % of produced alerts would be false alerts."""
         if not self.data_is_trimmed:
             self.trim_evaluation_data()
         fp_rate, tp_rate, _ = metrics.roc_curve(
             self.data["red_flags"], self.data["losses"], pos_label=1
         )
         auc_score = self.get_auc_score()
+        red_flag_count = sum(self.data["red_flags"])
+        non_red_flag_count = len(self.data["red_flags"]) - red_flag_count
+        xlabel = "False Positive Rate"
+        if xaxis.lower() == "alerts":
+            # Multiply the fp_rate by the number of events in the eval set to convert
+            # fp_rate into fp's per second
+            fp_rate *= red_flag_count
+            xlabel += " - Alerts per second"
+        elif xaxis.lower() == "alerts-fpr":
+            total_alerts = fp_rate * non_red_flag_count + tp_rate * red_flag_count
+            fp_rate = tp_rate * red_flag_count / total_alerts
+            xlabel += " - Precision"
         plt.plot(
             fp_rate,
             tp_rate,
@@ -219,7 +234,7 @@ class Evaluator:
             label=f"ROC curve (area = {auc_score:.2f})",
         )
         plt.plot([0, 1], [0, 1], lw=2, linestyle="--")
-        plt.xlabel("False Positive Rate")
+        plt.xlabel(xlabel)
         plt.ylabel("True Positive Rate")
         plt.title("Receiver Operating Characteristic curve")
         plt.legend()
