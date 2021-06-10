@@ -231,33 +231,28 @@ class Tiered_LSTM(LogModel):
         self.ctxt_vector = context_vectors
         self.ctxt_h = context_h
         self.ctxt_c = context_c
-        tag_output = torch.empty_like(user_sequences, dtype=torch.float).unsqueeze(
-            3).repeat(1, 1, 1, self.config.vocab_size)
+        if lengths is None:
+            tag_output = torch.empty_like(user_sequences, dtype=torch.float)
+        else:
+            tag_output = torch.empty((user_sequences.shape[0], user_sequences.shape[1], torch.max(lengths)), dtype=torch.float)
+
+        tag_output = tag_output.unsqueeze(
+                3).repeat(1, 1, 1, self.config.vocab_size)
+
         if torch.cuda.is_available():
             tag_output = tag_output.cuda()
         # number of steps (e.g., 3), number of users (e.g., 64), lengths of sequences (e.g., 10)
-        if lengths is None:
-            for idx, sequences in enumerate(user_sequences):
-                tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
-                    sequences, lengths=lengths, context_vectors=self.ctxt_vector)
-                if self.bid:
-                    final_hidden = final_hidden.view(
-                        1, final_hidden.shape[1], -1)
-                self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
-                    low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len=lengths)
-                tag_output[idx] = tag_size
-                self.ctxt_vector = torch.squeeze(self.ctxt_vector, dim=1)
-        else:
-            for idx, (sequences, length) in enumerate(zip(user_sequences, lengths)):
-                tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
-                    sequences, lengths=length, context_vectors=self.ctxt_vector)
-                if self.bid:
-                    final_hidden = final_hidden.view(
-                        1, final_hidden.shape[1], -1)
-                self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
-                    low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len=length)
-                tag_output[idx] = tag_size
-                self.ctxt_vector = torch.squeeze(self.ctxt_vector, dim=1)
+        for idx, sequences in enumerate(user_sequences):
+            length = None if lengths is None else lengths[idx]
+            tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
+                sequences, lengths=length, context_vectors=self.ctxt_vector)
+            if self.bid:
+                final_hidden = final_hidden.view(
+                    1, final_hidden.shape[1], -1)
+            self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
+                low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len=length)
+            tag_output[idx] = tag_size
+            self.ctxt_vector = torch.squeeze(self.ctxt_vector, dim=1)
         return tag_output, self.ctxt_vector, self.ctxt_h, self.ctxt_c
 
 
