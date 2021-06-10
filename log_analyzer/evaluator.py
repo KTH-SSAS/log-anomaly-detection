@@ -85,15 +85,14 @@ class Evaluator:
         if self.data_is_normalized:
             return
         # Loop over every user
-        for user in tqdm(self.data["users"]):
+        average_losses = np.ones_like(self.data["losses"])
+        for user in tqdm(np.unique(self.data["users"])):
+            user_indices = self.data["users"] == user
             # Compute the average loss for this user
-            average_loss = np.average(self.data["losses"][self.data["users"] == user])
-            # Normalize the losses
-            self.data["losses"] = np.where(
-                self.data["users"] == user, # For the indices of losses where user == user
-                self.data["losses"] - average_loss, # set the loss equal to normalized loss
-                self.data["losses"], # otherwise don't change the loss
-            )
+            average_loss = np.average(self.data["losses"][user_indices])
+            average_losses[user_indices] = average_loss
+        # Apply the normalization
+        self.data["losses"] *= average_losses
         self.data_is_normalized = True
 
     def get_metrics(self):
