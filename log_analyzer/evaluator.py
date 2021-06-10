@@ -109,7 +109,6 @@ class Evaluator:
         smoothing=1,
         colors=["darkorange", "gold"],
         ylim=(-1, -1),
-        caching=False,
     ):
         """Computes and plots the given (default 75/95/99) percentiles of anomaly score
         (loss) by line for each second. Smoothing indicates how many seconds are processed
@@ -127,9 +126,7 @@ class Evaluator:
             if idx == len(segments) - 1:
                 segment_end = len(self.data["losses"])
             else:
-                segment_end = np.searchsorted(
-                    self.data["seconds"], segments[idx + 1]
-                )
+                segment_end = np.searchsorted(self.data["seconds"], segments[idx + 1])
             segment_losses = self.data["losses"][segment_start:segment_end]
             for perc_idx, p in enumerate(percentiles):
                 percentile_data = np.percentile(segment_losses, p)
@@ -144,9 +141,7 @@ class Evaluator:
         blue_losses = self.data["losses"][self.data["red_flags"] == 0]
         blue_seconds = self.data["seconds"][self.data["red_flags"] == 0]
         # Negate the list so we can pick the highest values (i.e. the lowest -ve values)
-        outlier_indices = np.argpartition(-blue_losses, outlier_count)[
-            :outlier_count
-        ]
+        outlier_indices = np.argpartition(-blue_losses, outlier_count)[:outlier_count]
         blue_losses = blue_losses[outlier_indices]
         blue_seconds = blue_seconds[outlier_indices]
 
