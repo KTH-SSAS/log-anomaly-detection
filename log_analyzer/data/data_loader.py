@@ -226,8 +226,7 @@ class OnlineLMBatcher:
                             'c_state_init': torch.transpose(h_state, 0, 1),
                             'h_state_init': torch.transpose(c_state, 0, 1)}  # state_triple['h_state_init']}
                 if self.jagged:
-                    datadict['length'] = [batch[0, :, 5] -
-                                            int(self.skipsos)] * self.num_steps
+                    datadict['length'] = torch.LongTensor(batch[0, :, 5] - int(self.skipsos)).repeat(1, self.num_steps)               
                     datadict['mask'] = [get_mask(seq_length.view(-1, 1) - 2 * self.bidir, self.sentence_length - 2 * self.bidir) for
                                         seq_length in datadict['length']]            
                 yield datadict
