@@ -92,7 +92,7 @@ class Evaluator:
             average_loss = np.average(self.data["losses"][user_indices])
             average_losses[user_indices] = average_loss
         # Apply the normalization
-        self.data["losses"] *= average_losses
+        self.data["losses"] -= average_losses
         self.data_is_normalized = True
 
     def get_metrics(self):
