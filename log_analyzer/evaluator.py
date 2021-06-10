@@ -172,20 +172,6 @@ class Evaluator:
         blue_losses = blue_losses[outlier_indices]
         blue_seconds = blue_seconds[outlier_indices]
 
-        if smoothing > 0:
-            # apply the desired smoothing
-            for idx, _ in enumerate(plotting_data):
-                smoothed_data = (
-                    np.convolve(plotting_data[idx], np.ones(smoothing), "same")
-                    / smoothing
-                )
-                # Adjust the first and last (smoothing-1)/2 entries to avoid boundary effects
-                for i in range(int((smoothing - 1) / 2)):
-                    # The first and last few entries are only averaged over (smoothing+1)/2 + i entries
-                    smoothed_data[i] *= smoothing / ((smoothing + 1) / 2 + i)
-                    smoothed_data[-(i + 1)] *= smoothing / ((smoothing + 1) / 2 + i)
-                plotting_data[idx] = smoothed_data
-
         # plot the percentile ranges
         for idx in range(len(plotting_data) - 1):
             plt.fill_between(
