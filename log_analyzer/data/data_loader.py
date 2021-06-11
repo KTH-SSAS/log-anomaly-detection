@@ -230,16 +230,17 @@ class OnlineLMBatcher:
                             'day': batch[:, :, 2],
                             'user': batch[:, :, 3],
                             'red': batch[:, :, 4],
-                            'x': batch[0, :, 5 + self.jagged + self.skipsos:endx].repeat(self.num_steps, 1, 1),
-                            't': batch[0, :, 6 + self.jagged + self.skipsos:endt].repeat(self.num_steps, 1, 1),
+                            'x': batch[:, :, 5 + self.jagged + self.skipsos:endx],
+                            't': batch[:, :, 6 + self.jagged + self.skipsos:endt],
                             'context_vector': ctxt_vector,
                             'c_state_init': torch.transpose(h_state, 0, 1),
                             'h_state_init': torch.transpose(c_state, 0, 1)}  # state_triple['h_state_init']}
                 if self.jagged:
-                    datadict['length'] = torch.LongTensor(batch[0, :, 5] - int(self.skipsos))
-                    datadict['mask'] = torch.empty(datadict['x'].shape[1], datadict['x'].shape[-1])
-                    for i, seq_length in enumerate(datadict['length']):
-                        datadict['mask'][i] = get_mask(seq_length.view(-1, 1) - 2 * self.bidir, self.sentence_length - 2 * self.bidir)
+                    datadict['length'] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos))
+                    datadict['mask'] = torch.empty(datadict['length'].shape[0], datadict['x'].shape[1], datadict['x'].shape[-1] - 2 * self.bidir)
+                    for i, seq_len_matrix in enumerate(datadict['length']):
+                        for j, seq_length in enumerate(seq_len_matrix):
+                            datadict['mask'][i,j,:] = get_mask(seq_length.view(-1, 1) - 2 * self.bidir, self.sentence_length - 2 * self.bidir)
                 yield datadict
 
     def load_lines(self):

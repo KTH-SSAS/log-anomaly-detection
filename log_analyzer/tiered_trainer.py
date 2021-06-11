@@ -32,12 +32,11 @@ class TieredTrainer(Trainer):
         # output (num_steps x batch x length x embedding dimension)  Y (num_steps x batch x length)
         for i, (step_output, true_y) in enumerate(zip(output, Y)):
             if self.jagged:  # On notebook, I checked it with forward LSTM and word tokenization. Further checks have to be done...
-                skip_len = 2 if self.bidirectional else 0
-                i_target = true_y[:, :max(lengths)-skip_len]
+                i_target = true_y[:, :torch.max(lengths)]
                 targets[i] = i_target
                 token_losses = self.criterion(
                     step_output.transpose(1, 2), i_target)
-                masked_losses = token_losses * mask[:, :max(lengths-skip_len)]
+                masked_losses = token_losses * mask[i][:, :torch.max(lengths)]
                 line_losses = torch.sum(masked_losses, dim=1)
             else:
                 token_losses = self.criterion(step_output.transpose(1, 2), true_y)
