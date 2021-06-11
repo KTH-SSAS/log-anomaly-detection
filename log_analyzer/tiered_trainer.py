@@ -3,7 +3,8 @@ from log_analyzer.config.model_config import TieredLSTMConfig
 import torch
 from log_analyzer.trainer import Trainer
 from log_analyzer.model.lstm import Tiered_LSTM
-from log_analyzer.data.data_loader import OnlineLMBatcher 
+from log_analyzer.data.data_loader import OnlineLMBatcher
+
 
 class TieredTrainer(Trainer):
     """Trainer class for tiered LSTM model"""
@@ -13,7 +14,7 @@ class TieredTrainer(Trainer):
             raise RuntimeError("Model not intialized!")
         return self.lstm
 
-    def __init__(self, config : TrainerConfig, lstm_config : TieredLSTMConfig, checkpoint_dir, verbose, data_handler):
+    def __init__(self, config: TrainerConfig, lstm_config: TieredLSTMConfig, checkpoint_dir, verbose, data_handler):
 
         self.lstm = Tiered_LSTM(lstm_config)
         self.data_handler = data_handler
@@ -60,7 +61,8 @@ class TieredTrainer(Trainer):
         self.optimizer.zero_grad()
 
         # Split the batch into input, ground truth, etc.
-        X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(batch)
+        X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(
+            batch)
 
         # Apply the model to input to produce the output
         output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(
@@ -81,7 +83,8 @@ class TieredTrainer(Trainer):
         self.model.eval()
 
         # Split the batch into input, ground truth, etc.
-        X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(batch)
+        X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(
+            batch)
 
         # Apply the model to input to produce the output
         output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(

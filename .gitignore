@@ -145,3 +145,6 @@ cython_debug/
 
 # Model runs
 runs/
+
+# Pycharm Directory
+.idea
