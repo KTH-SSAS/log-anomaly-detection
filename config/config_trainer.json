@@ -1,16 +1,11 @@
 {
-	"data_config": {
-		"train_files": [
-			"0head.txt",
-			"1head.txt"
-		],
-		"test_files": [
-			"2head.txt"
-		],
-		"sentence_length": 12,
-		"vocab_size": 28199,
-		"number_of_days": 30
-	},
+	"train_files": [
+		"0.txt",
+		"1.txt"
+	],
+	"test_files": [
+		"2.txt"
+	],
 	"bidirectional": false,
 	"batch_size": 15,
 	"learning_rate": 0.001,

@@ -3,7 +3,8 @@ from log_analyzer.config.model_config import TieredLSTMConfig
 import torch
 from log_analyzer.trainer import Trainer
 from log_analyzer.model.lstm import Tiered_LSTM
-from log_analyzer.data.data_loader import OnlineLMBatcher 
+from log_analyzer.data.data_loader import OnlineLMBatcher
+
 
 
 class TieredTrainer(Trainer):
@@ -15,7 +16,7 @@ class TieredTrainer(Trainer):
             raise RuntimeError("Model not intialized!")
         return self.lstm
 
-    def __init__(self, config : TrainerConfig, lstm_config : TieredLSTMConfig, checkpoint_dir, verbose, data_handler):
+    def __init__(self, config: TrainerConfig, lstm_config: TieredLSTMConfig, checkpoint_dir, verbose, data_handler):
 
         self.lstm = Tiered_LSTM(lstm_config)
         self.data_handler = data_handler
@@ -32,11 +33,11 @@ class TieredTrainer(Trainer):
         for i, (step_output, true_y) in enumerate(zip(output, Y)):
             if self.jagged:  # On notebook, I checked it with forward LSTM and word tokenization. Further checks have to be done...
                 skip_len = 2 if self.bidirectional else 0
-                i_target = true_y[:, :max(lengths[i])-skip_len]
+                i_target = true_y[:, :max(lengths)-skip_len]
                 targets[i] = i_target
                 token_losses = self.criterion(
                     step_output.transpose(1, 2), i_target)
-                masked_losses = token_losses * mask[i][:, :max(lengths[i]-skip_len)]
+                masked_losses = token_losses * mask[:, :max(lengths-skip_len)]
                 line_losses = torch.sum(masked_losses, dim=1)
             else:
                 token_losses = self.criterion(step_output.transpose(1, 2), true_y)
@@ -69,7 +70,8 @@ class TieredTrainer(Trainer):
         self.optimizer.zero_grad()
 
         # Split the batch into input, ground truth, etc.
-        X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(batch)
+        X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(
+            batch)
 
         # Apply the model to input to produce the output
         output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(
@@ -90,7 +92,8 @@ class TieredTrainer(Trainer):
         self.model.eval()
 
         # Split the batch into input, ground truth, etc.
-        X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(batch)
+        X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(
+            batch)
 
         # Apply the model to input to produce the output
         output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(
