@@ -6,13 +6,14 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from typing import Tuple
 
-def generate_mask(seq_len, hidden_dim):
+def generate_mask(seq_len, hidden_dim, use_cuda=False):
     """Generate mask for unidirectional attention"""
     mask = torch.triu(torch.ones(hidden_dim, seq_len, seq_len))
+    mask = mask.cuda() if use_cuda else mask
     return mask.unsqueeze(0)  # Unsqueeze to allow broadcasting over batch
 
 
-def generate_softmax_mask(seq_len):
+def generate_softmax_mask(seq_len, use_cuda=False):
     """
     Generate mask that prevents the zeros in a lower triangular matrix from being counted when applying the softmax function.
     Creates a matrix where the lower diagonal are zeros, and the upper diagonal are -inf (to make e^x 0).
@@ -23,15 +24,17 @@ def generate_softmax_mask(seq_len):
         0   0    0 
 
     """
-    softmax_mask = ((torch.tril(torch.ones(seq_len, seq_len),
+    softmax_mask: torch.Tensor = ((torch.tril(torch.ones(seq_len, seq_len),
                     diagonal=0) != 1) * -float('inf')).nan_to_num(nan=0)
+    softmax_mask = softmax_mask.cuda() if use_cuda else softmax_mask
     return softmax_mask
 
 class SelfAttention(nn.Module):
     """Self-attention (mostly as described in Brown paper)"""
 
-    def __init__(self, hidden_dim, attention_dim, attention_type, seq_len=None):
+    def __init__(self, hidden_dim, attention_dim, attention_type, seq_len=None, use_cuda=False):
         super().__init__()
+        self.use_cuda = use_cuda
         self.w_a = nn.Parameter(torch.Tensor(hidden_dim, attention_dim))
         # TODO add the other types
         self.attention_type = attention_type
@@ -43,12 +46,22 @@ class SelfAttention(nn.Module):
             self.query = nn.Parameter(torch.Tensor(seq_len, attention_dim))
         elif attention_type == 'semantic':
             self.query = nn.Parameter(torch.Tensor(hidden_dim, attention_dim))
+        
+        if seq_len is not None: # If the input length is fixed, we can cache the masks
+            self.input_mask = generate_mask(seq_len, hidden_dim)
+            self.softmax_mask = generate_softmax_mask(seq_len)
+        else:
+            self.input_mask = None
+            self.softmax_mask = None
 
     def forward(self, x: torch.Tensor):
         """Calculate attention weights for input sequence"""
+
+        use_cuda = torch.cuda.is_available()
+
         seq_len = x.shape[1]
         if self.attention_type == 'fixed': # For fixed attention, the hidden states are replicated and masked in order to get an attention matrix of size LxL
-            mask = generate_mask(seq_len, hidden_dim=x.shape[-1])
+            mask = generate_mask(seq_len, hidden_dim=x.shape[-1], use_cuda=use_cuda) if self.input_mask is None else self.input_mask
             x_repeat = x.unsqueeze(1).repeat(1, seq_len, 1, 1)
             x_masked = torch.mul(mask, x_repeat.transpose(1, -1))
             values = x_masked.transpose(1, -1)
@@ -64,7 +77,7 @@ class SelfAttention(nn.Module):
 
         temp = torch.matmul(q, key.transpose(-2, -1))
 
-        softmax_mask = generate_softmax_mask(seq_len)
+        softmax_mask = generate_softmax_mask(seq_len, use_cuda=use_cuda) if self.softmax_mask is None else self.softmax_mask #Use cached mask for fixed length seqs
 
         temp = temp + softmax_mask
 
