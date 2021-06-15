@@ -51,7 +51,7 @@ def init_from_args(args):
         args.model_config, args.data_config,
         args.trainer_config, args.data_folder)
 
-def init_from_config_classes(model_type, bidirectional, model_config, trainer_config: TrainerConfig, data_config: DataConfig, data_folder, base_logdir='runs'):
+def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig, trainer_config: TrainerConfig, data_config: DataConfig, data_folder, base_logdir='runs'):
     """Creates a model plus trainer given the specifications in args"""
     if not os.path.isdir(base_logdir):
         os.mkdir(base_logdir)
@@ -84,6 +84,12 @@ def init_from_config_classes(model_type, bidirectional, model_config, trainer_co
                        1 - int(skipsos) + int(bidir)
     train_days = trainer_config.train_files
     test_days = trainer_config.test_files
+
+    if data_config.tokenization == 'word':
+        if model_config.sequence_length is not None and model_config.sequence_length != max_input_length:
+            raise RuntimeError('Sequence length from model configuration does not match sequence length from data file.')
+        else:
+            model_config.sequence_length = max_input_length
 
     # Settings for LSTM.
     if model_type == TIERED_LSTM:
