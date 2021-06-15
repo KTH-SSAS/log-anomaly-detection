@@ -187,7 +187,7 @@ class Evaluator:
         plt.ylabel(f"Loss, {tuple(percentiles)} percentiles")
         plt.title("Aggregate line losses by time")
 
-    def plot_ROC_curve(self, xaxis="FPR"):
+    def plot_roc_curve(self, color="orange", xaxis="FPR"):
         """Plots the ROC (Receiver Operating Characteristic) curve, i.e. TP-FP tradeoff
         Also returns the corresponding auc score. Options for xaxis are:
         'FPR': False-positive rate. The default.
@@ -214,11 +214,12 @@ class Evaluator:
         plt.plot(
             fp_rate,
             tp_rate,
-            color="orange",
+            color=color,
             lw=2,
             label=f"ROC curve (area = {auc_score:.2f})",
         )
-        plt.plot([0, 1], [0, 1], lw=2, linestyle="--")
+        if xaxis.lower() == "FPR":
+            plt.plot([0, 1], [0, 1], lw=2, linestyle="--")
         plt.xlabel(xlabel)
         plt.ylabel("True Positive Rate")
         plt.title("Receiver Operating Characteristic curve")
