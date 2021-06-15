@@ -32,9 +32,9 @@ def generate_softmax_mask(seq_len, use_cuda=False):
 class SelfAttention(nn.Module):
     """Self-attention (mostly as described in Brown paper)"""
 
-    def __init__(self, hidden_dim, attention_dim, attention_type, seq_len=None, use_cuda=False):
+    def __init__(self, hidden_dim, attention_dim, attention_type, seq_len=None):
         super().__init__()
-        self.use_cuda = use_cuda
+        self.use_cuda = torch.cuda.is_available()
         self.w_a = nn.Parameter(torch.Tensor(hidden_dim, attention_dim))
         # TODO add the other types
         self.attention_type = attention_type
@@ -48,8 +48,8 @@ class SelfAttention(nn.Module):
             self.query = nn.Parameter(torch.Tensor(hidden_dim, attention_dim))
         
         if seq_len is not None: # If the input length is fixed, we can cache the masks
-            self.input_mask = generate_mask(seq_len, hidden_dim)
-            self.softmax_mask = generate_softmax_mask(seq_len)
+            self.input_mask = generate_mask(seq_len, hidden_dim, self.use_cuda)
+            self.softmax_mask = generate_softmax_mask(seq_len, self.use_cuda)
         else:
             self.input_mask = None
             self.softmax_mask = None
@@ -57,7 +57,7 @@ class SelfAttention(nn.Module):
     def forward(self, x: torch.Tensor):
         """Calculate attention weights for input sequence"""
 
-        use_cuda = torch.cuda.is_available()
+        use_cuda = self.use_cuda
 
         seq_len = x.shape[1]
         if self.attention_type == 'fixed': # For fixed attention, the hidden states are replicated and masked in order to get an attention matrix of size LxL
