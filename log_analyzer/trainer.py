@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from log_analyzer.model.lstm import Fwd_LSTM, Bid_LSTM, LogModel
 import log_analyzer.model.early_stopping as early_stopping
+from log_analyzer.evaluator import Evaluator
 from abc import ABC, abstractmethod
 
 # TODO name this something more descriptive, it might be used as a wrapper around both transformer/LSTM
@@ -38,25 +39,33 @@ class Trainer(ABC):
             self.model.parameters(), lr=config.learning_rate)
         self.scheduler = torch.optim.lr_scheduler.StepLR(
             self.optimizer, step_size=config.scheduler_step_size, gamma=config.scheduler_gamma)
+        # Create evaluator
+        self.evaluator = Evaluator()
 
     def compute_loss(self, output, Y, lengths, mask):
         """Computes the loss for the given model output and ground truth."""
         if self.jagged:
             if self.bidirectional:
+                targets = Y[:, 1 : max(lengths) - 1]
                 token_losses = self.criterion(
-                    output.transpose(1, 2), Y[:, 1:max(lengths)-1])
-                masked_losses = token_losses * mask[:, 1:max(lengths)-1]
+                    output.transpose(1, 2), targets
+                )
+                masked_losses = token_losses * mask[:, 1 : max(lengths) - 1]
             else:
+                targets = Y[:, :max(lengths)]
                 token_losses = self.criterion(
-                    output.transpose(1, 2), Y[:, :max(lengths)])
-                masked_losses = token_losses * mask[:, :max(lengths)]
+                    output.transpose(1, 2), targets
+                )
+                masked_losses = token_losses * mask[:, : max(lengths)]
             line_losses = torch.sum(masked_losses, dim=1)
         else:
+            targets = Y
             token_losses = self.criterion(output.transpose(1, 2), Y)
             line_losses = torch.mean(token_losses, dim=1)
         loss = torch.mean(line_losses, dim=0)
 
-        return loss
+        # Return the loss, as well as extra details like loss per line
+        return loss, line_losses, targets
 
     def optimizer_step(self, loss):
         """Performs one step of optimization on the given loss."""
@@ -93,18 +102,17 @@ class Trainer(ABC):
         X, Y, L, M = self.split_batch(batch)
 
         # Apply the model to input to produce the output
-        output, _, _ = self.model(X, lengths=L)
+        output, *_ = self.model(X, lengths=L)
 
         # Compute the loss for the output
-        loss = self.compute_loss(
-            output, Y, lengths=L, mask=M)
+        loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
 
         # Take an optimization step based on the loss
         self.optimizer_step(loss)
 
         return loss, self.early_stopping.early_stop
 
-    def eval_step(self, batch):
+    def eval_step(self, batch, store_eval_data=False):
         """Defines a single evaluation step. Feeds data through the model and computes the loss."""
         # TODO add more metrics, like perplexity.
         self.model.eval()
@@ -113,11 +121,17 @@ class Trainer(ABC):
         X, Y, L, M = self.split_batch(batch)
 
         # Apply the model to input to produce the output
-        output, _, _ = self.model(X, lengths=L)
+        output, *_ = self.model(X, lengths=L)
 
         # Compute the loss for the output
-        loss = self.compute_loss(
-            output, Y, lengths=L, mask=M)
+        loss, line_losses, targets = self.compute_loss(output, Y, lengths=L, mask=M)
+
+        # Save the results if desired
+        if store_eval_data:
+            preds = torch.argmax(output, dim=-1)
+            self.evaluator.add_evaluation_data(
+                targets, preds, batch["user"], line_losses, batch["second"], batch["red"],
+            )
 
         # Return both the loss and the output token probabilities
         return loss, output
