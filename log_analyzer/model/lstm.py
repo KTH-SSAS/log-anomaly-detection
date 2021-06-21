@@ -58,7 +58,7 @@ class LSTMLanguageModel(LogModel):
         # If LSTM is using attention, its hidden states will be even wider.
         if config.attention_type is not None:
             self.attention = SelfAttention(
-                fc_input_dim, config.attention_dim, attention_type=config.attention_type)
+                fc_input_dim, config.attention_dim, attention_type=config.attention_type, seq_len=config.sequence_length)
             fc_input_dim *= 2
         else:
             self.attention = None
@@ -115,7 +115,7 @@ class Fwd_LSTM(LSTMLanguageModel):
 
         if self.attention is not None:
             attention, _ = self.attention(lstm_out)
-            output = torch.cat((lstm_out, attention.squeeze()), dim=-1)
+            output = torch.cat((lstm_out, attention), dim=-1)
         else:
             output = lstm_out
 

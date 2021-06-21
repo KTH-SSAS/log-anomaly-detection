@@ -13,6 +13,8 @@ from torch.utils.tensorboard import SummaryWriter
 import log_analyzer.data.data_loader as data_utils
 from log_analyzer.trainer import LSTMTrainer, Trainer
 from log_analyzer.tiered_trainer import TieredTrainer
+from tqdm.notebook import tqdm
+
 try:
     import torch
 except ImportError:
@@ -51,7 +53,7 @@ def init_from_args(args):
         args.model_config, args.data_config,
         args.trainer_config, args.data_folder)
 
-def init_from_config_classes(model_type, bidirectional, model_config, trainer_config: TrainerConfig, data_config: DataConfig, data_folder, base_logdir='runs'):
+def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig, trainer_config: TrainerConfig, data_config: DataConfig, data_folder, base_logdir='runs'):
     """Creates a model plus trainer given the specifications in args"""
     if not os.path.isdir(base_logdir):
         os.mkdir(base_logdir)
@@ -85,6 +87,12 @@ def init_from_config_classes(model_type, bidirectional, model_config, trainer_co
     train_days = trainer_config.train_files
     test_days = trainer_config.test_files
 
+    if data_config.tokenization == 'word':
+        if model_config.sequence_length is not None and model_config.sequence_length != max_input_length:
+            raise RuntimeError('Sequence length from model configuration does not match sequence length from data file.')
+        else:
+            model_config.sequence_length = max_input_length
+
     # Settings for LSTM.
     if model_type == TIERED_LSTM:
         model_config: TieredLSTMConfig = model_config
@@ -112,7 +120,7 @@ def init_from_config_files(model_type, bidirectional, model_config_file, data_co
     return init_from_config_classes(model_type, bidirectional, model_config, trainer_config, data_config, data_folder, base_logdir)
 
 
-def train_model(lm_trainer: Trainer, train_loader, test_loader):
+def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=False):
     """Perform 1 epoch of training on lm_trainer"""
 
     outfile = None
@@ -121,7 +129,7 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader):
     writer = SummaryWriter(os.path.join(log_dir, 'metrics'))
 
     train_losses = []
-    for iteration, batch in enumerate(train_loader):
+    for iteration, batch in enumerate(tqdm(train_loader)):
         if lm_trainer is TieredTrainer:
             if train_loader.flush is False:
                 loss, done = lm_trainer.train_step(batch)
@@ -138,8 +146,8 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader):
             break
 
     test_losses = []
-    for iteration, batch in enumerate(test_loader):
-        loss, *_ = lm_trainer.eval_step(batch)
+    for iteration, batch in enumerate(tqdm(test_loader)):
+        loss, *_ = lm_trainer.eval_step(batch, store_eval_data)
         test_losses.append(loss.item())
         writer.add_scalar(f'Loss/test_day_{batch["day"][0]}', loss, iteration)
 

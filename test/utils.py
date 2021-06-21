@@ -1,6 +1,8 @@
 from log_analyzer.config.trainer_config import DataConfig, TrainerConfig
 from log_analyzer.config.model_config import LSTMConfig, TieredLSTMConfig
 from log_analyzer.train_loop import get_model_config
+from log_analyzer.train_loop import init_from_config_classes, train_model
+
 def set_args(bidir, model_type, token_level):
     """Prepares a dictionary of settings that can be used for testing."""
     # Common args (defaults, can be changed)
@@ -22,3 +24,8 @@ def set_args(bidir, model_type, token_level):
 
     # Return the prepared args
     return args
+
+def run_test(args):
+    trainer, train_loader, test_loader = init_from_config_classes(**args)
+    train_losses, test_losses = train_model(trainer, train_loader, test_loader)
+    return train_losses, test_losses
