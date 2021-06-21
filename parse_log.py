@@ -44,18 +44,46 @@ if __name__ == '__main__':
         tokenizer.count_words()
         tokenizer.tokenize()
 
+"""
+1. For char-level tokenization:
 
-# For char-level tokenization:
-# python parse_log.py 
-# --char_lv 
-# -authfile data/auth_h.txt 
-# -redfile data/redteam.txt 
-# -outpath log-data-ml/parsed_data/char_token/ 
-# -recordpath log-data-ml/parsed_data/char_token/records/
+    python parse_log.py
+    --type char_level
+    -authfile data/auth.txt
+    -redfile data/redteam.txt
+    -outpath parsed_data/char_token/
+    -recordpath parsed_data/char_token/records/
+    -max_lines 1000
                     
-# For word-level tokenization:
-# python parse_log.py
-# -authfile data/auth_h.txt 
-# -redfile data/redteam.txt
-# -outpath log-data-ml/parsed_data/word_token/
-# -recordpath log-data-ml/parsed_data/word_token/records/
+2. For word-level tokenization, there are three settings:
+
+    a. Only counting the occurences of words and generating json files of occurences:
+
+        python parse_log.py
+        --type word_level_count
+        -authfile data/auth.txt
+        -redfile data/redteam.txt
+        -outpath parsed_data/word_token/
+        -recordpath parsed_data/word_token/records/
+        -max_lines 1000
+
+    b. Reading the json files of occurences and running translation:
+
+        python parse_log.py
+        --type word_level_translate
+        -authfile data/auth.txt
+        -redfile data/redteam.txt
+        -outpath parsed_data/word_token/
+        -recordpath parsed_data/word_token/records/
+        -max_lines 1000
+
+    c. Run a whole code from beginning to end:
+
+        python parse_log.py
+        --type word_level_both
+        -authfile data/auth.txt
+        -redfile data/redteam.txt
+        -outpath parsed_data/word_token/
+        -recordpath parsed_data/word_token/records/
+        -max_lines 1000 
+"""
