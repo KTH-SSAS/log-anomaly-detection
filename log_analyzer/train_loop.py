@@ -13,7 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 import log_analyzer.data.data_loader as data_utils
 from log_analyzer.trainer import LSTMTrainer, Trainer
 from log_analyzer.tiered_trainer import TieredTrainer
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 
 try:
     import torch
