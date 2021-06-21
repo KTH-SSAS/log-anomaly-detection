@@ -45,7 +45,10 @@ if __name__ == '__main__':
         tokenizer.tokenize()
 
 """
-1. For char-level tokenization:
+In order to run it for the initial *n* lines of the file, you need to specify the number of lines you want to process after -max_lines.
+If you want to run the below code for an entire file, you need to remove the line starts with -max_lines.
+
+1. For char-level tokenization: 
 
     python parse_log.py
     --type char_level
@@ -53,7 +56,7 @@ if __name__ == '__main__':
     -redfile data/redteam.txt
     -outpath parsed_data/char_token/
     -recordpath parsed_data/char_token/records/
-    -max_lines 1000
+    -max_lines 1000 
                     
 2. For word-level tokenization, there are three settings:
 
