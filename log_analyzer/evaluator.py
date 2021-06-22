@@ -40,7 +40,7 @@ class Evaluator:
             ["users", "losses", "seconds", "red_flags"],
             [users, losses, seconds, red_flags],
         ):
-            self.data[key][self.index[key] : self.index[key] + len(new_data)] = new_data
+            self.data[key][self.index[key]: self.index[key] + len(new_data)] = new_data
             self.index[key] += len(new_data)
 
         # Compute the token accuracy for this batch
@@ -136,6 +136,8 @@ class Evaluator:
         smoothing=1,
         colors=["darkorange", "gold"],
         ylim=(-1, -1),
+        outliers=60,
+        legend=True
     ):
         """Computes and plots the given (default 75/95/99) percentiles of anomaly score
         (loss) by line for each second. Smoothing indicates how many seconds are processed
@@ -143,17 +145,21 @@ class Evaluator:
         for every minute)."""
         if not self.data_is_trimmed:
             self.trim_evaluation_data()
+        # Ensure percentiles is sorted in ascending order
+        percentiles = sorted(percentiles)
 
         plotting_data = [[] for _ in percentiles]
         # Create a list of losses for each segment
         seconds = np.unique(self.data["seconds"])
         segments = [seconds[i] for i in range(0, len(seconds), smoothing)]
         for idx in tqdm(range(len(segments))):
-            segment_start = np.searchsorted(self.data["seconds"], segments[idx])
+            segment_start = np.searchsorted(
+                self.data["seconds"], segments[idx])
             if idx == len(segments) - 1:
                 segment_end = len(self.data["losses"])
             else:
-                segment_end = np.searchsorted(self.data["seconds"], segments[idx + 1])
+                segment_end = np.searchsorted(
+                    self.data["seconds"], segments[idx + 1])
             segment_losses = self.data["losses"][segment_start:segment_end]
             for perc_idx, p in enumerate(percentiles):
                 percentile_data = np.percentile(segment_losses, p)
@@ -163,28 +169,42 @@ class Evaluator:
         red_seconds = self.data["seconds"][self.data["red_flags"] != 0]
         red_losses = self.data["losses"][self.data["red_flags"] != 0]
 
-        # Extract the top X (1 per minute of data) outlier non-red team events
-        outlier_count = len(seconds) // 60
-        blue_losses = self.data["losses"][self.data["red_flags"] == 0]
-        blue_seconds = self.data["seconds"][self.data["red_flags"] == 0]
-        # Negate the list so we can pick the highest values (i.e. the lowest -ve values)
-        outlier_indices = np.argpartition(-blue_losses, outlier_count)[:outlier_count]
-        blue_losses = blue_losses[outlier_indices]
-        blue_seconds = blue_seconds[outlier_indices]
+        if outliers > 0:
+            # Extract the top X ('outliers' per hour of data) outlier non-red team events
+            outlier_count = len(seconds) * outliers // 3600
+            blue_losses = self.data["losses"][self.data["red_flags"] == 0]
+            blue_seconds = self.data["seconds"][self.data["red_flags"] == 0]
+            # Negate the list so we can pick the highest values (i.e. the lowest -ve values)
+            outlier_indices = np.argpartition(-blue_losses,
+                                              outlier_count)[:outlier_count]
+            blue_losses = blue_losses[outlier_indices]
+            blue_seconds = blue_seconds[outlier_indices]
 
         # plot the percentile ranges
-        for idx in range(len(plotting_data) - 1):
+        # Convert x-axis to days
+        blue_seconds = blue_seconds / (3600*24)
+        red_seconds = red_seconds / (3600*24)
+        segments = [s/(3600*24) for s in segments]
+        for idx in range(len(plotting_data) - 2, -1, -1):
             plt.fill_between(
-                segments, plotting_data[idx], plotting_data[idx + 1], color=colors[idx]
+                segments,
+                plotting_data[idx],
+                plotting_data[idx + 1],
+                color=colors[idx],
+                label=f"{percentiles[idx]}-{percentiles[idx + 1]} Percentile"
             )
         # plot the non-redteam outliers
-        plt.plot(blue_seconds, blue_losses, "bo", label="Outlier normal events")
+        if outliers > 0:
+            plt.plot(blue_seconds, blue_losses, "bo",
+                     label="Outlier normal events")
         # plot the redteam events
         plt.plot(red_seconds, red_losses, "r+", label="Red team events")
         if ylim[0] >= 0 and ylim[1] > 0:
             plt.ylim(ylim)
-        plt.xlabel("Time (seconds)")
+        plt.xlabel("Time (day)")
         plt.ylabel(f"Loss, {tuple(percentiles)} percentiles")
+        if legend:
+            plt.legend()
         plt.title("Aggregate line losses by time")
 
     def plot_roc_curve(self, color="orange", xaxis="FPR"):
