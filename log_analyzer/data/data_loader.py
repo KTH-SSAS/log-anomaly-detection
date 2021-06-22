@@ -51,6 +51,8 @@ class IterableLogDataSet(IterableDataset):
         self.bidir = bidirectional
         self.sentence_length = sentence_length
 
+        if type(filepaths) is str:
+            filepaths = [filepaths]
         self.filepaths = filepaths
 
     def parse_lines(self):
@@ -77,6 +79,10 @@ class IterableLogDataSet(IterableDataset):
 
                     if self.jag:
                         datadict['length'] = data[5]
+                        if self.bidir:
+                            datadict['t'] = datadict['t'].clone().detach()
+                            datadict['t'][data[5]-1] = 0 # Mask out the last token of the target sequence
+                            datadict['length'] += 1 #include eos token in length
                         datadict['mask'] = get_mask(
                             datadict['length']-2*self.bidir-int(self.skipsos), self.sentence_length-2*self.bidir)
                         assert datadict['length'] <= datadict['x'].shape[-1], 'Sequence found greater than num_tokens_predicted'
