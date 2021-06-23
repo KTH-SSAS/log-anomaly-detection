@@ -56,8 +56,13 @@ class LSTMLanguageModel(LogModel):
             fc_input_dim *= 2
         # If LSTM is using attention, its hidden states will be even wider.
         if config.attention_type is not None:
+            if config.sequence_length is not None:
+                seq_len = config.sequence_length
+                seq_len = seq_len-2 if self.bidirectional else seq_len
+            else:
+                seq_len = None
             self.attention = SelfAttention(
-                fc_input_dim, config.attention_dim, attention_type=config.attention_type, seq_len=config.sequence_length)
+                fc_input_dim, config.attention_dim, attention_type=config.attention_type, seq_len=seq_len)
             fc_input_dim *= 2
         else:
             self.attention = None
