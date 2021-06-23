@@ -130,7 +130,7 @@ class Evaluator:
         auc_score = metrics.auc(fp_rate, tp_rate)
         return auc_score
 
-    def plot_losses_by_line(
+    def plot_line_loss_percentiles(
         self,
         percentiles=[75, 95, 99],
         smoothing=1,
@@ -140,9 +140,11 @@ class Evaluator:
         legend=True
     ):
         """Computes and plots the given (default 75/95/99) percentiles of anomaly score
-        (loss) by line for each second. Smoothing indicates how many seconds are processed
-        as one batch for percentile calculations (e.g. 60 means percentiles are computed
-        for every minute)."""
+        (loss) by line for each segment.
+        Smoothing indicates how many seconds are processed as one batch for percentile
+        calculations (e.g. 60 means percentiles are computed for every minute).
+        Outliers determines how many non-redteam outliers are plotted onto the graph (per
+        hour of data)."""
         if not self.data_is_trimmed:
             self.trim_evaluation_data()
         # Ensure percentiles is sorted in ascending order
