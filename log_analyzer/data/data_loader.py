@@ -257,9 +257,14 @@ class OnlineLMBatcher:
 
     def load_lines(self):
         output = []
-        ctxt_vector = torch.tensor([])
-        h_state = torch.tensor([])
-        c_state = torch.tensor([])
+        if self.cuda:
+            ctxt_vector = torch.tensor([]).cuda()
+            h_state = torch.tensor([]).cuda()
+            c_state = torch.tensor([]).cuda()
+        else: 
+            ctxt_vector = torch.tensor([])
+            h_state = torch.tensor([])
+            c_state = torch.tensor([])   
         for user in self.users_ge_num_steps[:self.mb_size]:
             output.append(self.user_logs[user][0:self.num_steps])
             self.user_logs[user] = self.user_logs[user][self.num_steps:]
