@@ -27,9 +27,16 @@ def test_evaluator_lstm(tmpdir):
 
     # Line loss percentiles plot
     for percentiles in [[75, 95, 99], [75, 95], [50, 75, 95, 99]]:
-        for smoothing in range(1, 31):
-            trainer.evaluator.plot_losses_by_line(percentiles=percentiles, smoothing=smoothing, colors=[
-                                                  "purple", "darkblue", "blue", "skyblue"], ylim=(-1, -1))
+        for smoothing in [0, 1, 10, 31]:
+            for outliers in [0, 0.5, 1, 60]:
+                trainer.evaluator.plot_line_loss_percentiles(
+                    percentiles=percentiles,
+                    smoothing=smoothing,
+                    colors=["purple", "darkblue", "blue", "skyblue"],
+                    ylim=(-1, -1),
+                    outliers=outliers,
+                    legend=smoothing % 2 == 0
+                )
 
     # ROC curve plot
     for xaxis in ["FPR", "alerts", "alerts-FPR"]:
@@ -40,6 +47,7 @@ def test_evaluator_lstm(tmpdir):
     assert not trainer.evaluator.data_is_normalized
     trainer.evaluator.normalize_losses()
     assert trainer.evaluator.data_is_normalized
+
 
 def test_evaluator_tiered(tmpdir):
     bidir = True

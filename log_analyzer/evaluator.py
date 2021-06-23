@@ -149,6 +149,10 @@ class Evaluator:
             self.trim_evaluation_data()
         # Ensure percentiles is sorted in ascending order
         percentiles = sorted(percentiles)
+        # Ensure smoothing > 0, and int
+        smoothing = int(smoothing)
+        if smoothing <= 0:
+            smoothing = 1
 
         plotting_data = [[] for _ in percentiles]
         # Create a list of losses for each segment
@@ -173,7 +177,7 @@ class Evaluator:
 
         if outliers > 0:
             # Extract the top X ('outliers' per hour of data) outlier non-red team events
-            outlier_count = len(seconds) * outliers // 3600
+            outlier_count = int(len(seconds) * outliers // 3600)
             blue_losses = self.data["losses"][self.data["red_flags"] == 0]
             blue_seconds = self.data["seconds"][self.data["red_flags"] == 0]
             # Negate the list so we can pick the highest values (i.e. the lowest -ve values)
