@@ -28,6 +28,12 @@ LSTM = 'lstm'
 TRANSFORMER = 'transformer'
 TIERED_LSTM = 'tiered-lstm'
 
+def calculate_max_input_length(data_length, bidirectional, skip_sos):
+    """
+    Maximum input length to model.
+    """
+    return data_length - 1 - int(skip_sos) + int(bidirectional)
+
 
 def get_model_config(filename, model_type) -> Config:
     if model_type == TIERED_LSTM:
@@ -82,8 +88,8 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
 
     # Settings for dataloader.
 
-    max_input_length = data_config.sentence_length - \
-                       1 - int(skipsos) + int(bidir)
+    max_input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skipsos)
+
     train_days = trainer_config.train_files
     test_days = trainer_config.test_files
 

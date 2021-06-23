@@ -46,11 +46,11 @@ class Trainer(ABC):
         """Computes the loss for the given model output and ground truth."""
         if self.jagged:
             if self.bidirectional:
-                targets = Y[:, 1 : max(lengths) - 1]
+                targets = Y[:, : max(lengths) - 2]
                 token_losses = self.criterion(
                     output.transpose(1, 2), targets
                 )
-                masked_losses = token_losses * mask[:, 1 : max(lengths) - 1]
+                masked_losses = token_losses * mask[:, : max(lengths) - 2]
             else:
                 targets = Y[:, :max(lengths)]
                 token_losses = self.criterion(
