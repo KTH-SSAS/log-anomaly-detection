@@ -130,7 +130,7 @@ class Evaluator:
         auc_score = metrics.auc(fp_rate, tp_rate)
         return auc_score
 
-    def plot_losses_by_line(
+    def plot_line_loss_percentiles(
         self,
         percentiles=[75, 95, 99],
         smoothing=1,
@@ -140,13 +140,19 @@ class Evaluator:
         legend=True
     ):
         """Computes and plots the given (default 75/95/99) percentiles of anomaly score
-        (loss) by line for each second. Smoothing indicates how many seconds are processed
-        as one batch for percentile calculations (e.g. 60 means percentiles are computed
-        for every minute)."""
+        (loss) by line for each segment.
+        Smoothing indicates how many seconds are processed as one batch for percentile
+        calculations (e.g. 60 means percentiles are computed for every minute).
+        Outliers determines how many non-redteam outliers are plotted onto the graph (per
+        hour of data)."""
         if not self.data_is_trimmed:
             self.trim_evaluation_data()
         # Ensure percentiles is sorted in ascending order
         percentiles = sorted(percentiles)
+        # Ensure smoothing > 0, and int
+        smoothing = int(smoothing)
+        if smoothing <= 0:
+            smoothing = 1
 
         plotting_data = [[] for _ in percentiles]
         # Create a list of losses for each segment
@@ -171,7 +177,7 @@ class Evaluator:
 
         if outliers > 0:
             # Extract the top X ('outliers' per hour of data) outlier non-red team events
-            outlier_count = len(seconds) * outliers // 3600
+            outlier_count = int(len(seconds) * outliers // 3600)
             blue_losses = self.data["losses"][self.data["red_flags"] == 0]
             blue_seconds = self.data["seconds"][self.data["red_flags"] == 0]
             # Negate the list so we can pick the highest values (i.e. the lowest -ve values)
@@ -179,10 +185,10 @@ class Evaluator:
                                               outlier_count)[:outlier_count]
             blue_losses = blue_losses[outlier_indices]
             blue_seconds = blue_seconds[outlier_indices]
+            blue_seconds = blue_seconds / (3600*24) # convert to days
 
         # plot the percentile ranges
         # Convert x-axis to days
-        blue_seconds = blue_seconds / (3600*24)
         red_seconds = red_seconds / (3600*24)
         segments = [s/(3600*24) for s in segments]
         for idx in range(len(plotting_data) - 2, -1, -1):
