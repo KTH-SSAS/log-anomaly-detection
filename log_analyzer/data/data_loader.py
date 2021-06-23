@@ -227,7 +227,7 @@ class OnlineLMBatcher:
                 if self.empty == True:
                     break
 
-                output = torch.tensor(output).long()
+                output = torch.Tensor(output).long()
                 batch = torch.transpose(output, 0, 1)
                 endx = batch.shape[2] - int(not self.bidir)
                 endt = batch.shape[2] - int(self.bidir)
@@ -251,9 +251,9 @@ class OnlineLMBatcher:
 
     def load_lines(self):
         output = []
-        ctxt_vector = torch.tensor([])
-        h_state = torch.tensor([])
-        c_state = torch.tensor([])
+        ctxt_vector = torch.Tensor([])
+        h_state = torch.Tensor([])
+        c_state = torch.Tensor([])
         for user in self.users_ge_num_steps[:self.mb_size]:
             output.append(self.user_logs[user][0:self.num_steps])
             self.user_logs[user] = self.user_logs[user][self.num_steps:]

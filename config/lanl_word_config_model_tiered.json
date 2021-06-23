@@ -5,10 +5,8 @@
 	"context_layers": [
 		10
 	],
-	"bidirectional": false,
 	"attention_type": null,
 	"attention_dim": 0,
 	"embedding_dim": 20,
-	"vocab_size": 28199,
-	"jagged": true
+	"vocab_size": 28199
 }

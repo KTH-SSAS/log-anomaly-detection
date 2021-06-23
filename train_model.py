@@ -13,8 +13,6 @@ config/lanl_char_config_model.json,
 config/lanl_char_config_trainer.json,
 --data-folder,
 data/data_examples/raw_day_split,
---jagged,
---skipsos,
 --bidir
 """
 

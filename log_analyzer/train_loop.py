@@ -67,28 +67,21 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
     log_dir = os.path.join(base_logdir, id_string)
     os.mkdir(log_dir)
 
-    skipsos = False
+    skip_sos = not bidirectional #Skip start of sequence token for forward models.
+
     tokenization_type = data_config.tokenization
     if tokenization_type == 'char':
         jagged = True
     elif tokenization_type == 'word':
         jagged = False
-        if not bidirectional:
-            skipsos = True
     else:
         raise RuntimeError("Invalid tokenization.")
-
-    bidir = bidirectional
-    trainer_config.bidirectional = bidir
-    model_config.bidirectional = bidir
-    trainer_config.jagged = jagged
-    model_config.jagged = jagged
 
     verbose = True
 
     # Settings for dataloader.
 
-    max_input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skipsos)
+    max_input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skip_sos)
 
     train_days = trainer_config.train_files
     test_days = trainer_config.test_files
@@ -103,27 +96,27 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
     if model_type == TIERED_LSTM:
         model_config: TieredLSTMConfig = model_config
         train_loader, test_loader = data_utils.load_data_tiered(data_folder, train_days, test_days,
-                                                                trainer_config.batch_size, bidir, skipsos, jagged,
+                                                                trainer_config.batch_size, bidirectional, skip_sos, jagged,
                                                                 max_input_length, num_steps=3,
                                                                 context_layers=model_config.context_layers)
         lm_trainer = TieredTrainer(
-            trainer_config, model_config, log_dir, verbose, train_loader)
+            trainer_config, model_config, bidirectional, log_dir, verbose, train_loader)
     else:
         train_loader, test_loader = data_utils.load_data(data_folder, train_days, test_days,
-                                                         trainer_config.batch_size, bidir, skipsos, jagged,
+                                                         trainer_config.batch_size, bidirectional, skip_sos, jagged,
                                                          max_input_length)
         lm_trainer = LSTMTrainer(
-            trainer_config, model_config, log_dir, verbose)
+            trainer_config, model_config, bidirectional, log_dir, verbose)
 
     return lm_trainer, train_loader, test_loader
 
 
-def init_from_config_files(model_type, bidirectional, model_config_file, data_config_file, trainer_config_file, data_folder, base_logdir='runs'):
+def init_from_config_files(model_type: str, model_config_file: str, data_config_file: str, trainer_config_file: str, data_folder: str, base_logdir='runs'):
     """Creates a model plus trainer given the specifications in args"""
     model_config = get_model_config(model_config_file, model_type)
     data_config = DataConfig.init_from_file(data_config_file)
     trainer_config = TrainerConfig.init_from_file(trainer_config_file)
-    return init_from_config_classes(model_type, bidirectional, model_config, trainer_config, data_config, data_folder, base_logdir)
+    return init_from_config_classes(model_type, model_config, trainer_config, data_config, data_folder, base_logdir)
 
 
 def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=False):
