@@ -56,7 +56,6 @@ class EarlyStopping:
         if self.verbose:
             self.trace_func(
 	                f'Loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).')
-        torch.save(model.state_dict(), self.path)
         self.val_loss_min = val_loss
 
     def save_checkpoint(self):
