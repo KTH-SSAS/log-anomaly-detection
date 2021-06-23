@@ -67,14 +67,13 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
     log_dir = os.path.join(base_logdir, id_string)
     os.mkdir(log_dir)
 
-    skipsos = False
+    skip_sos = not bidirectional #Skip start of sequence token for forward models.
+
     tokenization_type = data_config.tokenization
     if tokenization_type == 'char':
         jagged = True
     elif tokenization_type == 'word':
         jagged = False
-        if not bidirectional:
-            skipsos = True
     else:
         raise RuntimeError("Invalid tokenization.")
 
@@ -85,7 +84,7 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
 
     # Settings for dataloader.
 
-    max_input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skipsos)
+    max_input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skip_sos)
 
     train_days = trainer_config.train_files
     test_days = trainer_config.test_files
@@ -100,14 +99,14 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
     if model_type == TIERED_LSTM:
         model_config: TieredLSTMConfig = model_config
         train_loader, test_loader = data_utils.load_data_tiered(data_folder, train_days, test_days,
-                                                                trainer_config.batch_size, bidir, skipsos, jagged,
+                                                                trainer_config.batch_size, bidir, skip_sos, jagged,
                                                                 max_input_length, num_steps=3,
                                                                 context_layers=model_config.context_layers)
         lm_trainer = TieredTrainer(
             trainer_config, model_config, log_dir, verbose, train_loader)
     else:
         train_loader, test_loader = data_utils.load_data(data_folder, train_days, test_days,
-                                                         trainer_config.batch_size, bidir, skipsos, jagged,
+                                                         trainer_config.batch_size, bidir, skip_sos, jagged,
                                                          max_input_length)
         lm_trainer = LSTMTrainer(
             trainer_config, model_config, log_dir, verbose)
