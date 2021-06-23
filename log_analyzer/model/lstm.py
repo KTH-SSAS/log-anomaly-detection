@@ -134,7 +134,7 @@ class Bid_LSTM(LSTMLanguageModel):
         self.name = "LSTM-Bid"
         super().__init__(config)
 
-    def forward(self, sequences, lengths=None, context_vectors=None):
+    def forward(self, sequences: torch.Tensor, lengths=None, context_vectors=None):
         lstm_out, hx = super().forward(sequences, lengths, context_vectors)
         # Reshape lstm_out to make forward/backward into seperate dims
         
@@ -171,7 +171,7 @@ class Bid_LSTM(LSTMLanguageModel):
 
 
 class Context_LSTM(nn.Module):
-    def __init__(self, ctxt_lv_layers, input_dim, bid):
+    def __init__(self, ctxt_lv_layers, input_dim):
         super().__init__()
         # Parameter setting
         self.ctxt_lv_layers = ctxt_lv_layers
@@ -200,16 +200,15 @@ class Context_LSTM(nn.Module):
 
 
 class Tiered_LSTM(LogModel):
-    def __init__(self, config: TieredLSTMConfig):
+    def __init__(self, config: TieredLSTMConfig, bidirectional):
 
         super().__init__(config)
         # Parameter setting
-        if config.bidirectional:
+        if bidirectional:
             self.model = Bid_LSTM
         else:
             self.model = Fwd_LSTM
 
-        self.bid = config.bidirectional
         low_lv_layers = config.layers
 
         self.ctxt_vector = None
@@ -218,13 +217,13 @@ class Tiered_LSTM(LogModel):
 
         # Layers
         self.low_lv_lstm = self.model(config)
-        self.low_lv_lstm.tiered = True  # TODO make this more elegant
-        if config.bidirectional:
+        self.low_lv_lstm.tiered = True  #TODO make this more elegant
+        if bidirectional:
             input_features = low_lv_layers[-1] * 4
         else:
             input_features = low_lv_layers[-1] * 2
         self.ctxt_lv_lstm = Context_LSTM(
-            config.context_layers, input_features, config.bidirectional)
+            config.context_layers, input_features)
 
         # Weight initialization
         initialize_weights(self)
@@ -248,7 +247,7 @@ class Tiered_LSTM(LogModel):
             length = None if lengths is None else lengths[idx]
             tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
                 sequences, lengths=length, context_vectors=self.ctxt_vector)
-            if self.bid:
+            if self.model.bidirectional:
                 final_hidden = final_hidden.view(
                     1, final_hidden.shape[1], -1)
             self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(

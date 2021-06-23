@@ -16,9 +16,9 @@ class TieredTrainer(Trainer):
             raise RuntimeError("Model not intialized!")
         return self.lstm
 
-    def __init__(self, config: TrainerConfig, lstm_config: TieredLSTMConfig, checkpoint_dir, verbose, data_handler):
+    def __init__(self, config: TrainerConfig, lstm_config: TieredLSTMConfig, bidirectional, checkpoint_dir, verbose, data_handler):
 
-        self.lstm = Tiered_LSTM(lstm_config)
+        self.lstm = Tiered_LSTM(lstm_config, bidirectional)
         self.data_handler = data_handler
         super().__init__(config, verbose, checkpoint_dir)
 

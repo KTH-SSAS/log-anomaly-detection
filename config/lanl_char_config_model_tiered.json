@@ -5,7 +5,6 @@
 	"context_layers": [
 		10
 	],
-	"bidirectional": false,
 	"attention_type": null,
 	"attention_dim": 0,
 	"embedding_dim": 20,

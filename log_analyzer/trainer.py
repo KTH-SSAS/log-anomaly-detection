@@ -43,7 +43,7 @@ class Trainer(ABC):
     def compute_loss(self, output: torch.Tensor, Y, lengths, mask: torch.Tensor):
         """Computes the loss for the given model output and ground truth."""
         if lengths is not None:
-            if self.model.config.bidirectional:
+            if self.model.bidirectional:
                 targets = Y[:, : max(lengths) - 2]
                 token_losses = self.criterion(
                     output.transpose(1, 2), targets
@@ -142,9 +142,9 @@ class LSTMTrainer(Trainer):
             raise RuntimeError("Model not intialized!")
         return self.lstm
 
-    def __init__(self, config: TrainerConfig, lstm_config: LSTMConfig, checkpoint_dir, verbose):
+    def __init__(self, config: TrainerConfig, lstm_config: LSTMConfig, bidirectional, checkpoint_dir, verbose):
 
-        model = Bid_LSTM if lstm_config.bidirectional else Fwd_LSTM
+        model = Bid_LSTM if bidirectional else Fwd_LSTM
         # Create a model
         self.lstm = model(lstm_config)
 
