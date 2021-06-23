@@ -199,11 +199,16 @@ class OnlineLMBatcher:
 
                             if self.user_logs.get(user) is None:
                                 self.user_logs[user] = []
-                                self.saved_lstm[user] = (torch.zeros((self.context_size[0])),
-                                                         torch.zeros(
-                                                             (len(self.context_size), self.context_size[0])),
-                                                         torch.zeros((len(self.context_size), self.context_size[0])))
-
+                                if self.cuda:
+                                    self.saved_lstm[user] = (torch.zeros((self.context_size[0])).cuda(),
+                                                            torch.zeros(
+                                                                (len(self.context_size), self.context_size[0])).cuda(),
+                                                            torch.zeros((len(self.context_size), self.context_size[0])).cuda())
+                                else: 
+                                    self.saved_lstm[user] = (torch.zeros((self.context_size[0])),
+                                                            torch.zeros(
+                                                                (len(self.context_size), self.context_size[0])),
+                                                            torch.zeros((len(self.context_size), self.context_size[0])))
                             self.user_logs[user].append(rowtext)
 
                     self.users_ge_num_steps = [key for key in self.user_logs if len(
