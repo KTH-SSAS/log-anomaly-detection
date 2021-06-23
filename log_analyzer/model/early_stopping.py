@@ -29,7 +29,8 @@ class EarlyStopping:
         self.delta = delta
         self.path = os.path.join(path, 'checkpoint.pt')
         self.trace_func = trace_func
-
+        self.model_state_dict = None
+        
     def __call__(self, val_loss, model):
 
         score = -val_loss
