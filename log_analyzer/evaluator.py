@@ -179,10 +179,10 @@ class Evaluator:
                                               outlier_count)[:outlier_count]
             blue_losses = blue_losses[outlier_indices]
             blue_seconds = blue_seconds[outlier_indices]
+            blue_seconds = blue_seconds / (3600*24) # convert to days
 
         # plot the percentile ranges
         # Convert x-axis to days
-        blue_seconds = blue_seconds / (3600*24)
         red_seconds = red_seconds / (3600*24)
         segments = [s/(3600*24) for s in segments]
         for idx in range(len(plotting_data) - 2, -1, -1):
