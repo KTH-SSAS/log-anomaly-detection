@@ -172,6 +172,7 @@ class OnlineLMBatcher:
         self.line_num = 1  # The line number of the file to be read next
         self.saved_lstm = {}
         self.skiprows = skiprows
+        self.cuda = torch.cuda.is_available()
 
     def __iter__(self):
         for f in self.datafile:
