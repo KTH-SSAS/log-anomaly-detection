@@ -24,8 +24,6 @@ class Trainer(ABC):
         # Check GPU
         self.cuda = torch.cuda.is_available()
 
-        self.jagged = config.jagged
-        self.bidirectional = config.bidirectional
         self.checkpoint_dir = checkpoint_dir
 
         if self.cuda:
@@ -42,10 +40,10 @@ class Trainer(ABC):
         # Create evaluator
         self.evaluator = Evaluator()
 
-    def compute_loss(self, output, Y, lengths, mask):
+    def compute_loss(self, output: torch.Tensor, Y, lengths, mask: torch.Tensor):
         """Computes the loss for the given model output and ground truth."""
-        if self.jagged:
-            if self.bidirectional:
+        if lengths is not None:
+            if self.model.config.bidirectional:
                 targets = Y[:, : max(lengths) - 2]
                 token_losses = self.criterion(
                     output.transpose(1, 2), targets
@@ -67,27 +65,26 @@ class Trainer(ABC):
         # Return the loss, as well as extra details like loss per line
         return loss, line_losses, targets
 
-    def optimizer_step(self, loss):
+    def optimizer_step(self, loss: torch.Tensor):
         """Performs one step of optimization on the given loss."""
         loss.backward()
         self.optimizer.step()
         self.scheduler.step()
         self.early_stopping(loss, self.model)
 
-    def split_batch(self, batch):
+    def split_batch(self, batch: dict):
         """Splits a batch into variables containing relevant data."""
         X = batch['x']
         Y = batch['t']
-        if self.jagged:
-            L = batch['length']
-            M = batch['mask']
-        else:
-            L = None
-            M = None
+
+        # Optional fields
+        L = batch.get('length')
+        M = batch.get('mask')
+
         if self.cuda:
             X = X.cuda()
             Y = Y.cuda()
-            if self.jagged:
+            if M is not None:
                 M = M.cuda()
 
         return X, Y, L, M
@@ -147,7 +144,7 @@ class LSTMTrainer(Trainer):
 
     def __init__(self, config: TrainerConfig, lstm_config: LSTMConfig, checkpoint_dir, verbose):
 
-        model = Bid_LSTM if config.bidirectional else Fwd_LSTM
+        model = Bid_LSTM if lstm_config.bidirectional else Fwd_LSTM
         # Create a model
         self.lstm = model(lstm_config)
 

@@ -44,7 +44,6 @@ class LSTMLanguageModel(LogModel):
 
         self.config = config
         # Parameter setting
-        self.jagged = config.jagged
         self.tiered = None
 
         # Layers
@@ -77,7 +76,7 @@ class LSTMLanguageModel(LogModel):
         # batch size, sequence length, embedded dimension
         x_lookups = self.embeddings(sequences)
         if self.tiered:
-            cat_x_lookups = torch.tensor([])
+            cat_x_lookups = torch.Tensor([])
             if torch.cuda.is_available():
                 cat_x_lookups = cat_x_lookups.cuda()
             # x_lookups (seq len x batch x embedding)
@@ -92,15 +91,17 @@ class LSTMLanguageModel(LogModel):
             x_lookups = cat_x_lookups.transpose(0, 1)
 
         lstm_in = x_lookups
-        if self.jagged:
+
+        pack_input = lengths is not None
+
+        if pack_input:
             lstm_in = pack_padded_sequence(
                 lstm_in, lengths, enforce_sorted=False, batch_first=True)
 
         lstm_out, (hx, cx) = self.stacked_lstm(lstm_in)
 
-        if self.jagged:
-            lstm_out = pad_packed_sequence(lstm_out, batch_first=True)
-            lstm_out = lstm_out[0]
+        if pack_input:
+            lstm_out, _ = pad_packed_sequence(lstm_out, batch_first=True)
 
         return lstm_out, hx
 
@@ -136,7 +137,8 @@ class Bid_LSTM(LSTMLanguageModel):
     def forward(self, sequences, lengths=None, context_vectors=None):
         lstm_out, hx = super().forward(sequences, lengths, context_vectors)
         # Reshape lstm_out to make forward/backward into seperate dims
-        if self.jagged:
+        
+        if lengths is not None:
             split = lstm_out.view(
                 sequences.shape[0], max(lengths), 2, lstm_out.shape[-1]//2)
         else:
@@ -256,16 +258,16 @@ class Tiered_LSTM(LogModel):
         return tag_output, self.ctxt_vector, self.ctxt_h, self.ctxt_c
 
 
-if __name__ == "__main__":
+#if __name__ == "__main__":
     # I tried to make this code self-explanatory, but if there is any difficulty to understand ti or possible improvements, please tell me.
-    test_layers = [10, 10]  # each layer has to have the same hidden units.
-    test_vocab_size = 96
-    test_embedding_dim = 30
+    #test_layers = [10, 10]  # each layer has to have the same hidden units.
+    #test_vocab_size = 96
+    #test_embedding_dim = 30
 
-    fwd_lstm_model = Fwd_LSTM(test_layers, test_vocab_size, test_embedding_dim,
-                              jagged=False, tiered=False, context_vector_size=0)
-    print(fwd_lstm_model)
+    #fwd_lstm_model = Fwd_LSTM(test_layers, test_vocab_size, test_embedding_dim,
+    #                          tiered=False, context_vector_size=0)
+    #print(fwd_lstm_model)
 
-    bid_lstm_model = Bid_LSTM(test_layers, test_vocab_size, test_embedding_dim,
-                              jagged=False, tiered=False, context_vector_size=0)
-    print(bid_lstm_model)
+    #bid_lstm_model = Bid_LSTM(test_layers, test_vocab_size, test_embedding_dim,
+    #                          tiered=False, context_vector_size=0)
+    #print(bid_lstm_model)

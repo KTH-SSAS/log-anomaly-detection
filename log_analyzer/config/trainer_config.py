@@ -13,7 +13,7 @@ class DataConfig(Config):
 
 class TrainerConfig(Config):
 
-    def __init__(self, train_files, test_files, batch_size, skipsos, jagged, bidirectional, learning_rate, early_stopping,
+    def __init__(self, train_files, test_files, batch_size, skipsos, bidirectional, learning_rate, early_stopping,
                  early_stop_patience, scheduler_gamma, scheduler_step_size) -> None:
         super().__init__()
 
@@ -30,5 +30,4 @@ class TrainerConfig(Config):
         self.early_stop_patience = early_stop_patience
         self.scheduler_gamma = scheduler_gamma
         self.scheduler_step_size = scheduler_step_size
-        self.jagged = jagged
         self.skipsos = skipsos

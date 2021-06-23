@@ -79,10 +79,7 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
         raise RuntimeError("Invalid tokenization.")
 
     bidir = bidirectional
-    trainer_config.bidirectional = bidir
     model_config.bidirectional = bidir
-    trainer_config.jagged = jagged
-    model_config.jagged = jagged
 
     verbose = True
 

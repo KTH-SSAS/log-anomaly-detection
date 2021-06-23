@@ -13,6 +13,5 @@
 	"early_stop_patience": 20,
 	"scheduler_gamma": 0.99,
 	"scheduler_step_size": 20,
-	"jagged": true,
 	"skipsos": true
 }

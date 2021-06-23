@@ -4,7 +4,7 @@ from log_analyzer.config.config import Config
 class LSTMConfig(Config):
     """Configuration class for LSTM models"""
 
-    def __init__(self, layers, vocab_size, embedding_dim, bidirectional, attention_type, attention_dim, jagged, sequence_length=None) -> None:
+    def __init__(self, layers, vocab_size, embedding_dim, bidirectional, attention_type, attention_dim, sequence_length=None) -> None:
         super().__init__()
         self.layers = layers
         self.bidirectional = bidirectional
@@ -12,7 +12,6 @@ class LSTMConfig(Config):
         self.attention_dim = attention_dim
         self.embedding_dim = embedding_dim
         self.vocab_size = vocab_size
-        self.jagged = jagged
         self.sequence_length = sequence_length
 
     @property

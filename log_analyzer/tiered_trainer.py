@@ -28,13 +28,13 @@ class TieredTrainer(Trainer):
         line_losses_list = torch.empty(output.shape[:-2], dtype=torch.float)
         if self.cuda:
             line_losses_list = line_losses_list.cuda()
-        if self.jagged:
+        if lengths is not None:
             targets = Y[:,:,:torch.max(lengths)]
         else:
             targets = Y
         # output (num_steps x batch x length x embedding dimension)  Y (num_steps x batch x length)
         for i, (step_output, true_y) in enumerate(zip(output, Y)):
-            if self.jagged:  # On notebook, I checked it with forward LSTM and word tokenization. Further checks have to be done...
+            if lengths is not None:  # On notebook, I checked it with forward LSTM and word tokenization. Further checks have to be done...
                 token_losses = self.criterion(
                     step_output.transpose(1, 2), true_y[:, :torch.max(lengths)])
                 masked_losses = token_losses * mask[i][:, :torch.max(lengths)]
