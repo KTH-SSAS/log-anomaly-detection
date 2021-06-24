@@ -140,7 +140,10 @@ def get_mask(lens, num_tokens):
              For each row there are: lens[i] values of 1/lens[i]
                                      followed by num_tokens - lens[i] zeros
     """
-    mask_template = torch.arange(num_tokens, dtype=torch.float)
+    if torch.cuda.is_available():
+        mask_template = torch.arange(num_tokens, dtype=torch.float).cuda()
+    else:
+        mask_template = torch.arange(num_tokens, dtype=torch.float)
     return (mask_template < lens) / lens
 
 
@@ -248,8 +251,13 @@ class OnlineLMBatcher:
                             'c_state_init': torch.transpose(h_state, 0, 1),
                             'h_state_init': torch.transpose(c_state, 0, 1)}  # state_triple['h_state_init']}
                 if self.jagged:
-                    datadict['length'] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos))
-                    datadict['mask'] = torch.empty(datadict['length'].shape[0], datadict['x'].shape[1], datadict['x'].shape[-1] - 2 * self.bidir)
+                    if self.cuda:
+                        datadict['length'] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos)).cuda()
+                        datadict['mask'] = torch.empty(datadict['length'].shape[0], datadict['x'].shape[1], datadict['x'].shape[-1] - 2 * self.bidir).cuda()
+                    else:
+                        datadict['length'] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos))
+                        datadict['mask'] = torch.empty(datadict['length'].shape[0], datadict['x'].shape[1], datadict['x'].shape[-1] - 2 * self.bidir)
+                    
                     for i, seq_len_matrix in enumerate(datadict['length']):
                         for j, seq_length in enumerate(seq_len_matrix):
                             datadict['mask'][i,j,:] = get_mask(seq_length.view(-1, 1) - 2 * self.bidir, self.sentence_length - 2 * self.bidir)
