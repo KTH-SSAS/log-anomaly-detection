@@ -233,7 +233,7 @@ class OnlineLMBatcher:
                 if self.empty == True:
                     break
 
-                output = torch.tensor(output).long()
+                output = torch.Tensor(output).long()
                 batch = torch.transpose(output, 0, 1)
                 endx = batch.shape[2] - int(not self.bidir)
                 endt = batch.shape[2] - int(self.bidir)

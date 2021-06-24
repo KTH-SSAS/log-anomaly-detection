@@ -44,7 +44,6 @@ class LSTMLanguageModel(LogModel):
 
         self.config = config
         # Parameter setting
-        self.jagged = config.jagged
         self.tiered = None
 
         # Layers
@@ -57,8 +56,13 @@ class LSTMLanguageModel(LogModel):
             fc_input_dim *= 2
         # If LSTM is using attention, its hidden states will be even wider.
         if config.attention_type is not None:
+            if config.sequence_length is not None:
+                seq_len = config.sequence_length
+                seq_len = seq_len-2 if self.bidirectional else seq_len
+            else:
+                seq_len = None
             self.attention = SelfAttention(
-                fc_input_dim, config.attention_dim, attention_type=config.attention_type, seq_len=config.sequence_length)
+                fc_input_dim, config.attention_dim, attention_type=config.attention_type, seq_len=seq_len)
             fc_input_dim *= 2
         else:
             self.attention = None
@@ -77,7 +81,7 @@ class LSTMLanguageModel(LogModel):
         # batch size, sequence length, embedded dimension
         x_lookups = self.embeddings(sequences)
         if self.tiered:
-            cat_x_lookups = torch.tensor([])
+            cat_x_lookups = torch.Tensor([])
             if torch.cuda.is_available():
                 cat_x_lookups = cat_x_lookups.cuda()
             # x_lookups (seq len x batch x embedding)
@@ -92,15 +96,17 @@ class LSTMLanguageModel(LogModel):
             x_lookups = cat_x_lookups.transpose(0, 1)
 
         lstm_in = x_lookups
-        if self.jagged:
+
+        pack_input = lengths is not None
+
+        if pack_input:
             lstm_in = pack_padded_sequence(
                 lstm_in, lengths, enforce_sorted=False, batch_first=True)
 
         lstm_out, (hx, cx) = self.stacked_lstm(lstm_in)
 
-        if self.jagged:
-            lstm_out = pad_packed_sequence(lstm_out, batch_first=True)
-            lstm_out = lstm_out[0]
+        if pack_input:
+            lstm_out, _ = pad_packed_sequence(lstm_out, batch_first=True)
 
         return lstm_out, hx
 
@@ -133,10 +139,11 @@ class Bid_LSTM(LSTMLanguageModel):
         self.name = "LSTM-Bid"
         super().__init__(config)
 
-    def forward(self, sequences, lengths=None, context_vectors=None):
+    def forward(self, sequences: torch.Tensor, lengths=None, context_vectors=None):
         lstm_out, hx = super().forward(sequences, lengths, context_vectors)
         # Reshape lstm_out to make forward/backward into seperate dims
-        if self.jagged:
+        
+        if lengths is not None:
             split = lstm_out.view(
                 sequences.shape[0], max(lengths), 2, lstm_out.shape[-1]//2)
         else:
@@ -169,7 +176,7 @@ class Bid_LSTM(LSTMLanguageModel):
 
 
 class Context_LSTM(nn.Module):
-    def __init__(self, ctxt_lv_layers, input_dim, bid):
+    def __init__(self, ctxt_lv_layers, input_dim):
         super().__init__()
         # Parameter setting
         self.ctxt_lv_layers = ctxt_lv_layers
@@ -198,16 +205,15 @@ class Context_LSTM(nn.Module):
 
 
 class Tiered_LSTM(LogModel):
-    def __init__(self, config: TieredLSTMConfig):
+    def __init__(self, config: TieredLSTMConfig, bidirectional):
 
         super().__init__(config)
         # Parameter setting
-        if config.bidirectional:
+        if bidirectional:
             self.model = Bid_LSTM
         else:
             self.model = Fwd_LSTM
 
-        self.bid = config.bidirectional
         low_lv_layers = config.layers
 
         self.ctxt_vector = None
@@ -216,13 +222,13 @@ class Tiered_LSTM(LogModel):
 
         # Layers
         self.low_lv_lstm = self.model(config)
-        self.low_lv_lstm.tiered = True  # TODO make this more elegant
-        if config.bidirectional:
+        self.low_lv_lstm.tiered = True  #TODO make this more elegant
+        if bidirectional:
             input_features = low_lv_layers[-1] * 4
         else:
             input_features = low_lv_layers[-1] * 2
         self.ctxt_lv_lstm = Context_LSTM(
-            config.context_layers, input_features, config.bidirectional)
+            config.context_layers, input_features)
 
         # Weight initialization
         initialize_weights(self)
@@ -246,7 +252,7 @@ class Tiered_LSTM(LogModel):
             length = None if lengths is None else lengths[idx]
             tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
                 sequences, lengths=length, context_vectors=self.ctxt_vector)
-            if self.bid:
+            if self.model.bidirectional:
                 final_hidden = final_hidden.view(
                     1, final_hidden.shape[1], -1)
             self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
@@ -256,16 +262,16 @@ class Tiered_LSTM(LogModel):
         return tag_output, self.ctxt_vector, self.ctxt_h, self.ctxt_c
 
 
-if __name__ == "__main__":
+#if __name__ == "__main__":
     # I tried to make this code self-explanatory, but if there is any difficulty to understand ti or possible improvements, please tell me.
-    test_layers = [10, 10]  # each layer has to have the same hidden units.
-    test_vocab_size = 96
-    test_embedding_dim = 30
+    #test_layers = [10, 10]  # each layer has to have the same hidden units.
+    #test_vocab_size = 96
+    #test_embedding_dim = 30
 
-    fwd_lstm_model = Fwd_LSTM(test_layers, test_vocab_size, test_embedding_dim,
-                              jagged=False, tiered=False, context_vector_size=0)
-    print(fwd_lstm_model)
+    #fwd_lstm_model = Fwd_LSTM(test_layers, test_vocab_size, test_embedding_dim,
+    #                          tiered=False, context_vector_size=0)
+    #print(fwd_lstm_model)
 
-    bid_lstm_model = Bid_LSTM(test_layers, test_vocab_size, test_embedding_dim,
-                              jagged=False, tiered=False, context_vector_size=0)
-    print(bid_lstm_model)
+    #bid_lstm_model = Bid_LSTM(test_layers, test_vocab_size, test_embedding_dim,
+    #                          tiered=False, context_vector_size=0)
+    #print(bid_lstm_model)
