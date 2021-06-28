@@ -140,7 +140,10 @@ def get_mask(lens, num_tokens):
              For each row there are: lens[i] values of 1/lens[i]
                                      followed by num_tokens - lens[i] zeros
     """
-    mask_template = torch.arange(num_tokens, dtype=torch.float)
+    if torch.cuda.is_available():
+        mask_template = torch.arange(num_tokens, dtype=torch.float).cuda()
+    else:
+        mask_template = torch.arange(num_tokens, dtype=torch.float)
     return (mask_template < lens) / lens
 
 
@@ -172,6 +175,7 @@ class OnlineLMBatcher:
         self.line_num = 1  # The line number of the file to be read next
         self.saved_lstm = {}
         self.skiprows = skiprows
+        self.cuda = torch.cuda.is_available()
 
     def __iter__(self):
         for f in self.datafile:
@@ -198,11 +202,16 @@ class OnlineLMBatcher:
 
                             if self.user_logs.get(user) is None:
                                 self.user_logs[user] = []
-                                self.saved_lstm[user] = (torch.zeros((self.context_size[0])),
-                                                         torch.zeros(
-                                                             (len(self.context_size), self.context_size[0])),
-                                                         torch.zeros((len(self.context_size), self.context_size[0])))
-
+                                if self.cuda:
+                                    self.saved_lstm[user] = (torch.zeros((self.context_size[0])).cuda(),
+                                                            torch.zeros(
+                                                                (len(self.context_size), self.context_size[0])).cuda(),
+                                                            torch.zeros((len(self.context_size), self.context_size[0])).cuda())
+                                else: 
+                                    self.saved_lstm[user] = (torch.zeros((self.context_size[0])),
+                                                            torch.zeros(
+                                                                (len(self.context_size), self.context_size[0])),
+                                                            torch.zeros((len(self.context_size), self.context_size[0])))
                             self.user_logs[user].append(rowtext)
 
                     self.users_ge_num_steps = [key for key in self.user_logs if len(
@@ -242,8 +251,13 @@ class OnlineLMBatcher:
                             'c_state_init': torch.transpose(h_state, 0, 1),
                             'h_state_init': torch.transpose(c_state, 0, 1)}  # state_triple['h_state_init']}
                 if self.jagged:
-                    datadict['length'] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos))
-                    datadict['mask'] = torch.empty(datadict['length'].shape[0], datadict['x'].shape[1], datadict['x'].shape[-1] - 2 * self.bidir)
+                    if self.cuda:
+                        datadict['length'] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos)).cuda()
+                        datadict['mask'] = torch.empty(datadict['length'].shape[0], datadict['x'].shape[1], datadict['x'].shape[-1] - 2 * self.bidir).cuda()
+                    else:
+                        datadict['length'] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos))
+                        datadict['mask'] = torch.empty(datadict['length'].shape[0], datadict['x'].shape[1], datadict['x'].shape[-1] - 2 * self.bidir)
+                    
                     for i, seq_len_matrix in enumerate(datadict['length']):
                         for j, seq_length in enumerate(seq_len_matrix):
                             datadict['mask'][i,j,:] = get_mask(seq_length.view(-1, 1) - 2 * self.bidir, self.sentence_length - 2 * self.bidir)
@@ -251,9 +265,14 @@ class OnlineLMBatcher:
 
     def load_lines(self):
         output = []
-        ctxt_vector = torch.Tensor([])
-        h_state = torch.Tensor([])
-        c_state = torch.Tensor([])
+        if self.cuda:
+            ctxt_vector = torch.tensor([]).cuda()
+            h_state = torch.tensor([]).cuda()
+            c_state = torch.tensor([]).cuda()
+        else: 
+            ctxt_vector = torch.tensor([])
+            h_state = torch.tensor([])
+            c_state = torch.tensor([])   
         for user in self.users_ge_num_steps[:self.mb_size]:
             output.append(self.user_logs[user][0:self.num_steps])
             self.user_logs[user] = self.user_logs[user][self.num_steps:]
