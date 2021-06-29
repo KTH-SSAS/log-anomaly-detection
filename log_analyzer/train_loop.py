@@ -111,12 +111,12 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
     return lm_trainer, train_loader, test_loader
 
 
-def init_from_config_files(model_type: str, model_config_file: str, data_config_file: str, trainer_config_file: str, data_folder: str, base_logdir='runs'):
+def init_from_config_files(model_type: str, bidirectional, model_config_file: str, data_config_file: str, trainer_config_file: str, data_folder: str, base_logdir='runs'):
     """Creates a model plus trainer given the specifications in args"""
     model_config = get_model_config(model_config_file, model_type)
     data_config = DataConfig.init_from_file(data_config_file)
     trainer_config = TrainerConfig.init_from_file(trainer_config_file)
-    return init_from_config_classes(model_type, model_config, trainer_config, data_config, data_folder, base_logdir)
+    return init_from_config_classes(model_type, bidirectional, model_config, trainer_config, data_config, data_folder, base_logdir)
 
 
 def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=False):
