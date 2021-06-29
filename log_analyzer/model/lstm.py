@@ -101,7 +101,7 @@ class LSTMLanguageModel(LogModel):
 
         if pack_input:
             lstm_in = pack_padded_sequence(
-                lstm_in, lengths, enforce_sorted=False, batch_first=True)
+                lstm_in, lengths.cpu(), enforce_sorted=False, batch_first=True)
 
         lstm_out, (hx, cx) = self.stacked_lstm(lstm_in)
 
