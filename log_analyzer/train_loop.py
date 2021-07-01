@@ -146,8 +146,9 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
 
     test_losses = []
     for iteration, batch in enumerate(tqdm(test_loader)):
-        loss, *_ = lm_trainer.eval_step(batch, store_eval_data)
-        test_losses.append(loss.item())
+        with torch.no_grad():
+            loss, *_ = lm_trainer.eval_step(batch, store_eval_data)
+            test_losses.append(loss.item())
         writer.add_scalar(f'Loss/test_day_{batch["day"][0]}', loss, iteration)
 
         if outfile is not None:
