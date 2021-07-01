@@ -124,12 +124,13 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
 
     outfile = None
     verbose = False
+    done = False
     log_dir = lm_trainer.checkpoint_dir
     writer = SummaryWriter(os.path.join(log_dir, 'metrics'))
 
     train_losses = []
     for iteration, batch in enumerate(tqdm(train_loader)):
-        if lm_trainer is TieredTrainer:
+        if type(lm_trainer) is TieredTrainer:
             if train_loader.flush is False:
                 loss, done = lm_trainer.train_step(batch)
             else:
@@ -144,6 +145,8 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
             print("Early stopping.")
             break
 
+    lm_trainer.early_stopping.save_checkpoint()
+    
     test_losses = []
     for iteration, batch in enumerate(tqdm(test_loader)):
         loss, *_ = lm_trainer.eval_step(batch, store_eval_data)
