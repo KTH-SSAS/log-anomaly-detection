@@ -27,7 +27,11 @@ class Char_tokenizer:
         :return:
         """
         return "0 " + " ".join([str(ord(c) - 30) for c in string]) + " 1 " + " ".join(["0"] * pad_len) + "\n"
-        
+
+    @classmethod
+    def detokenize_line(cls, tokens):
+        return "".join([chr(t+30) for t in tokens])
+
     def delete_duplicates(self):
         try:
             for filename in os.listdir(self.outpath):

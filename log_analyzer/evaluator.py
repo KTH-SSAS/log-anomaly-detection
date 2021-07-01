@@ -1,8 +1,79 @@
+from log_analyzer.model.lstm import LSTMLanguageModel
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from sklearn import metrics
+import os
+from log_analyzer.tokenizer.tokenizer import Char_tokenizer
+
+
+
+def create_attention_matrix(model: LSTMLanguageModel, sequences, output_dir, lengths=None, mask=None):
+    """Plot attention matrix over batched input. Will produce one matrix plot for each entry in batch, in the designated output directory. 
+    For word level tokenization, the function will also produce an matrix for the avergae attention weights in the batch.
+    """
+    if model.attention is None:
+        raise RuntimeError("Can not create an attention matrix for a model without attention!")
+    
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
+
+    skip_sos = not model.bidirectional
+    tokenization = 'word' if lengths is None else 'char'
+
+    _, lstm_out, _ = model.forward(sequences, lengths=lengths, mask=mask)
+    _, attention_matrix_batch = model.attention(lstm_out, mask)
+
+    def set_ticks():
+        word_tick_labels = ['<sos>', 'src user', 'src domain', 'dest user', 'dest domain', 'src PC', 'dest PC', 'auth type', 'login type', 'auth orient', 'success/fail', '<eos>']
+        input_labels = word_tick_labels[1:-1] if skip_sos else word_tick_labels[:-1]
+        attention_labels = word_tick_labels[1:-1] if skip_sos else word_tick_labels[:-1]
+        label_labels = word_tick_labels[2:] if skip_sos else word_tick_labels[1:]
+        ax.set_xlabel("Positions attended over")
+        ax.set_xticks(range(matrix.shape[0]))
+        ax.set_xticklabels(attention_labels, rotation='45')
+        ax.set_yticks(range(matrix.shape[1]))
+        ax.set_yticklabels(input_labels)
+        ax.set_ylabel("Input token")
+        twin.set_yticks(range(matrix.shape[1]))
+        twin.set_yticklabels(label_labels)
+        twin.set_ylabel("Predicted label")
+
+    if lengths is None:
+        # Batch average of attention over positions
+        matrix = attention_matrix_batch.mean(dim=0)
+        _, ax = plt.subplots(figsize=(10, 10))
+        ax.matshow(matrix.detach().numpy())
+        twin = ax.twinx()
+        twin.matshow(matrix.detach().numpy())
+        set_ticks()
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, f"{model.attention.attention_type}_batchAverage.png"))
+
+    _, ax = plt.subplots(figsize=(10, 10))
+    for i, matrix in enumerate(attention_matrix_batch):
+        seq = sequences[i]
+
+        if lengths is not None:
+            matrix = matrix[:lengths[i]-1, :lengths[i]-1]
+
+        ax.matshow(matrix.detach().numpy())
+        if lengths is not None:
+            string = Char_tokenizer.detokenize_line(seq[:lengths[i]-1])
+            ax.set_xticks(range(len(string)))
+            ax.set_xticklabels(string, fontsize='small')
+            ax.set_yticks(range(len(string)))
+            ax.set_yticklabels(string, fontsize='small')
+        else:
+            twin = ax.twinx()
+            twin.matshow(matrix.detach().numpy())
+            set_ticks()
+            plt.tight_layout()
+
+        plt.savefig(os.path.join(output_dir, f"{model.attention.attention_type}_{tokenization}_#{i}.png"))
+        plt.cla()
 
 
 class Evaluator:
