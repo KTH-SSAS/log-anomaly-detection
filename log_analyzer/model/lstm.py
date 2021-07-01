@@ -116,11 +116,11 @@ class Fwd_LSTM(LSTMLanguageModel):
         self.name = "LSTM"
         super().__init__(config)
 
-    def forward(self, sequences, lengths=None, context_vectors=None):
+    def forward(self, sequences, lengths=None, context_vectors=None, mask=None):
         lstm_out, hx = super().forward(sequences, lengths, context_vectors)
 
         if self.attention is not None:
-            attention, _ = self.attention(lstm_out)
+            attention, _ = self.attention(lstm_out, mask)
             output = torch.cat((lstm_out, attention), dim=-1)
         else:
             output = lstm_out
@@ -139,7 +139,7 @@ class Bid_LSTM(LSTMLanguageModel):
         self.name = "LSTM-Bid"
         super().__init__(config)
 
-    def forward(self, sequences: torch.Tensor, lengths=None, context_vectors=None):
+    def forward(self, sequences: torch.Tensor, lengths=None, context_vectors=None, mask=None):
         lstm_out, hx = super().forward(sequences, lengths, context_vectors)
         # Reshape lstm_out to make forward/backward into seperate dims
         
@@ -163,7 +163,7 @@ class Bid_LSTM(LSTMLanguageModel):
             [forward_hidden_states, backward_hidden_states], -1)
 
         if self.attention is not None:
-            attention, _ = self.attention(b_f_concat)
+            attention, _ = self.attention(b_f_concat, mask)
             b_f_concat = torch.cat((b_f_concat, attention.squeeze()), dim=-1)
 
         tag_size = self.hidden2tag(b_f_concat)
