@@ -124,6 +124,7 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
 
     outfile = None
     verbose = False
+    done = False
     log_dir = lm_trainer.checkpoint_dir
     writer = SummaryWriter(os.path.join(log_dir, 'metrics'))
 
