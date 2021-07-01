@@ -59,7 +59,7 @@ class SelfAttention(nn.Module):
             self.input_mask = None
             self.softmax_mask = None
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, attention_mask: torch.Tensor = None):
         """Calculate attention weights for input sequence"""
 
         use_cuda = self.use_cuda
@@ -85,9 +85,11 @@ class SelfAttention(nn.Module):
         softmax_mask = generate_softmax_mask(seq_len, use_cuda=use_cuda) if self.softmax_mask is None else self.softmax_mask #Use cached mask for fixed length seqs
 
         temp = temp + softmax_mask
-
         d = F.softmax(temp, dim=-1)
-
+        if attention_mask is not None:
+            attention_mask = attention_mask[:, :seq_len] != 0
+            attention_mask = attention_mask.unsqueeze(-1) * attention_mask.unsqueeze(1) #Create a 2D matrix
+            d = torch.mul(attention_mask, d)
         a = torch.matmul(d, x)
 
         return a, d
