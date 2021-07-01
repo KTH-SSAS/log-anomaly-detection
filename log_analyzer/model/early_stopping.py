@@ -45,7 +45,6 @@ class EarlyStopping:
                     f'EarlyStopping counter: {self.counter} out of {self.patience}. Best loss: {-self.best_score}')
             if self.counter >= self.patience:
                 self.early_stop = True
-                self.save_checkpoint()
         else:
             self.best_score = score
             self.save_state_dict(val_loss, model)
