@@ -36,16 +36,21 @@ class SelfAttention(nn.Module):
         super().__init__()
         self.use_cuda = torch.cuda.is_available()
         self.w_a = nn.Parameter(torch.Tensor(hidden_dim, attention_dim))
+        torch.nn.init.xavier_normal_(self.w_a)
         # TODO add the other types
         self.attention_type = attention_type
+        # Depending on the type of attention, the query vector has different dimensions
         if attention_type == 'fixed':
-            self.query = nn.Parameter(torch.Tensor(attention_dim))  # Fixed attention
+            self.query = nn.Parameter(torch.Tensor(attention_dim))  # Shared one-dimension vector
+            torch.nn.init.normal_(self.query)
         elif attention_type == 'syntax':
             if seq_len is None:
                 raise RuntimeError('For syntax attention a sequence length has to bet set.')
-            self.query = nn.Parameter(torch.Tensor(seq_len, attention_dim))
+            self.query = nn.Parameter(torch.Tensor(seq_len, attention_dim)) # One query vector per position in sequence
+            torch.nn.init.xavier_normal_(self.query)
         elif attention_type == 'semantic':
-            self.query = nn.Parameter(torch.Tensor(hidden_dim, attention_dim))
+            self.query = nn.Parameter(torch.Tensor(hidden_dim, attention_dim)) # One query vector per hidden unit
+            torch.nn.init.xavier_normal_(self.query)
         
         if seq_len is not None: # If the input length is fixed, we can cache the masks
             self.input_mask = generate_mask(seq_len, hidden_dim, self.use_cuda)
