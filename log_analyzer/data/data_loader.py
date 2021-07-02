@@ -152,7 +152,7 @@ class OnlineLMBatcher:
     For use with tiered_lm.py. Batcher keeps track of user states in upper tier RNN.
     """
 
-    def __init__(self, datafile, sentence_length, context_size, skipsos, jagged, bidir,
+    def __init__(self, filepaths, sentence_length, context_size, skipsos, jagged, bidir,
                  batch_size=100, num_steps=5, delimiter=" ",
                  skiprows=0):
         self.sentence_length = sentence_length
@@ -171,97 +171,98 @@ class OnlineLMBatcher:
         self.staggler_num_steps = 1
         # the list of users whose saved log lines are greater than or equal to the self.num_steps
         self.users_ge_num_steps = []
-        self.datafile = datafile
+        self.filepaths = filepaths
         self.line_num = 1  # The line number of the file to be read next
         self.saved_lstm = {}
         self.skiprows = skiprows
         self.cuda = torch.cuda.is_available()
 
     def __iter__(self):
-        for f in self.datafile:
+        for datafile in self.filepaths:
             self.flush = False
             self.empty = False
             self.mb_size = self.init_mb_size
             self.num_steps = self.init_num_steps
-            self.data = open(f, 'r')
-            for i in range(self.skiprows):
-                garbage = self.data.readline()
 
-            while True:
-                output = []
-                while output == []:
-                    if self.flush == False:
-                        l = self.data.readline()
-                        self.line_num += 1
-                        if l == '':
-                            self.flush = True
+            with open(datafile, 'r') as f:
+                for i in range(self.skiprows):
+                    _ = f.readline()
+
+                while True:
+                    output = []
+                    while output == []:
+                        if self.flush == False:
+                            l = f.readline()
+                            self.line_num += 1
+                            if l == '':
+                                self.flush = True
+                            else:
+                                rowtext = [int(k)
+                                        for k in l.strip().split(self.delimiter)]
+                                user = int(rowtext[3])
+
+                                if self.user_logs.get(user) is None:
+                                    self.user_logs[user] = []
+                                    if self.cuda:
+                                        self.saved_lstm[user] = (torch.zeros((self.context_size[0])).cuda(),
+                                                                torch.zeros(
+                                                                    (len(self.context_size), self.context_size[0])).cuda(),
+                                                                torch.zeros((len(self.context_size), self.context_size[0])).cuda())
+                                    else: 
+                                        self.saved_lstm[user] = (torch.zeros((self.context_size[0])),
+                                                                torch.zeros(
+                                                                    (len(self.context_size), self.context_size[0])),
+                                                                torch.zeros((len(self.context_size), self.context_size[0])))
+                                self.user_logs[user].append(rowtext)
+
+                        self.users_ge_num_steps = [key for key in self.user_logs if len(
+                            self.user_logs[key]) >= self.num_steps]
+
+                        # Before the data loader read the last line of the log.
+                        if len(self.users_ge_num_steps) >= self.mb_size and self.flush == False:
+                            output, ctxt_vector, h_state, c_state = self.load_lines()
+
+                        # When the data loader read the last line of the log.
+                        elif len(self.users_ge_num_steps) > 0 and self.flush == True:
+                            output, ctxt_vector, h_state, c_state = self.load_lines()
+
+                        # Activate the staggler mode.
+                        elif len(self.users_ge_num_steps) == 0 and self.flush == True:
+                            if self.num_steps == self.staggler_num_steps:
+                                self.empty = True
+                                break
+                            self.mb_size = self.num_steps * self.mb_size
+                            self.num_steps = self.staggler_num_steps
+
+                    if self.empty == True:
+                        break
+
+                    output = torch.Tensor(output).long()
+                    batch = torch.transpose(output, 0, 1)
+                    endx = batch.shape[2] - int(not self.bidir)
+                    endt = batch.shape[2] - int(self.bidir)
+                    datadict = {'line': batch[:, :, 0],
+                                'second': batch[:, :, 1],
+                                'day': batch[:, :, 2],
+                                'user': batch[:, :, 3],
+                                'red': batch[:, :, 4],
+                                'x': batch[:, :, 5 + self.jagged + self.skipsos:endx],
+                                't': batch[:, :, 6 + self.jagged + self.skipsos:endt],
+                                'context_vector': ctxt_vector,
+                                'c_state_init': torch.transpose(h_state, 0, 1),
+                                'h_state_init': torch.transpose(c_state, 0, 1)}  # state_triple['h_state_init']}
+                    if self.jagged:
+                        if self.cuda:
+                            datadict['length'] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos)).cuda()
+                            datadict['mask'] = torch.empty(datadict['length'].shape[0], datadict['x'].shape[1], datadict['x'].shape[-1] - 2 * self.bidir).cuda()
                         else:
-                            rowtext = [int(k)
-                                       for k in l.strip().split(self.delimiter)]
-                            user = int(rowtext[3])
-
-                            if self.user_logs.get(user) is None:
-                                self.user_logs[user] = []
-                                if self.cuda:
-                                    self.saved_lstm[user] = (torch.zeros((self.context_size[0])).cuda(),
-                                                            torch.zeros(
-                                                                (len(self.context_size), self.context_size[0])).cuda(),
-                                                            torch.zeros((len(self.context_size), self.context_size[0])).cuda())
-                                else: 
-                                    self.saved_lstm[user] = (torch.zeros((self.context_size[0])),
-                                                            torch.zeros(
-                                                                (len(self.context_size), self.context_size[0])),
-                                                            torch.zeros((len(self.context_size), self.context_size[0])))
-                            self.user_logs[user].append(rowtext)
-
-                    self.users_ge_num_steps = [key for key in self.user_logs if len(
-                        self.user_logs[key]) >= self.num_steps]
-
-                    # Before the data loader read the last line of the log.
-                    if len(self.users_ge_num_steps) >= self.mb_size and self.flush == False:
-                        output, ctxt_vector, h_state, c_state = self.load_lines()
-
-                    # When the data loader read the last line of the log.
-                    elif len(self.users_ge_num_steps) > 0 and self.flush == True:
-                        output, ctxt_vector, h_state, c_state = self.load_lines()
-
-                    # Activate the staggler mode.
-                    elif len(self.users_ge_num_steps) == 0 and self.flush == True:
-                        if self.num_steps == self.staggler_num_steps:
-                            self.empty = True
-                            break
-                        self.mb_size = self.num_steps * self.mb_size
-                        self.num_steps = self.staggler_num_steps
-
-                if self.empty == True:
-                    break
-
-                output = torch.Tensor(output).long()
-                batch = torch.transpose(output, 0, 1)
-                endx = batch.shape[2] - int(not self.bidir)
-                endt = batch.shape[2] - int(self.bidir)
-                datadict = {'line': batch[:, :, 0],
-                            'second': batch[:, :, 1],
-                            'day': batch[:, :, 2],
-                            'user': batch[:, :, 3],
-                            'red': batch[:, :, 4],
-                            'x': batch[:, :, 5 + self.jagged + self.skipsos:endx],
-                            't': batch[:, :, 6 + self.jagged + self.skipsos:endt],
-                            'context_vector': ctxt_vector,
-                            'c_state_init': torch.transpose(h_state, 0, 1),
-                            'h_state_init': torch.transpose(c_state, 0, 1)}  # state_triple['h_state_init']}
-                if self.jagged:
-                    if self.cuda:
-                        datadict['length'] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos)).cuda()
-                        datadict['mask'] = torch.empty(datadict['length'].shape[0], datadict['x'].shape[1], datadict['x'].shape[-1] - 2 * self.bidir).cuda()
-                    else:
-                        datadict['length'] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos))
-                        datadict['mask'] = torch.empty(datadict['length'].shape[0], datadict['x'].shape[1], datadict['x'].shape[-1] - 2 * self.bidir)
-                    
-                    for i, seq_len_matrix in enumerate(datadict['length']):
-                        for j, seq_length in enumerate(seq_len_matrix):
-                            datadict['mask'][i,j,:] = get_mask(seq_length.view(-1, 1) - 2 * self.bidir, self.sentence_length - 2 * self.bidir)
-                yield datadict
+                            datadict['length'] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos))
+                            datadict['mask'] = torch.empty(datadict['length'].shape[0], datadict['x'].shape[1], datadict['x'].shape[-1] - 2 * self.bidir)
+                        
+                        for i, seq_len_matrix in enumerate(datadict['length']):
+                            for j, seq_length in enumerate(seq_len_matrix):
+                                datadict['mask'][i,j,:] = get_mask(seq_length.view(-1, 1) - 2 * self.bidir, self.sentence_length - 2 * self.bidir)
+                    yield datadict
 
     def load_lines(self):
         output = []
