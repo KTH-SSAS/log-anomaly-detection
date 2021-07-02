@@ -215,9 +215,8 @@ class OnlineLMBatcher:
                                             torch.zeros((len(self.context_size), self.context_size[0])),
                                             torch.zeros((len(self.context_size), self.context_size[0])))
                                 self.user_logs[user].append(rowtext)
-
-                        self.users_ge_num_steps = [key for key in self.user_logs if len(
-                            self.user_logs[key]) >= self.num_steps]
+                                if user not in self.users_ge_num_steps and len(self.user_logs[user]) >= self.num_steps:
+                                    self.users_ge_num_steps.append(user)
 
                         # Before the data loader read the last line of the log.
                         if len(self.users_ge_num_steps) >= self.mb_size and self.flush == False:
@@ -283,6 +282,8 @@ class OnlineLMBatcher:
         for user in self.users_ge_num_steps[:self.mb_size]:
             output.append(self.user_logs[user][0:self.num_steps])
             self.user_logs[user] = self.user_logs[user][self.num_steps:]
+            if len(self.user_logs[user]) < self.num_steps:
+                self.users_ge_num_steps.remove(user)
             ctxt_vector = torch.cat((ctxt_vector, torch.unsqueeze(
                 self.saved_lstm[user][0], dim=0)), dim=0)
             h_state = torch.cat((h_state, torch.unsqueeze(
