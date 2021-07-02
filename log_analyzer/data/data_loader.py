@@ -81,8 +81,10 @@ class IterableLogDataSet(IterableDataset):
                         datadict['length'] = data[5]
                         if self.bidir:
                             datadict['t'] = datadict['t'].clone().detach()
-                            datadict['t'][data[5]-1] = 0 # Mask out the last token of the target sequence
-                            datadict['length'] += 1 #include eos token in length
+                            # Mask out the last token of the target sequence
+                            datadict['t'][data[5]-1] = 0
+                            # include eos token in length
+                            datadict['length'] += 1
                         datadict['mask'] = get_mask(
                             datadict['length']-2*self.bidir-int(self.skipsos), self.sentence_length-2*self.bidir)
                         assert datadict['length'] <= datadict['x'].shape[-1], 'Sequence found greater than num_tokens_predicted'
@@ -195,22 +197,23 @@ class OnlineLMBatcher:
                             if l == '':
                                 self.flush = True
                             else:
-                                rowtext = [int(k)
-                                        for k in l.strip().split(self.delimiter)]
+                                split_line = l.strip().split(self.delimiter)
+                                rowtext = [int(k) for k in split_line]
                                 user = int(rowtext[3])
 
                                 if self.user_logs.get(user) is None:
                                     self.user_logs[user] = []
                                     if self.cuda:
-                                        self.saved_lstm[user] = (torch.zeros((self.context_size[0])).cuda(),
-                                                                torch.zeros(
-                                                                    (len(self.context_size), self.context_size[0])).cuda(),
-                                                                torch.zeros((len(self.context_size), self.context_size[0])).cuda())
-                                    else: 
-                                        self.saved_lstm[user] = (torch.zeros((self.context_size[0])),
-                                                                torch.zeros(
-                                                                    (len(self.context_size), self.context_size[0])),
-                                                                torch.zeros((len(self.context_size), self.context_size[0])))
+                                        self.saved_lstm[user] = (
+                                            torch.zeros((self.context_size[0])).cuda(),
+                                            torch.zeros((len(self.context_size), self.context_size[0])).cuda(),
+                                            torch.zeros((len(self.context_size), self.context_size[0])).cuda()
+                                            )
+                                    else:
+                                        self.saved_lstm[user] = (
+                                            torch.zeros((self.context_size[0])),
+                                            torch.zeros((len(self.context_size), self.context_size[0])),
+                                            torch.zeros((len(self.context_size), self.context_size[0])))
                                 self.user_logs[user].append(rowtext)
 
                         self.users_ge_num_steps = [key for key in self.user_logs if len(
@@ -251,15 +254,20 @@ class OnlineLMBatcher:
                                 'h_state_init': torch.transpose(c_state, 0, 1)}  # state_triple['h_state_init']}
                     if self.jagged:
                         if self.cuda:
-                            datadict['length'] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos)).cuda()
-                            datadict['mask'] = torch.empty(datadict['length'].shape[0], datadict['x'].shape[1], datadict['x'].shape[-1] - 2 * self.bidir).cuda()
+                            datadict['length'] = torch.LongTensor(
+                                batch[:, :, 5] - int(self.skipsos)).cuda()
+                            datadict['mask'] = torch.empty(
+                                datadict['length'].shape[0], datadict['x'].shape[1], datadict['x'].shape[-1] - 2 * self.bidir).cuda()
                         else:
-                            datadict['length'] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos))
-                            datadict['mask'] = torch.empty(datadict['length'].shape[0], datadict['x'].shape[1], datadict['x'].shape[-1] - 2 * self.bidir)
-                        
+                            datadict['length'] = torch.LongTensor(
+                                batch[:, :, 5] - int(self.skipsos))
+                            datadict['mask'] = torch.empty(
+                                datadict['length'].shape[0], datadict['x'].shape[1], datadict['x'].shape[-1] - 2 * self.bidir)
+
                         for i, seq_len_matrix in enumerate(datadict['length']):
                             for j, seq_length in enumerate(seq_len_matrix):
-                                datadict['mask'][i,j,:] = get_mask(seq_length.view(-1, 1) - 2 * self.bidir, self.sentence_length - 2 * self.bidir)
+                                datadict['mask'][i, j, :] = get_mask(
+                                    seq_length.view(-1, 1) - 2 * self.bidir, self.sentence_length - 2 * self.bidir)
                     yield datadict
 
     def load_lines(self):
@@ -268,10 +276,10 @@ class OnlineLMBatcher:
             ctxt_vector = torch.tensor([]).cuda()
             h_state = torch.tensor([]).cuda()
             c_state = torch.tensor([]).cuda()
-        else: 
+        else:
             ctxt_vector = torch.tensor([])
             h_state = torch.tensor([])
-            c_state = torch.tensor([])   
+            c_state = torch.tensor([])
         for user in self.users_ge_num_steps[:self.mb_size]:
             output.append(self.user_logs[user][0:self.num_steps])
             self.user_logs[user] = self.user_logs[user][self.num_steps:]
