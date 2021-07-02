@@ -172,7 +172,6 @@ class OnlineLMBatcher:
         # the list of users whose saved log lines are greater than or equal to the self.num_steps
         self.users_ge_num_steps = []
         self.filepaths = filepaths
-        self.line_num = 1  # The line number of the file to be read next
         self.saved_lstm = {}
         self.skiprows = skiprows
         self.cuda = torch.cuda.is_available()
@@ -193,7 +192,6 @@ class OnlineLMBatcher:
                     while output == []:
                         if self.flush == False:
                             l = f.readline()
-                            self.line_num += 1
                             if l == '':
                                 self.flush = True
                             else:
