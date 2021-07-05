@@ -23,3 +23,8 @@ class Int2Word(Detokenizer):
         self.search_dict[2] = "<usr_OOV>"
         self.search_dict[3] = "<pc_OOV>"
         self.search_dict[4] = "<domain_OOV>"
+
+    def run_detokenizer(self, sentence):
+        restored_txt = [self.search_dict[pred_token] for pred_token in sentence if pred_token not in self.skip_list]
+        return restored_txt
+
