@@ -16,3 +16,10 @@ class Int2Char(Detokenizer):
 class Int2Word(Detokenizer):
     def __init__(self, dict_file):
         super().__init__()
+        f = open(dict_file)
+        self.search_dict = json.load(f)
+        self.search_dict[0] = "<SOS>"
+        self.search_dict[1] = "<EOS>"
+        self.search_dict[2] = "<usr_OOV>"
+        self.search_dict[3] = "<pc_OOV>"
+        self.search_dict[4] = "<domain_OOV>"
