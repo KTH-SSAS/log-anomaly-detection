@@ -73,14 +73,25 @@ class TieredTrainer(Trainer):
         X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(
             batch)
 
-        # Apply the model to input to produce the output
-        output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(
-            X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L
-        )
-        self.data_handler.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
+        if self.scaler is not None:
+            with torch.cuda.amp.autocast():
+                # Apply the model to input to produce the output
+                output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(
+                    X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L
+                )
+                self.data_handler.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
 
-        # Compute the loss for the output
-        loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
+                # Compute the loss for the output
+                loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
+        else:
+            # Apply the model to input to produce the output
+            output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(
+                X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L
+            )
+            self.data_handler.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
+
+            # Compute the loss for the output
+            loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
 
         # Take an optimization step based on the loss
         self.optimizer_step(loss)
