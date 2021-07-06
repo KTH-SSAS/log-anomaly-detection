@@ -5,11 +5,11 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from sklearn import metrics
 import os
-from log_analyzer.tokenizer.tokenizer import Char_tokenizer
+from log_analyzer.tokenizer.tokenizer import Char_tokenizer, Word_tokenizer
 
 
 
-def create_attention_matrix(model: LSTMLanguageModel, sequences, output_dir, lengths=None, mask=None):
+def create_attention_matrix(model: LSTMLanguageModel, sequences, output_dir, lengths=None, mask=None, token_map_file=None): 
     """Plot attention matrix over batched input. Will produce one matrix plot for each entry in batch, in the designated output directory. 
     For word level tokenization, the function will also produce an matrix for the avergae attention weights in the batch.
     """
@@ -67,6 +67,7 @@ def create_attention_matrix(model: LSTMLanguageModel, sequences, output_dir, len
             ax.set_yticks(range(len(string)))
             ax.set_yticklabels(string, fontsize='small')
         else:
+            string = Word_tokenizer.detokenize_line(seq, token_map_file)
             twin = ax.twinx()
             twin.matshow(matrix.detach().numpy())
             set_ticks()
