@@ -252,7 +252,7 @@ class Tiered_LSTM(LogModel):
             length = None if lengths is None else lengths[idx]
             tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
                 sequences, lengths=length, context_vectors=self.ctxt_vector)
-            if self.model.bidirectional:
+            if self.low_lv_lstm.bidirectional:
                 final_hidden = final_hidden.view(
                     1, final_hidden.shape[1], -1)
             self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
