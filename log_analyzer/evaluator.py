@@ -2,7 +2,7 @@ from log_analyzer.model.lstm import LSTMLanguageModel
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm import tqdm
+from tqdm.notebook import tqdm
 from sklearn import metrics
 import os
 from log_analyzer.tokenizer.tokenizer import Char_tokenizer
@@ -79,7 +79,7 @@ def create_attention_matrix(model: LSTMLanguageModel, sequences, output_dir, len
 class Evaluator:
     def __init__(self):
         """Creates an Evaluator instance that provides methods for model evaluation"""
-        self.data_is_trimmed = False
+        self.data_is_prepared = False
         self.data_is_normalized = False
         self.reset_evaluation_data()
 
@@ -140,13 +140,21 @@ class Evaluator:
         }
         self.token_accuracy = 0
         self.token_count = 0
-        self.data_is_trimmed = False
+        self.data_is_prepared = False
 
-    def trim_evaluation_data(self):
-        """Trims any remaining allocated entries for the evaluation data lists"""
+    def prepare_evaluation_data(self):
+        """Prepares the evaluation data by:
+        1. Trimming any remaining allocated entries for the evaluation data lists
+        2. Sorting the data (by second) if it is not sorted"""
         for key in self.data.keys():
             self.data[key] = self.data[key][: self.index[key]]
-        self.data_is_trimmed = True
+        # Check if the data is sorted
+        if not np.all(np.diff(self.data["seconds"]) >= 0):
+            # Sort the data by seconds
+            sorted_indices = np.argsort(self.data["seconds"])
+            for key in ["users", "losses", "seconds", "red_flags"]:
+                self.data[key] = self.data[key][sorted_indices]
+        self.data_is_prepared = True
 
     def normalize_losses(self):
         """Performs user-level anomaly score normalization by subtracting the average
@@ -181,8 +189,8 @@ class Evaluator:
 
     def get_token_perplexity(self):
         """Computes and returns the perplexity of the model token prediction"""
-        if not self.data_is_trimmed:
-            self.trim_evaluation_data()
+        if not self.data_is_prepared:
+            self.prepare_evaluation_data()
         # Compute the average loss
         average_loss = np.average(self.data["losses"])
         # Assuming the loss is cross entropy loss, the perplexity is the exponential of the loss
@@ -191,8 +199,8 @@ class Evaluator:
 
     def get_auc_score(self, fp_rate=None, tp_rate=None):
         """Computes AUC score (area under the ROC curve)"""
-        if not self.data_is_trimmed:
-            self.trim_evaluation_data()
+        if not self.data_is_prepared:
+            self.prepare_evaluation_data()
         # Compute fp and tp rates if not supplied
         if fp_rate == None or tp_rate == None:
             fp_rate, tp_rate, _ = metrics.roc_curve(
@@ -216,8 +224,8 @@ class Evaluator:
         calculations (e.g. 60 means percentiles are computed for every minute).
         Outliers determines how many non-redteam outliers are plotted onto the graph (per
         hour of data)."""
-        if not self.data_is_trimmed:
-            self.trim_evaluation_data()
+        if not self.data_is_prepared:
+            self.prepare_evaluation_data()
         # Ensure percentiles is sorted in ascending order
         percentiles = sorted(percentiles)
         # Ensure smoothing > 0, and int
@@ -290,8 +298,8 @@ class Evaluator:
         'FPR': False-positive rate. The default.
         'alerts': # of alerts per second (average) the FPR would be equivalent to.
         'alerts-FPR': What % of produced alerts would be false alerts."""
-        if not self.data_is_trimmed:
-            self.trim_evaluation_data()
+        if not self.data_is_prepared:
+            self.prepare_evaluation_data()
         fp_rate, tp_rate, _ = metrics.roc_curve(
             self.data["red_flags"], self.data["losses"], pos_label=1
         )
