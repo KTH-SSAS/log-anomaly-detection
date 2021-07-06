@@ -257,7 +257,7 @@ class Tiered_LSTM(LogModel):
                     1, final_hidden.shape[1], -1)
             self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
                 low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len=length)
-            tag_output[idx][:tag_size.shape[0],:tag_size.shape[1] ,:tag_size.shape[2]] = tag_size
+            tag_output[idx][:tag_size.shape[0],:tag_size.shape[1], :tag_size.shape[2]] = tag_size
             self.ctxt_vector = torch.squeeze(self.ctxt_vector, dim=1)
         return tag_output, self.ctxt_vector, self.ctxt_h, self.ctxt_c
 

@@ -33,14 +33,14 @@ class TieredTrainer(Trainer):
         else:
             targets = Y
         # output (num_steps x batch x length x embedding dimension)  Y (num_steps x batch x length)
-        for i, (step_output, true_y) in enumerate(zip(output, Y)):
+        for i, (step_output, step_y) in enumerate(zip(output, Y)):
             if lengths is not None:  # On notebook, I checked it with forward LSTM and word tokenization. Further checks have to be done...
                 token_losses = self.criterion(
-                    step_output.transpose(1, 2), true_y[:, :torch.max(lengths)])
+                    step_output.transpose(1, 2), step_y[:, :torch.max(lengths)])
                 masked_losses = token_losses * mask[i][:, :torch.max(lengths)]
                 line_losses = torch.sum(masked_losses, dim=1)
             else:
-                token_losses = self.criterion(step_output.transpose(1, 2), true_y)
+                token_losses = self.criterion(step_output.transpose(1, 2), step_y)
                 line_losses = torch.mean(token_losses, dim=1)
             line_losses_list[i] = line_losses
             step_loss = torch.mean(line_losses, dim=0)
