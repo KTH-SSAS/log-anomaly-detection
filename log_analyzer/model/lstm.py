@@ -238,7 +238,10 @@ class Tiered_LSTM(LogModel):
         self.ctxt_h = context_h
         self.ctxt_c = context_c
         if lengths is None:
-            tag_output = torch.empty_like(user_sequences, dtype=torch.float)
+            if self.low_lv_lstm.bidirectional:
+                tag_output = torch.empty((user_sequences.shape[0], user_sequences.shape[1], user_sequences.shape[2]-2), dtype=torch.float)
+            else:
+                tag_output = torch.empty_like(user_sequences, dtype=torch.float)
         else:
             tag_output = torch.zeros((user_sequences.shape[0], user_sequences.shape[1], torch.max(lengths)), dtype=torch.float)
 
