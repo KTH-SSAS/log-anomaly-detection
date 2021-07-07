@@ -67,7 +67,6 @@ def create_attention_matrix(model: LSTMLanguageModel, sequences, output_dir, len
             ax.set_yticks(range(len(string)))
             ax.set_yticklabels(string, fontsize='small')
         else:
-            string = Word_tokenizer.detokenize_line(seq, token_map_file)
             twin = ax.twinx()
             twin.matshow(matrix.detach().numpy())
             set_ticks()
