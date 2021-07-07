@@ -29,14 +29,8 @@ class Char_tokenizer:
         return "0 " + " ".join([str(ord(c) - 30) for c in string]) + " 1 " + " ".join(["0"] * pad_len) + "\n"
 
     @classmethod
-    def detokenize_line(cls, tokens, json_file = None):
-        if cls is Char_tokenizer:
-            restored_txt = "".join([chr(t+30) for t in tokens])
-        else:
-            f = open(json_file) 
-            token_dict = json.load(f)
-            restored_txt = ",".join([token_dict[str(t)] for t in tokens])
-        return restored_txt
+    def detokenize_line(cls, tokens):
+        return "".join([chr(t+30) for t in tokens])
 
     def delete_duplicates(self):
         try:
