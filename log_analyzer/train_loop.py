@@ -134,9 +134,9 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
             if train_loader.flush is False:
                 loss, done = lm_trainer.train_step(batch)
             else:
-                loss, *_ = lm_trainer.eval_step(batch)
-                print(
-                    f'Due to flush, training stopped... Current loss: {loss:.3f}')
+                print(f'Due to flush, skipping the rest of the current file.')
+                train_loader.skip_file = True
+                continue
         else:
             loss, done = lm_trainer.train_step(batch)
         train_losses.append(loss.item())
