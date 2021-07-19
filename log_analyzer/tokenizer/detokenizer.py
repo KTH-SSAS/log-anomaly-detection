@@ -26,7 +26,7 @@ class Int2Word(Detokenizer):
 
 if __name__ == "__main__":
     
-    dict_file = 'parsed_data/word_token/records/word_token_map.json'
+    dict_file = 'data/data_examples/detoken_word/word_token_map.json'
 
     detokenizer = Int2Char()
     example = "0 55 19 18 19 34 38 49 47 19 14 37 19 26 24 20 6 34 38 49 47 19 14 37 19 26 24 20 14 37 19 26 24 20 14 33 14 33 14 35 87 86 74 47 67 82 14 53 87 69 69 71 85 85 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0".split(' ')	
