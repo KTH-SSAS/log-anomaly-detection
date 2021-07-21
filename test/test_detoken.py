@@ -33,8 +33,11 @@ def test_Int2Char():
     example_token = "0 55 19 18 19 34 38 49 47 19 14 37 19 26 24 20 6 34 38 49 47 19 14 37 19 26 24 20 14 37 19 26 24 20 14 33 14 33 14 35 87 86 74 47 67 82 14 53 87 69 69 71 85 85 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"	
     tokenizer = Char_tokenizer(args, None)
     detokenizer = Int2Char()
-    example = "0 55 19 18 19 34 38 49 47 19 14 37 19 26 24 20 6 34 38 49 47 19 14 37 19 26 24 20 14 37 19 26 24 20 14 33 14 33 14 35 87 86 74 47 67 82 14 53 87 69 69 71 85 85 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0".split(' ')	
-    ex_tokens = [int(t) for t in example]
+    
+    line_minus_time = ','.join(example_log.strip().split(',')[1:])
+    pad_len = 120 - len(line_minus_time)
+    tokenized_log = tokenizer.tokenize_line(line_minus_time, pad_len)
+    assert example_token == tokenized_log[:-1], "The example tokens and parsed log are not identical."
     detoken_example = detokenizer.run_detokenizer(ex_tokens)
     assert len(ex_tokens) != len(detoken_example), "the length of tokens does not match the length of outputs by character detokenization"
     
