@@ -49,5 +49,9 @@ def test_Int2Word():
     example_token = "0 5 6 7 6 7 7 8 9 10 11 1"
     json_folder = 'data/data_examples/detoken_word/'
     detokenizer = Int2Word(json_folder, 'word_token_map.json')
+    
+    tokenized_log = detokenizer.run_tokenizer(example_log)
+    assert example_token == tokenized_log, "The example tokens and parsed log are not identical."
+
     detoken_example = detokenizer.run_detokenizer(ex_tokens)
     assert len(ex_tokens) == len(detoken_example.split(',')), "the length of tokens does not match the length of of outputs by word detokenization"
