@@ -38,9 +38,10 @@ def test_Int2Char():
     pad_len = 120 - len(line_minus_time)
     tokenized_log = tokenizer.tokenize_line(line_minus_time, pad_len)
     assert example_token == tokenized_log[:-1], "The example tokens and parsed log are not identical."
-    detoken_example = detokenizer.run_detokenizer(ex_tokens)
-    assert len(ex_tokens) != len(detoken_example), "the length of tokens does not match the length of outputs by character detokenization"
     
+    ex_tokens = [int(t) for t in example_token.split(' ') if int(t) > 1]
+    detoken_example = detokenizer.run_detokenizer(ex_tokens)
+    assert detoken_example == line_minus_time, "The detokenized tokens and the original log input are not identical."
 
 def test_Int2Word():
     example_log = '1,U101@DOM1,C1862$@DOM1,C1862,C1862,?,?,AuthMap,Success'
