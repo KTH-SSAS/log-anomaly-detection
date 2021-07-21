@@ -1,5 +1,10 @@
 import pytest
+import re
+from argparse import ArgumentParser
+from collections import Counter
 from log_analyzer.tokenizer.detokenizer import Int2Char, Int2Word
+from log_analyzer.tokenizer.tokenizer import Char_tokenizer
+
 
 def dummy_arg_parser():
     parser = ArgumentParser()
