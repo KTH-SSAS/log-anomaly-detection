@@ -53,5 +53,9 @@ def test_Int2Word():
     tokenized_log = detokenizer.run_tokenizer(example_log)
     assert example_token == tokenized_log, "The example tokens and parsed log are not identical."
 
+    ex_tokens = [int(t) for t in example_token.split(' ')]
     detoken_example = detokenizer.run_detokenizer(ex_tokens)
-    assert len(ex_tokens) == len(detoken_example.split(',')), "the length of tokens does not match the length of of outputs by word detokenization"
+    detoken_example_minus_sos_eos = ','.join(detoken_example.split(',')[1:-1])
+    ex_log_lst = re.split(r"[$@,]+",example_log)[1:]
+    example_log_minus_time = ','.join(ex_log_lst)
+    assert example_log_minus_time == detoken_example_minus_sos_eos, "The detokenized tokens and the original log input are not identical."
