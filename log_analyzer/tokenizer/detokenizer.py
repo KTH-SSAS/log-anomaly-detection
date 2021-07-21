@@ -46,3 +46,21 @@ class Int2Word(Detokenizer):
         restored_lst = [self.search_dict[str(t)] for t in tokens]	
         restored_txt = ",".join(restored_lst)	
         return restored_txt	
+
+    def split_line(self, string):
+        """
+        Turn raw some fields of raw log line from auth_h.txt into a list of word tokens
+        (needed for consistent user ids and domain ids)
+
+        :param string: Raw log line from auth_h.txt
+        :return: (list) word tokens for some fields of auth_h.txt
+        """
+        data = string.strip().split(',')
+        src_user = data[1].split("@")[0]
+        src_domain = data[1].split("@")[1]
+        dst_user = data[2].split("@")[0]
+        dst_domain = data[2].split("@")[1]
+        src_pc = data[3]
+        dst_pc = data[4]
+        return src_user, src_domain, dst_user.replace("$", ""), dst_domain, src_pc, dst_pc
+
