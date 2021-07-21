@@ -27,6 +27,8 @@ def dummy_arg_parser():
 
 
 def test_Int2Char():
+    
+    args = dummy_arg_parser()
     example_log = '1,U101@DOM1,C1862$@DOM1,C1862,C1862,?,?,AuthMap,Success'
     example_token = "0 55 19 18 19 34 38 49 47 19 14 37 19 26 24 20 6 34 38 49 47 19 14 37 19 26 24 20 14 37 19 26 24 20 14 33 14 33 14 35 87 86 74 47 67 82 14 53 87 69 69 71 85 85 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"	
     detokenizer = Int2Char()
