@@ -64,3 +64,28 @@ class Int2Word(Detokenizer):
         dst_pc = data[4]
         return src_user, src_domain, dst_user.replace("$", ""), dst_domain, src_pc, dst_pc
 
+    def run_tokenizer(self, string):
+
+        data = string.split(",")
+
+        src_user, src_domain, dst_user, dst_domain, src_pc, dst_pc = self.split_line(string)
+        src_user = self.usr_inds[src_user]
+        src_domain = self.domain_inds[src_domain]
+        
+
+        if dst_user.startswith('U'):
+            dst_user = self.usr_inds[dst_user]
+        else:
+            dst_user = self.pc_inds[dst_user]
+        dst_domain = self.domain_inds[dst_domain]
+
+        src_pc = self.pc_inds[src_pc]
+        dst_pc = self.pc_inds[dst_pc]
+
+        if data[5].startswith("MICROSOFT_AUTH"):  # Deals with file corruption for this value.
+            data[5] = "MICROSOFT_AUTH"
+        auth_type = self.auth_dict[data[5]]
+        logon_type = self.logon_dict[data[6]]
+        auth_orient = self.orient_dict[data[7]]
+        success = self.success_dict[data[8].strip()]
+        return f"{self.sos} {src_user} {src_domain} {dst_user} {dst_domain} {src_pc} {dst_pc} {auth_type} {logon_type} {auth_orient} {success} {self.eos}"
