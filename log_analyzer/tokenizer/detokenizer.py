@@ -72,7 +72,6 @@ class Int2Word(Detokenizer):
         src_user = self.usr_inds[src_user]
         src_domain = self.domain_inds[src_domain]
         
-
         if dst_user.startswith('U'):
             dst_user = self.usr_inds[dst_user]
         else:
