@@ -14,10 +14,10 @@ class Int2Char(Detokenizer):
         return restored_txt
 
 class Int2Word(Detokenizer):	
-    def __init__(self, json_folder, dict_file):	
+    def __init__(self, json_folder):	
         super().__init__()	
 
-        with open(os.path.join(json_folder, dict_file)) as json_file:
+        with open(os.path.join(json_folder, 'word_token_map.json')) as json_file:
             self.search_dict = json.load(json_file)
         with open(os.path.join(json_folder, 'usr_map.json')) as json_file:
             self.usr_inds = json.load(json_file)
