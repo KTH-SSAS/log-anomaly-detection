@@ -178,6 +178,6 @@ class TransformerTrainer(Trainer):
 
     def __init__(self, config: TrainerConfig, transformer_config: TransformerConfig, checkpoint_dir, verbose):
         # Create a model
-        self.transformer = Transformer(TransformerConfig)
+        self.transformer = Transformer(transformer_config)
 
         super().__init__(config, verbose, checkpoint_dir)
