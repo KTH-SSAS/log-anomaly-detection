@@ -1,9 +1,6 @@
-from argparse import ArgumentParser, Namespace
-from log_analyzer.model.lstm import Tiered_LSTM
 from log_analyzer.config.config import Config
 
-from torch.utils.data.dataset import ConcatDataset
-from log_analyzer.config.model_config import LSTMConfig, TieredLSTMConfig
+from log_analyzer.config.model_config import LSTMConfig, TieredLSTMConfig, TransformerConfig
 from log_analyzer.config.trainer_config import DataConfig, TrainerConfig
 import os
 import json
@@ -11,7 +8,7 @@ import socket
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 import log_analyzer.data.data_loader as data_utils
-from log_analyzer.trainer import LSTMTrainer, Trainer
+from log_analyzer.trainer import LSTMTrainer, TransformerTrainer, Trainer
 from log_analyzer.tiered_trainer import TieredTrainer
 from tqdm import tqdm
 
@@ -41,7 +38,7 @@ def get_model_config(filename, model_type) -> Config:
     elif model_type == LSTM:
         return LSTMConfig.init_from_file(filename)
     elif model_type == TRANSFORMER:
-        raise NotImplementedError("Transformer not yet implemented.")
+        return TransformerConfig.init_from_file(filename)
     else:
         raise RuntimeError('Invalid model type.')
 
@@ -92,7 +89,7 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
         else:
             model_config.sequence_length = max_input_length
 
-    # Settings for LSTM.
+    # Settings for model
     if model_type == TIERED_LSTM:
         model_config: TieredLSTMConfig = model_config
         train_loader, test_loader = data_utils.load_data_tiered(data_folder, train_days, test_days,
@@ -101,12 +98,19 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
                                                                 context_layers=model_config.context_layers)
         lm_trainer = TieredTrainer(
             trainer_config, model_config, bidirectional, log_dir, verbose, train_loader)
-    else:
+    elif model_type == LSTM:
         train_loader, test_loader = data_utils.load_data(data_folder, train_days, test_days,
                                                          trainer_config.batch_size, bidirectional, skip_sos, jagged,
                                                          max_input_length)
         lm_trainer = LSTMTrainer(
             trainer_config, model_config, bidirectional, log_dir, verbose)
+    elif model_type == TRANSFORMER:
+        model_config: TransformerConfig = model_config
+        train_loader, test_loader = data_utils.load_data(data_folder, train_days, test_days,
+                                                         trainer_config.batch_size, bidirectional, skip_sos, jagged,
+                                                         max_input_length)
+        lm_trainer = TransformerTrainer(
+            trainer_config, model_config, log_dir, verbose)
 
     return lm_trainer, train_loader, test_loader
 
