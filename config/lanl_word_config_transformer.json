@@ -1,6 +1,6 @@
 {
 	"layers": 2,
-	"attention_dim": 0,
+	"attention_dim": 20,
 	"attention_heads": 4,
 	"embedding_dim": 20,
 	"vocab_size": 28199
