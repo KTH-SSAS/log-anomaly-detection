@@ -96,7 +96,9 @@ class Transformer(LogModel):
         nn.init.zeros_(self.decoder.weight)
         nn.init.uniform_(self.decoder.weight, -initrange, initrange)
 
-    def forward(self, src, has_mask=True):
+    def forward(self, src, lengths=None, mask=None, has_mask=True):
+        # batch size, sequence length, embedded dimension
+        # lengths is currently ignored, added for compatibility with LSTM-training code
         if has_mask:
             device = src.device
             if self.src_mask is None or self.src_mask.size(0) != len(src):
@@ -106,8 +108,10 @@ class Transformer(LogModel):
         else:
             self.src_mask = None
 
-        src = self.encoder(src) * math.sqrt(self.ninp)
+        src = self.encoder(src) * math.sqrt(self.config.embedding_dim)
         src = self.pos_encoder(src)
         output = self.transformer_encoder(src, self.src_mask)
         output = self.decoder(output)
-        return F.log_softmax(output, dim=-1)
+        # Trainer expects model to return a tuple of results (for the LSTMs this would be (lstm_out, final_hidden_state))
+        # So we have to return a tuple here too (all but the first value of the tuple are discarded)
+        return F.log_softmax(output, dim=-1), output
