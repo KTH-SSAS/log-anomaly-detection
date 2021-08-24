@@ -1,8 +1,9 @@
-from log_analyzer.config.model_config import LSTMConfig
+from log_analyzer.config.model_config import LSTMConfig, TransformerConfig
 from log_analyzer.config.trainer_config import TrainerConfig
 import torch
 import torch.nn as nn
 from log_analyzer.model.lstm import Fwd_LSTM, Bid_LSTM, LogModel
+from log_analyzer.model.transformer import Transformer
 import log_analyzer.model.early_stopping as early_stopping
 from log_analyzer.evaluator import Evaluator
 from abc import ABC, abstractmethod
@@ -164,5 +165,19 @@ class LSTMTrainer(Trainer):
         model = Bid_LSTM if bidirectional else Fwd_LSTM
         # Create a model
         self.lstm = model(lstm_config)
+
+        super().__init__(config, verbose, checkpoint_dir)
+
+class TransformerTrainer(Trainer):
+    """Trainer class for Transformer model"""
+    @property
+    def model(self):
+        if self.transformer is None:
+            raise RuntimeError("Model not initialized!")
+        return self.transformer
+
+    def __init__(self, config: TrainerConfig, transformer_config: TransformerConfig, checkpoint_dir, verbose):
+        # Create a model
+        self.transformer = Transformer(TransformerConfig)
 
         super().__init__(config, verbose, checkpoint_dir)
