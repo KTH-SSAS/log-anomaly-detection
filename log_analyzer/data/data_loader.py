@@ -185,6 +185,7 @@ class OnlineLMBatcher:
             self.empty = False
             self.mb_size = self.init_mb_size
             self.num_steps = self.init_num_steps
+            self.skip_file = False
 
             with open(datafile, 'r') as f:
                 for i in range(self.skiprows):
@@ -195,7 +196,6 @@ class OnlineLMBatcher:
                     if self.skip_file == True:
                         # Skip the rest of the current file, because it is flush and
                         # we're currently training (see train_loop.py)
-                        self.skip_file = False
                         break
                     while output == []:
                         if self.flush == False:
