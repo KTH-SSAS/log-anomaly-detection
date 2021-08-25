@@ -9,3 +9,4 @@ jupyter==1.0.0
 ipython==7.22.0
 pytest
 scikit-learn
+wandb

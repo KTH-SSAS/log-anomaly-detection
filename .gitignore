@@ -148,3 +148,6 @@ runs/
 
 # Pycharm Directory
 .idea
+
+# W&B folder
+wandb
