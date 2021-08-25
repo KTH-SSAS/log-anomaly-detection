@@ -2,7 +2,7 @@ from log_analyzer.model.lstm import LSTMLanguageModel
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 from sklearn import metrics
 import os
 from log_analyzer.tokenizer.tokenizer import Char_tokenizer
