@@ -70,12 +70,12 @@ class Transformer(LogModel):
         # nhead = number of attention heads (must divide cleanly into ninp)             config.attention_heads
         # nhid = dimension of attention layers                                          config.attention_dim
         # nlayers = number of Encoder layers                                            config.layers
-        dropout = 0.5  # Not implemented in TransformerConfig (yet)
+        self.dropout = config.dropout
         self.src_mask = None
         self.pos_encoder = PositionalEncoding(
-            config.embedding_dim, dropout=dropout)
+            config.embedding_dim, dropout=self.dropout)
         encoder_layers = nn.TransformerEncoderLayer(
-            config.embedding_dim, config.attention_heads, config.attention_dim, dropout=dropout)
+            config.embedding_dim, config.attention_heads, config.attention_dim, dropout=self.dropout)
         self.transformer_encoder = nn.TransformerEncoder(
             encoder_layers, config.layers)
         self.encoder = nn.Embedding(config.vocab_size, config.embedding_dim)
