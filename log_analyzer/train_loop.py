@@ -14,6 +14,8 @@ import log_analyzer.data.data_loader as data_utils
 from log_analyzer.trainer import LSTMTrainer, Trainer
 from log_analyzer.tiered_trainer import TieredTrainer
 from tqdm import tqdm
+import wandb
+import log_analyzer.application as application
 
 try:
     import torch
@@ -108,6 +110,13 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
         lm_trainer = LSTMTrainer(
             trainer_config, model_config, bidirectional, log_dir, verbose)
 
+    wandb.config.update(model_config)
+    wandb.config.update(data_config)
+    wandb.config.update(trainer_config)
+    
+    application.artifact_name = f"{model_type}-{data_config.tokenization}"
+    application.artifact_name += "-bidir" if bidirectional else ""
+
     return lm_trainer, train_loader, test_loader
 
 
@@ -128,6 +137,8 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
     log_dir = lm_trainer.checkpoint_dir
     writer = SummaryWriter(os.path.join(log_dir, 'metrics'))
 
+    wandb.watch(lm_trainer.model)
+
     train_losses = []
     for iteration, batch in enumerate(tqdm(train_loader)):
         if type(lm_trainer) is TieredTrainer:
@@ -139,6 +150,7 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
                 continue
         else:
             loss, done = lm_trainer.train_step(batch)
+            wandb.log({"train/loss": loss, "train/iteration": iteration, "train/day": batch["day"][0]})
         train_losses.append(loss.item())
         writer.add_scalar(f'Loss/train_day_{batch["day"][0]}', loss, iteration)
         if done:
@@ -153,7 +165,7 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
             loss, *_ = lm_trainer.eval_step(batch, store_eval_data)
             test_losses.append(loss.item())
         writer.add_scalar(f'Loss/test_day_{batch["day"][0]}', loss, iteration)
-
+        wandb.log({"eval/loss": loss, "eval/iteration": iteration, "eval/day": batch["day"][0]})
         if outfile is not None:
             for line, sec, day, usr, red, loss in zip(batch['line'].flatten().tolist(),
                                                       batch['second'].flatten().tolist(),
@@ -172,7 +184,15 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
             #       I don't think we need {data.index}. but... I added it to to-do since we might need to do it in future.
 
     writer.close()
-    torch.save(lm_trainer.model, os.path.join(log_dir, 'model.pt'))
+    
+    model_save_path = os.path.join(log_dir, 'model.pt')
+    torch.save(lm_trainer.model, model_save_path)
+
+    # Save the model weights as a versioned artifact
+    artifact = wandb.Artifact(application.artifact_name, "model", metadata=lm_trainer.model.config.__dict__)
+    artifact.add_file(model_save_path)
+    artifact.save()
+
     lm_trainer.config.save_config(os.path.join(log_dir, 'trainer_config.json'))
     lm_trainer.model.config.save_config(
         os.path.join(log_dir, 'model_config.json'))
