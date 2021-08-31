@@ -145,9 +145,9 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
             if train_loader.flush is False:
                 loss, done = lm_trainer.train_step(batch)
             else:
-                loss, *_ = lm_trainer.eval_step(batch)
-                print(f'Due to flush, training is stopped... Current loss: {loss:.3f}')
-            wandb.log({"train/loss": loss, "train/iteration": iteration, "train/day": batch["day"][0]})
+                print(f'Due to flush, skipping the rest of the current file.')
+                train_loader.skip_file = True
+                continue
         else:
             loss, done = lm_trainer.train_step(batch)
             wandb.log({"train/loss": loss, "train/iteration": iteration, "train/day": batch["day"][0]})

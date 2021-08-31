@@ -169,6 +169,7 @@ class OnlineLMBatcher:
         self.num_steps = num_steps  # The number of log lines for each user in a batch
         self.user_logs = {}
         self.flush = False
+        self.skip_file = False # Used by the trainer to signal if the rest of the current file should be skipped when flush is reached
         self.empty = False
         self.staggler_num_steps = 1
         # the list of users whose saved log lines are greater than or equal to the self.num_steps
@@ -184,6 +185,7 @@ class OnlineLMBatcher:
             self.empty = False
             self.mb_size = self.init_mb_size
             self.num_steps = self.init_num_steps
+            self.skip_file = False
 
             with open(datafile, 'r') as f:
                 for i in range(self.skiprows):
@@ -191,6 +193,10 @@ class OnlineLMBatcher:
 
                 while True:
                     output = []
+                    if self.skip_file == True:
+                        # Skip the rest of the current file, because it is flush and
+                        # we're currently training (see train_loop.py)
+                        break
                     while output == []:
                         if self.flush == False:
                             l = f.readline()

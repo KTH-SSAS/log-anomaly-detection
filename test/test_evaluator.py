@@ -19,7 +19,7 @@ def test_evaluator_lstm(tmpdir):
 
     # Numerical metrics
     metrics = trainer.evaluator.get_metrics()
-    assert trainer.evaluator.data_is_trimmed
+    assert trainer.evaluator.data_is_prepared
 
     assert metrics["token_accuracy"] >= 0 and metrics["token_accuracy"] <= 1
     assert metrics["token_perplexity"] >= 1

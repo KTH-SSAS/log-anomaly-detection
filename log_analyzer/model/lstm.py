@@ -7,6 +7,7 @@ import torch.nn as nn
 import numpy as np
 from collections import OrderedDict
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+from torch.nn.init import xavier_normal_, kaiming_normal_, calculate_gain
 
 
 def truncated_normal_(tensor, mean=0, std=1):
@@ -19,16 +20,25 @@ def truncated_normal_(tensor, mean=0, std=1):
     return tensor
 
 
-def initialize_weights(net, initrange=1.0):
+def initialize_weights(net, initrange=1.0, distribution="truncated"):
+    """Initializes the weights of the network using the given distribution
+    Distribtuion can be either 'truncated', 'xavier', or 'kaiming"""
+    if distribution == "xavier":
+        dist_func = lambda x: xavier_normal_(x, gain=calculate_gain("relu"))
+    elif distribution == "kaiming":
+        dist_func = lambda x: kaiming_normal_(x, nonlinearity="relu")
+    else:
+        # Default to truncated normal
+        dist_func = lambda x: truncated_normal_(x, mean=0.0, std=1)
     for m in net.modules():
         if isinstance(m, nn.Linear):
-            initrange *= 1.0/np.sqrt(m.weight.data.shape[1])
-            m.weight.data = initrange * \
-                truncated_normal_(m.weight.data, mean=0.0, std=1)
+            m_initrange = initrange * 1.0/np.sqrt(m.weight.data.shape[1])
+            m.weight.data = m_initrange * \
+                dist_func(m.weight.data)
             if m.bias is not None:
                 m.bias.data.zero_()
         elif isinstance(m, nn.Embedding):
-            truncated_normal_(m.weight.data, mean=0.0, std=1)
+            dist_func(m.weight.data)
 
 
 class LogModel(nn.Module):
@@ -238,7 +248,10 @@ class Tiered_LSTM(LogModel):
         self.ctxt_h = context_h
         self.ctxt_c = context_c
         if lengths is None:
-            tag_output = torch.empty_like(user_sequences, dtype=torch.float)
+            if self.low_lv_lstm.bidirectional:
+                tag_output = torch.empty((user_sequences.shape[0], user_sequences.shape[1], user_sequences.shape[2]-2), dtype=torch.float)
+            else:
+                tag_output = torch.empty_like(user_sequences, dtype=torch.float)
         else:
             tag_output = torch.zeros((user_sequences.shape[0], user_sequences.shape[1], torch.max(lengths)), dtype=torch.float)
 
@@ -252,12 +265,12 @@ class Tiered_LSTM(LogModel):
             length = None if lengths is None else lengths[idx]
             tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
                 sequences, lengths=length, context_vectors=self.ctxt_vector)
-            if self.model.bidirectional:
+            if self.low_lv_lstm.bidirectional:
                 final_hidden = final_hidden.view(
                     1, final_hidden.shape[1], -1)
             self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
                 low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len=length)
-            tag_output[idx][:tag_size.shape[0],:tag_size.shape[1] ,:tag_size.shape[2]] = tag_size
+            tag_output[idx][:tag_size.shape[0],:tag_size.shape[1], :tag_size.shape[2]] = tag_size
             self.ctxt_vector = torch.squeeze(self.ctxt_vector, dim=1)
         return tag_output, self.ctxt_vector, self.ctxt_h, self.ctxt_c
 
