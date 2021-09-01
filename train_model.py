@@ -3,6 +3,7 @@ from log_analyzer.train_loop import init_from_args, train_model
 import log_analyzer.application as application
 import wandb
 import os
+import logging
 
 """
 Entrypoint script for training
@@ -28,6 +29,13 @@ def main(args):
     wandb.init(project='logml', entity='log-data-ml', config=args)
     application.wandb_initalized = True
 
+    if args.verbose:
+        log_level = 'DEBUG'
+    else:
+        log_level = 'INFO'
+
+    logging.basicConfig(level=log_level)
+
     # Create the trainer+model
     trainer, train_loader, test_loader = init_from_args(args)
     # Train the model
@@ -46,5 +54,6 @@ if __name__ == "__main__":
                         help='Whether to use bidirectional lstm for lower tier.')
     parser.add_argument('--model-dir', type=str, help='Directory to save stats and checkpoints to', default='runs')
     parser.add_argument('--wandb_sync', action='store_true', help="Including this option will sync the wandb data with the cloud.")
+    parser.add_argument('-v', '--verbose', action='store_true')
     args = parser.parse_args()
     main(args)
