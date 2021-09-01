@@ -82,19 +82,13 @@ class Transformer(LogModel):
         self.config.embedding_dim = config.embedding_dim
         self.decoder = nn.Linear(config.embedding_dim, config.vocab_size)
 
-        self.init_weights()
+        initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
     def _generate_square_subsequent_mask(self, sz):
         mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
         mask = mask.float().masked_fill(mask == 0, float(
             '-inf')).masked_fill(mask == 1, float(0.0))
         return mask
-
-    def init_weights(self):
-        initrange = 0.1
-        nn.init.uniform_(self.encoder.weight, -initrange, initrange)
-        nn.init.zeros_(self.decoder.weight)
-        nn.init.uniform_(self.decoder.weight, -initrange, initrange)
 
     def forward(self, src, lengths=None, mask=None, has_mask=True):
         # batch size, sequence length, embedded dimension
