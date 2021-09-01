@@ -82,7 +82,8 @@ class Trainer(ABC):
             self.optimizer.step()
         if self.use_scheduler:
             self.scheduler.step()
-        self.early_stopping(loss, self.model)
+        if self.config.early_stopping:
+            self.early_stopping(loss, self.model)
 
     def split_batch(self, batch: dict):
         """Splits a batch into variables containing relevant data."""

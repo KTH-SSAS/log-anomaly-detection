@@ -163,8 +163,9 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
         if done:
             print("Early stopping.")
             break
-
-    lm_trainer.early_stopping.save_checkpoint()
+    
+    if lm_trainer.config.early_stopping:
+        lm_trainer.early_stopping.save_checkpoint()
     
     test_losses = []
     for iteration, batch in enumerate(tqdm(test_loader)):
