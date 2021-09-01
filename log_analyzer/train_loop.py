@@ -114,9 +114,10 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
         lm_trainer = TransformerTrainer(
             trainer_config, model_config, log_dir, verbose)
 
-    wandb.config.update(model_config)
-    wandb.config.update(data_config)
-    wandb.config.update(trainer_config)
+    if application.wandb_initalized:
+        wandb.config.update(model_config)
+        wandb.config.update(data_config)
+        wandb.config.update(trainer_config)
     
     application.artifact_name = f"{model_type}-{data_config.tokenization}"
     application.artifact_name += "-bidir" if bidirectional else ""
@@ -141,7 +142,8 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
     log_dir = lm_trainer.checkpoint_dir
     writer = SummaryWriter(os.path.join(log_dir, 'metrics'))
 
-    wandb.watch(lm_trainer.model)
+    if application.wandb_initalized:
+        wandb.watch(lm_trainer.model)
 
     train_losses = []
     for iteration, batch in enumerate(tqdm(train_loader)):
@@ -154,7 +156,8 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
                 continue
         else:
             loss, done = lm_trainer.train_step(batch)
-            wandb.log({"train/loss": loss, "train/iteration": iteration, "train/day": batch["day"][0]})
+            if application.wandb_initalized:
+                wandb.log({"train/loss": loss, "train/iteration": iteration, "train/day": batch["day"][0]})
         train_losses.append(loss.item())
         writer.add_scalar(f'Loss/train_day_{batch["day"][0]}', loss, iteration)
         if done:
@@ -169,7 +172,8 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
             loss, *_ = lm_trainer.eval_step(batch, store_eval_data)
             test_losses.append(loss.item())
         writer.add_scalar(f'Loss/test_day_{batch["day"][0]}', loss, iteration)
-        wandb.log({"eval/loss": loss, "eval/iteration": iteration, "eval/day": batch["day"][0]})
+        if application.wandb_initalized:
+            wandb.log({"eval/loss": loss, "eval/iteration": iteration, "eval/day": batch["day"][0]})
         if outfile is not None:
             for line, sec, day, usr, red, loss in zip(batch['line'].flatten().tolist(),
                                                       batch['second'].flatten().tolist(),
@@ -190,12 +194,13 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
     writer.close()
     
     model_save_path = os.path.join(log_dir, 'model.pt')
-    torch.save(lm_trainer.model, model_save_path)
+    torch.save(lm_trainer.model, model_save_path)  
 
-    # Save the model weights as a versioned artifact
-    artifact = wandb.Artifact(application.artifact_name, "model", metadata=lm_trainer.model.config.__dict__)
-    artifact.add_file(model_save_path)
-    artifact.save()
+    if application.wandb_initalized:
+        # Save the model weights as a versioned artifact
+        artifact = wandb.Artifact(application.artifact_name, "model", metadata=lm_trainer.model.config.__dict__)
+        artifact.add_file(model_save_path)
+        artifact.save()
 
     lm_trainer.config.save_config(os.path.join(log_dir, 'trainer_config.json'))
     lm_trainer.model.config.save_config(

@@ -1,5 +1,6 @@
 from argparse import ArgumentParser
 from log_analyzer.train_loop import init_from_args, train_model
+import log_analyzer.application as application
 import wandb
 import os
 
@@ -27,6 +28,7 @@ def main(args):
     os.environ['WANDB_MODE'] = 'online' if args.wandb_sync else 'offline'
 
     wandb.init(project='logml', entity='log-data-ml', config=args)
+    application.wandb_initalized = True
 
     # Create the trainer+model
     trainer, train_loader, test_loader = init_from_args(args)
