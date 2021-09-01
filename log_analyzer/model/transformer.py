@@ -114,4 +114,4 @@ class Transformer(LogModel):
         output = self.decoder(output)
         # Trainer expects model to return a tuple of results (for the LSTMs this would be (lstm_out, final_hidden_state))
         # So we have to return a tuple here too (all but the first value of the tuple are discarded)
-        return F.log_softmax(output, dim=-1), output
+        return output, output
