@@ -152,8 +152,8 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
                 continue
         else:
             loss, done = lm_trainer.train_step(batch)
-            if application.wandb_initalized:
-                wandb.log({"train/loss": loss, "train/iteration": iteration, "train/day": batch["day"][0], "train/lr": lm_trainer.scheduler.get_last_lr()[0]})
+        if application.wandb_initalized:
+            wandb.log({"train/loss": loss, "train/iteration": iteration, "train/day": batch["day"][0], "train/lr": lm_trainer.scheduler.get_last_lr()[0]})
         train_losses.append(loss.item())
         writer.add_scalar(f'Loss/train_day_{batch["day"][0]}', loss, iteration)
         if done:
