@@ -1,5 +1,6 @@
 """Code related to Transformer language model"""
 from log_analyzer.model.lstm import LogModel
+from log_analyzer.model.model_util import initialize_weights
 from log_analyzer.config.model_config import TransformerConfig
 import torch.nn as nn
 import torch
@@ -78,9 +79,7 @@ class Transformer(LogModel):
             config.embedding_dim, config.attention_heads, config.attention_dim, dropout=self.dropout)
         self.transformer_encoder = nn.TransformerEncoder(
             encoder_layers, config.layers)
-        self.encoder = nn.Embedding(config.vocab_size, config.embedding_dim)
-        self.config.embedding_dim = config.embedding_dim
-        self.decoder = nn.Linear(config.embedding_dim, config.vocab_size)
+        self.word_embedding = nn.Embedding(config.vocab_size, config.embedding_dim)
 
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
@@ -102,10 +101,10 @@ class Transformer(LogModel):
         else:
             self.src_mask = None
 
-        src = self.encoder(src) * math.sqrt(self.config.embedding_dim)
-        src = self.pos_encoder(src)
-        output = self.transformer_encoder(src, self.src_mask)
-        output = self.decoder(output)
+        word_embeddings = self.word_embedding(src) * math.sqrt(self.config.embedding_dim)
+        tf_input = self.pos_encoder(word_embeddings)
+        tf_hidden = self.transformer_encoder(tf_input, self.src_mask)
+        logits = tf_hidden @ self.word_embedding.weight.t()
         # Trainer expects model to return a tuple of results (for the LSTMs this would be (lstm_out, final_hidden_state))
         # So we have to return a tuple here too (all but the first value of the tuple are discarded)
-        return output, output
+        return logits, []
