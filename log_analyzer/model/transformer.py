@@ -66,11 +66,7 @@ class Transformer(LogModel):
         super().__init__(config)
 
         self.config = config
-        # ntoken = vocabulary size of input                                             config.vocab_size
-        # ninp = embedding dimension                                                    config.embedding_dim
-        # nhead = number of attention heads (must divide cleanly into ninp)             config.attention_heads
-        # nhid = dimension of attention layers                                          config.attention_dim
-        # nlayers = number of Encoder layers                                            config.layers
+
         self.dropout = config.dropout
         self.src_mask = None
         self.pos_encoder = PositionalEncoding(
@@ -92,6 +88,7 @@ class Transformer(LogModel):
     def forward(self, src, lengths=None, mask=None, has_mask=True):
         # batch size, sequence length, embedded dimension
         # lengths is currently ignored, added for compatibility with LSTM-training code
+        #TODO: compatibility with character level encoding
         if has_mask:
             device = src.device
             if self.src_mask is None or self.src_mask.size(0) != len(src):
@@ -104,7 +101,7 @@ class Transformer(LogModel):
         word_embeddings = self.word_embedding(src) * math.sqrt(self.config.embedding_dim)
         tf_input = self.pos_encoder(word_embeddings)
         tf_hidden = self.transformer_encoder(tf_input, self.src_mask)
-        logits = tf_hidden @ self.word_embedding.weight.t()
+        logits = tf_hidden @ self.word_embedding.weight.t() # word embedding encoder and decoder share weights
         # Trainer expects model to return a tuple of results (for the LSTMs this would be (lstm_out, final_hidden_state))
         # So we have to return a tuple here too (all but the first value of the tuple are discarded)
         return logits, []
