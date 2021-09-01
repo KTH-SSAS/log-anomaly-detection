@@ -89,3 +89,12 @@ def test_tiered_bidirectional_word(tmpdir):
 
     utils.run_test(args)
     assert True
+
+def test_transformer_word(tmpdir):
+    bidir=False
+    model_type='transformer'
+    token_level = 'word'
+    args = utils.set_args(bidir, model_type, token_level)
+    args['base_logdir'] = os.path.join(tmpdir, 'runs')
+    utils.run_test(args)
+    assert True
