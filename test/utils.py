@@ -10,7 +10,10 @@ def set_args(bidir, model_type, token_level):
 
     args['bidirectional'] = bidir
     args['model_type'] = model_type
-    args["trainer_config"] = TrainerConfig.init_from_file('config/config_trainer.json')
+    trainer_config = TrainerConfig.init_from_file('config/config_trainer.json')
+    trainer_config.train_files = ["0.txt", "1.txt"]
+    trainer_config.test_files = ["2.txt"]
+    args["trainer_config"] = trainer_config
 
     if model_type == 'tiered-lstm':
         model_config_file = f'config/lanl_{token_level}_config_model_tiered.json'
