@@ -2,3 +2,5 @@
 
 artifact_name = "" # Name to use for saving model to W&B
 wandb_initalized = False
+
+TRAINER_LOGGER = 'trainer-logger'
