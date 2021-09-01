@@ -140,6 +140,8 @@ class Evaluator:
         }
         self.token_accuracy = 0
         self.token_count = 0
+        self.test_loss = 0
+        self.test_count = 0
         self.data_is_prepared = False
 
     def prepare_evaluation_data(self):
@@ -154,6 +156,9 @@ class Evaluator:
             sorted_indices = np.argsort(self.data["seconds"])
             for key in ["users", "losses", "seconds", "red_flags"]:
                 self.data[key] = self.data[key][sorted_indices]
+        # Compute final test loss
+        self.test_loss /= self.test_count
+        self.test_count = 1
         self.data_is_prepared = True
 
     def normalize_losses(self):
