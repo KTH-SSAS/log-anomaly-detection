@@ -38,6 +38,7 @@ class Trainer(ABC):
             self.model.parameters(), lr=config.learning_rate)
         self.scheduler = torch.optim.lr_scheduler.StepLR(
             self.optimizer, step_size=config.scheduler_step_size, gamma=config.scheduler_gamma)
+        self.use_scheduler = bool(config.scheduler_step_size)
         if config.mixed_precision:
             self.scaler = torch.cuda.amp.GradScaler()
         else:
@@ -79,7 +80,8 @@ class Trainer(ABC):
         else:
             loss.backward()
             self.optimizer.step()
-        self.scheduler.step()
+        if self.use_scheduler:
+            self.scheduler.step()
         self.early_stopping(loss, self.model)
 
     def split_batch(self, batch: dict):
