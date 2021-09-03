@@ -12,8 +12,9 @@ def eval_model(model_trainer):
 
     # get line losses plot
     model_trainer.evaluator.plot_line_loss_percentiles(percentiles=[75,95,99], smoothing=10, ylim=(-1,-1), outliers=1, legend=False)
-    wandb.log({"Aggregate line losses": plt})
+    wandb.log({"Aggregate line losses": wandb.Image(plt)})
     plt.clf()
+
     # get roc curve
     _, roc_plot = model_trainer.evaluator.plot_roc_curve(use_wandb=True)
     wandb.log({"ROC Curve": roc_plot})
@@ -23,7 +24,7 @@ def eval_model(model_trainer):
 
     # get normalised line losses plot
     model_trainer.evaluator.plot_line_loss_percentiles(percentiles=[75,95,99], smoothing=10, ylim=(-1,-1), outliers=1, legend=False)
-    wandb.log({"Aggregate line losses (normalised)": plt})
+    wandb.log({"Aggregate line losses (normalised)": wandb.Image(plt)})
     plt.clf()
 
     # get normalised roc curve
