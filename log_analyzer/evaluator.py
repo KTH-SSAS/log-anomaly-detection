@@ -182,9 +182,10 @@ class Evaluator:
     def get_metrics(self):
         """Computes and returns all metrics"""
         metrics = {
-            "token_accuracy": self.get_token_accuracy(),
-            "token_perplexity": self.get_token_perplexity(),
-            "auc_score": self.get_auc_score(),
+            "eval/loss": self.get_test_loss(),
+            "eval/token_accuracy": self.get_token_accuracy(),
+            "eval/token_perplexity": self.get_token_perplexity(),
+            "eval/AUC": self.get_auc_score(),
         }
         return metrics
 
@@ -196,6 +197,8 @@ class Evaluator:
 
     def get_token_accuracy(self):
         """Returns the accuracy of the model token prediction"""
+        if not self.data_is_prepared:
+            self.prepare_evaluation_data()
         return self.token_accuracy
 
     def get_token_perplexity(self):
