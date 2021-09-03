@@ -6,6 +6,7 @@ from tqdm import tqdm
 from sklearn import metrics
 import os
 from log_analyzer.tokenizer.tokenizer import Char_tokenizer
+import wandb
 
 
 
@@ -306,7 +307,7 @@ class Evaluator:
             plt.legend()
         plt.title("Aggregate line losses by time")
 
-    def plot_roc_curve(self, color="orange", xaxis="FPR"):
+    def plot_roc_curve(self, color="orange", xaxis="FPR", title="ROC", use_wandb=False):
         """Plots the ROC (Receiver Operating Characteristic) curve, i.e. TP-FP tradeoff
         Also returns the corresponding auc score. Options for xaxis are:
         'FPR': False-positive rate. The default.
@@ -314,33 +315,50 @@ class Evaluator:
         'alerts-FPR': What % of produced alerts would be false alerts."""
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
+        auc_score = self.get_auc_score()
         fp_rate, tp_rate, _ = metrics.roc_curve(
             self.data["red_flags"], self.data["losses"], pos_label=1
         )
-        auc_score = self.get_auc_score()
-        red_flag_count = sum(self.data["red_flags"])
-        non_red_flag_count = len(self.data["red_flags"]) - red_flag_count
-        xlabel = "False Positive Rate"
-        if xaxis.lower() == "alerts":
-            # Multiply the fp_rate by the number of events in the eval set to convert
-            # fp_rate into fp's per second
-            fp_rate *= red_flag_count
-            xlabel += " - Alerts per second"
-        elif xaxis.lower() == "alerts-fpr":
-            total_alerts = fp_rate * non_red_flag_count + tp_rate * red_flag_count
-            fp_rate = tp_rate * red_flag_count / total_alerts
-            xlabel += " - Precision"
-        plt.plot(
-            fp_rate,
-            tp_rate,
-            color=color,
-            lw=2,
-            label=f"ROC curve (area = {auc_score:.2f})",
-        )
-        if xaxis.lower() == "fpr":
-            plt.plot([0, 1], [0, 1], lw=2, linestyle="--")
-        plt.xlabel(xlabel)
-        plt.ylabel("True Positive Rate")
-        plt.title("Receiver Operating Characteristic curve")
-        plt.legend()
-        return auc_score
+        if use_wandb:
+            # ROC Curve is to be uploaded to wandb, so plot using a "fixed" version of their plot.roc_curve function
+            table = wandb.Table(columns=["class", "fpr", "tpr"], data=list(zip(["" for _ in fp_rate], fp_rate, tp_rate)))
+            wandb_plot = wandb.plot_table(
+                "wandb/area-under-curve/v0",
+                table,
+                {"x": "fpr", "y": "tpr", "class": "class"},
+                {
+                    "title": title,
+                    "x-axis-title": "False positive rate",
+                    "y-axis-title": "True positive rate",
+                },
+            )
+            return auc_score, wandb_plot
+        else:
+            # Plot using scikit-learn and matplotlib
+            red_flag_count = sum(self.data["red_flags"])
+            non_red_flag_count = len(self.data["red_flags"]) - red_flag_count
+            xlabel = "False Positive Rate"
+            if xaxis.lower() == "alerts":
+                # Multiply the fp_rate by the number of events in the eval set to convert
+                # fp_rate into fp's per second
+                fp_rate *= red_flag_count
+                xlabel += " - Alerts per second"
+            elif xaxis.lower() == "alerts-fpr":
+                total_alerts = fp_rate * non_red_flag_count + tp_rate * red_flag_count
+                fp_rate = tp_rate * red_flag_count / total_alerts
+                xlabel += " - Precision"
+
+            plt.plot(
+                fp_rate,
+                tp_rate,
+                color=color,
+                lw=2,
+                label=f"ROC curve (area = {auc_score:.2f})",
+            )
+            if xaxis.lower() == "fpr":
+                plt.plot([0, 1], [0, 1], lw=2, linestyle="--")
+            plt.xlabel(xlabel)
+            plt.ylabel("True Positive Rate")
+            plt.title(title)
+            plt.legend()
+            return auc_score, plt
