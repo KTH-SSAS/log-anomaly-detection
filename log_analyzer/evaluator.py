@@ -316,9 +316,20 @@ class Evaluator:
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
         auc_score = self.get_auc_score()
-        fp_rate, tp_rate, _ = metrics.roc_curve(
+        full_fp_rate, full_tp_rate, _ = metrics.roc_curve(
             self.data["red_flags"], self.data["losses"], pos_label=1
         )
+        # Scale fp_rate, tp_rate down to contain <10'000 values
+        # E.g. if original length is 1'000'000, only take every 100th value
+        step_size = (len(full_fp_rate) // 10000) + 1
+        fp_rate = full_fp_rate[::step_size]
+        tp_rate = full_tp_rate[::step_size]
+        # Ensure the last value in full_fp_rate and full_tp_rate is included
+        if fp_rate[-1] != full_fp_rate[-1]:
+            fp_rate = np.append(fp_rate, full_fp_rate[-1])
+            tp_rate = np.append(tp_rate, full_tp_rate[-1])
+        # Erase the full fp and tp lists
+        full_fp_rate = full_tp_rate = []
         if use_wandb:
             # ROC Curve is to be uploaded to wandb, so plot using a "fixed" version of their plot.roc_curve function
             table = wandb.Table(columns=["class", "fpr", "tpr"], data=list(zip(["" for _ in fp_rate], fp_rate, tp_rate)))
