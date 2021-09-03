@@ -157,7 +157,7 @@ class Evaluator:
             for key in ["users", "losses", "seconds", "red_flags"]:
                 self.data[key] = self.data[key][sorted_indices]
         # Compute final test loss
-        self.test_loss /= self.test_count
+        self.test_loss /= max(self.test_count, 1)
         self.test_count = 1
         self.data_is_prepared = True
 
@@ -187,6 +187,12 @@ class Evaluator:
             "auc_score": self.get_auc_score(),
         }
         return metrics
+
+    def get_test_loss(self):
+        """Returns the accuracy of the model token prediction"""
+        if not self.data_is_prepared:
+            self.prepare_evaluation_data()
+        return float(self.test_loss)
 
     def get_token_accuracy(self):
         """Returns the accuracy of the model token prediction"""
