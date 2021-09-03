@@ -129,7 +129,7 @@ def init_from_config_files(model_type: str, bidirectional, model_config_file: st
     return init_from_config_classes(model_type, bidirectional, model_config, trainer_config, data_config, data_folder, base_logdir)
 
 
-def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=False):
+def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=True):
     """Perform 1 epoch of training on lm_trainer"""
 
     outfile = None
