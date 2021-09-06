@@ -4,6 +4,7 @@ import log_analyzer.application as application
 import wandb
 import os
 import logging
+import torch
 
 """
 Entrypoint script for training
@@ -27,7 +28,15 @@ def main(args):
     os.environ['WANDB_MODE'] = 'online' if args.wandb_sync else 'offline'
 
     wandb.init(project='logml', entity='log-data-ml', config=args)
-    application.wandb_initalized = True
+    wandb_initalized = True
+
+    if args.use_cuda and not torch.cuda.is_available():
+        print("CUDA not available. Ignoring the --cuda option.")
+        cuda = False
+    else:
+        cuda = args.use_cuda
+
+    application.Application(cuda=cuda, wandb=wandb_initalized)
 
     if args.verbose:
         log_level = 'DEBUG'
@@ -55,5 +64,6 @@ if __name__ == "__main__":
     parser.add_argument('--model-dir', type=str, help='Directory to save stats and checkpoints to', default='runs')
     parser.add_argument('--wandb_sync', action='store_true', help="Including this option will sync the wandb data with the cloud.")
     parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('--use-cuda', action='store_true', help="Use CUDA acceleration for training.")
     args = parser.parse_args()
     main(args)

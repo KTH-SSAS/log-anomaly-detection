@@ -11,7 +11,7 @@ import os.path as path
 import numpy as np
 import dask.dataframe as dd
 import pandas as pd
-
+from log_analyzer.application import Application
 
 DEFAULT_HEADERS = [
     "line_number",
@@ -142,7 +142,7 @@ def get_mask(lens, num_tokens):
              For each row there are: lens[i] values of 1/lens[i]
                                      followed by num_tokens - lens[i] zeros
     """
-    if torch.cuda.is_available():
+    if Application.instance().using_cuda:
         mask_template = torch.arange(num_tokens, dtype=torch.float).cuda()
     else:
         mask_template = torch.arange(num_tokens, dtype=torch.float)
@@ -177,7 +177,7 @@ class OnlineLMBatcher:
         self.filepaths = filepaths
         self.saved_lstm = {}
         self.skiprows = skiprows
-        self.cuda = torch.cuda.is_available()
+        self.cuda = Application.instance().using_cuda
 
     def __iter__(self):
         for datafile in self.filepaths:

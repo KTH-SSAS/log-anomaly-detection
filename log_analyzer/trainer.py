@@ -6,6 +6,7 @@ from log_analyzer.model.lstm import Fwd_LSTM, Bid_LSTM, LogModel
 import log_analyzer.model.early_stopping as early_stopping
 from log_analyzer.evaluator import Evaluator
 from abc import ABC, abstractmethod
+from log_analyzer.application import Application
 
 # TODO name this something more descriptive, it might be used as a wrapper around both transformer/LSTM
 
@@ -22,7 +23,7 @@ class Trainer(ABC):
         self.config = config
 
         # Check GPU
-        self.cuda = torch.cuda.is_available()
+        self.cuda = Application.instance().using_cuda
 
         self.checkpoint_dir = checkpoint_dir
 
