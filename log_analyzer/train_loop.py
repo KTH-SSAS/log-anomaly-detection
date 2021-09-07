@@ -14,6 +14,10 @@ import log_analyzer.data.data_loader as data_utils
 from log_analyzer.trainer import LSTMTrainer, Trainer
 from log_analyzer.tiered_trainer import TieredTrainer
 from tqdm import tqdm
+import wandb
+import log_analyzer.application as application
+
+import logging
 
 try:
     import torch
@@ -77,8 +81,6 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
     else:
         raise RuntimeError("Invalid tokenization.")
 
-    verbose = True
-
     # Settings for dataloader.
 
     max_input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skip_sos)
@@ -100,13 +102,21 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
                                                                 max_input_length, num_steps=3,
                                                                 context_layers=model_config.context_layers)
         lm_trainer = TieredTrainer(
-            trainer_config, model_config, bidirectional, log_dir, verbose, train_loader)
+            trainer_config, model_config, bidirectional, log_dir, train_loader)
     else:
         train_loader, test_loader = data_utils.load_data(data_folder, train_days, test_days,
                                                          trainer_config.batch_size, bidirectional, skip_sos, jagged,
                                                          max_input_length)
         lm_trainer = LSTMTrainer(
-            trainer_config, model_config, bidirectional, log_dir, verbose)
+            trainer_config, model_config, bidirectional, log_dir)
+
+    if application.wandb_initalized:
+        wandb.config.update(model_config)
+        wandb.config.update(data_config)
+        wandb.config.update(trainer_config)
+    
+    application.artifact_name = f"{model_type}-{data_config.tokenization}"
+    application.artifact_name += "-bidir" if bidirectional else ""
 
     return lm_trainer, train_loader, test_loader
 
@@ -122,11 +132,15 @@ def init_from_config_files(model_type: str, bidirectional, model_config_file: st
 def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=False):
     """Perform 1 epoch of training on lm_trainer"""
 
+    logger = logging.getLogger(application.TRAINER_LOGGER)
+
     outfile = None
-    verbose = False
     done = False
     log_dir = lm_trainer.checkpoint_dir
     writer = SummaryWriter(os.path.join(log_dir, 'metrics'))
+
+    if application.wandb_initalized:
+        wandb.watch(lm_trainer.model)
 
     train_losses = []
     for iteration, batch in enumerate(tqdm(train_loader)):
@@ -134,15 +148,17 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
             if train_loader.flush is False:
                 loss, done = lm_trainer.train_step(batch)
             else:
-                loss, *_ = lm_trainer.eval_step(batch)
-                print(
-                    f'Due to flush, training stopped... Current loss: {loss:.3f}')
+                logger.info(f'Due to flush, skipping the rest of the current file.')
+                train_loader.skip_file = True
+                continue
         else:
             loss, done = lm_trainer.train_step(batch)
+            if application.wandb_initalized:
+                wandb.log({"train/loss": loss, "train/iteration": iteration, "train/day": batch["day"][0]})
         train_losses.append(loss.item())
         writer.add_scalar(f'Loss/train_day_{batch["day"][0]}', loss, iteration)
         if done:
-            print("Early stopping.")
+            logger.info("Early stopping.")
             break
 
     lm_trainer.early_stopping.save_checkpoint()
@@ -153,7 +169,8 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
             loss, *_ = lm_trainer.eval_step(batch, store_eval_data)
             test_losses.append(loss.item())
         writer.add_scalar(f'Loss/test_day_{batch["day"][0]}', loss, iteration)
-
+        if application.wandb_initalized:
+            wandb.log({"eval/loss": loss, "eval/iteration": iteration, "eval/day": batch["day"][0]})
         if outfile is not None:
             for line, sec, day, usr, red, loss in zip(batch['line'].flatten().tolist(),
                                                       batch['second'].flatten().tolist(),
@@ -164,15 +181,17 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
                 outfile.write('%s %s %s %s %s %s %r\n' %
                               (iteration, line, sec, day, usr, red, loss))
 
-        if verbose:
-            print(
-                f"{batch['x'].shape[0]}, {batch['line'][0]}, {batch['second'][0]} fixed {batch['day']} {loss}")
-            # TODO: I don't think this print line, but I decided to keep it since removing a line is always easier than adding a line.
-            #       Also, In the original code, there was {data.index} which seems to be an accumulated sum of batch sizes.
-            #       I don't think we need {data.index}. but... I added it to to-do since we might need to do it in future.
-
     writer.close()
-    torch.save(lm_trainer.model, os.path.join(log_dir, 'model.pt'))
+    
+    model_save_path = os.path.join(log_dir, 'model.pt')
+    torch.save(lm_trainer.model, model_save_path)  
+
+    if application.wandb_initalized:
+        # Save the model weights as a versioned artifact
+        artifact = wandb.Artifact(application.artifact_name, "model", metadata=lm_trainer.model.config.__dict__)
+        artifact.add_file(model_save_path)
+        artifact.save()
+
     lm_trainer.config.save_config(os.path.join(log_dir, 'trainer_config.json'))
     lm_trainer.model.config.save_config(
         os.path.join(log_dir, 'model_config.json'))

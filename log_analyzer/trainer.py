@@ -17,7 +17,7 @@ class Trainer(ABC):
     def model(self) -> LogModel:
         pass
 
-    def __init__(self, config: TrainerConfig, verbose, checkpoint_dir):
+    def __init__(self, config: TrainerConfig, checkpoint_dir):
 
         self.config = config
 
@@ -32,11 +32,15 @@ class Trainer(ABC):
         # Create settings for training.
         self.criterion = nn.CrossEntropyLoss(reduction='none', ignore_index=0)
         self.early_stopping = early_stopping.EarlyStopping(
-            patience=config.early_stop_patience, verbose=verbose, path=checkpoint_dir)
+            patience=config.early_stop_patience, path=checkpoint_dir)
         self.optimizer = torch.optim.Adam(
             self.model.parameters(), lr=config.learning_rate)
         self.scheduler = torch.optim.lr_scheduler.StepLR(
             self.optimizer, step_size=config.scheduler_step_size, gamma=config.scheduler_gamma)
+        if config.mixed_precision:
+            self.scaler = torch.cuda.amp.GradScaler()
+        else:
+            self.scaler = None
         # Create evaluator
         self.evaluator = Evaluator()
 
@@ -67,8 +71,13 @@ class Trainer(ABC):
 
     def optimizer_step(self, loss: torch.Tensor):
         """Performs one step of optimization on the given loss."""
-        loss.backward()
-        self.optimizer.step()
+        if self.scaler is not None:
+            self.scaler.scale(loss).backward()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+        else:
+            loss.backward()
+            self.optimizer.step()
         self.scheduler.step()
         self.early_stopping(loss, self.model)
 
@@ -98,11 +107,19 @@ class Trainer(ABC):
         # Split the batch into input, ground truth, etc.
         X, Y, L, M = self.split_batch(batch)
 
-        # Apply the model to input to produce the output
-        output, *_ = self.model(X, lengths=L, mask=M)
+        if self.scaler is not None:
+            with torch.cuda.amp.autocast():
+                # Apply the model to input to produce the output
+                output, *_ = self.model(X, lengths=L, mask=M)
 
-        # Compute the loss for the output
-        loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
+                # Compute the loss for the output
+                loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
+        else:
+            # Apply the model to input to produce the output
+            output, *_ = self.model(X, lengths=L, mask=M)
+
+            # Compute the loss for the output
+            loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
 
         # Take an optimization step based on the loss
         self.optimizer_step(loss)
@@ -142,10 +159,10 @@ class LSTMTrainer(Trainer):
             raise RuntimeError("Model not intialized!")
         return self.lstm
 
-    def __init__(self, config: TrainerConfig, lstm_config: LSTMConfig, bidirectional, checkpoint_dir, verbose):
+    def __init__(self, config: TrainerConfig, lstm_config: LSTMConfig, bidirectional, checkpoint_dir):
 
         model = Bid_LSTM if bidirectional else Fwd_LSTM
         # Create a model
         self.lstm = model(lstm_config)
 
-        super().__init__(config, verbose, checkpoint_dir)
+        super().__init__(config, checkpoint_dir)

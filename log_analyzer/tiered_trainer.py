@@ -16,11 +16,11 @@ class TieredTrainer(Trainer):
             raise RuntimeError("Model not intialized!")
         return self.lstm
 
-    def __init__(self, config: TrainerConfig, lstm_config: TieredLSTMConfig, bidirectional, checkpoint_dir, verbose, data_handler):
+    def __init__(self, config: TrainerConfig, lstm_config: TieredLSTMConfig, bidirectional, checkpoint_dir, data_handler):
 
         self.lstm = Tiered_LSTM(lstm_config, bidirectional)
         self.data_handler = data_handler
-        super().__init__(config, verbose, checkpoint_dir)
+        super().__init__(config, checkpoint_dir)
 
     def compute_loss(self, output, Y, lengths, mask):
         """Computes the loss for the given model output and ground truth."""
@@ -33,14 +33,14 @@ class TieredTrainer(Trainer):
         else:
             targets = Y
         # output (num_steps x batch x length x embedding dimension)  Y (num_steps x batch x length)
-        for i, (step_output, true_y) in enumerate(zip(output, Y)):
+        for i, (step_output, step_y) in enumerate(zip(output, Y)):
             if lengths is not None:  # On notebook, I checked it with forward LSTM and word tokenization. Further checks have to be done...
                 token_losses = self.criterion(
-                    step_output.transpose(1, 2), true_y[:, :torch.max(lengths)])
+                    step_output.transpose(1, 2), step_y[:, :torch.max(lengths)])
                 masked_losses = token_losses * mask[i][:, :torch.max(lengths)]
                 line_losses = torch.sum(masked_losses, dim=1)
             else:
-                token_losses = self.criterion(step_output.transpose(1, 2), true_y)
+                token_losses = self.criterion(step_output.transpose(1, 2), step_y)
                 line_losses = torch.mean(token_losses, dim=1)
             line_losses_list[i] = line_losses
             step_loss = torch.mean(line_losses, dim=0)
@@ -73,14 +73,25 @@ class TieredTrainer(Trainer):
         X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(
             batch)
 
-        # Apply the model to input to produce the output
-        output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(
-            X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L
-        )
-        self.data_handler.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
+        if self.scaler is not None:
+            with torch.cuda.amp.autocast():
+                # Apply the model to input to produce the output
+                output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(
+                    X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L
+                )
+                self.data_handler.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
 
-        # Compute the loss for the output
-        loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
+                # Compute the loss for the output
+                loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
+        else:
+            # Apply the model to input to produce the output
+            output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(
+                X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L
+            )
+            self.data_handler.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
+
+            # Compute the loss for the output
+            loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
 
         # Take an optimization step based on the loss
         self.optimizer_step(loss)
