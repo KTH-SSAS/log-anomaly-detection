@@ -73,11 +73,7 @@ class Int2Word(Detokenizer):
 
     def split_line(self, string):
         """
-        Turn raw some fields of raw log line from auth_h.txt into a list of word tokens
-        (needed for consistent user ids and domain ids)
-        output = f"{self.sos} {src_user} {src_domain} {dst_user} {dst_domain} {src_pc} {dst_pc} {auth_type} {logon_type} {auth_orient} {success} {self.eos}"
-        return output        :param string: Raw log line from auth_h.txt
-        :return: (list) word tokens for some fields of auth_h.txt
+        string: text log line (e.g., 1,U101@DOM1,C1862$@DOM1,C1862,C1862,?,?,AuthMap,Success)
         """
         data = string.strip().split(',')
         src_user = data[1].split("@")[0]
