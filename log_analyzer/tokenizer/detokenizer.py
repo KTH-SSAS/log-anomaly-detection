@@ -49,11 +49,7 @@ class Int2Char(Detokenizer):
         """
         if type(tokens) is list:
             list_int_tokens = [int(t) for t in tokens if int(t) > 1]
-        elif type(tokens) is str:
-            list_int_tokens = [int(t) for t in tokens.split(' ') if int(t) > 1]
-        restored_lst = [self.search_dict[str(t)] for t in list_int_tokens]	
-
-class Int2Word(Detokenizer):	
+        string: text log line (e.g., 1,U101@DOM1,C1862$@DOM1,C1862,C1862,?,?,AuthMap,Success)
     def __init__(self, json_folder):	
         super().__init__()	
 
