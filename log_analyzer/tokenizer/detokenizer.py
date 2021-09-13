@@ -85,6 +85,10 @@ class Int2Word(Detokenizer):
         return src_user, src_domain, dst_user.replace("$", ""), dst_domain, src_pc, dst_pc
 
     def run_tokenizer(self, string):
+        """
+        string: text log line (e.g., "1,U101@DOM1,C1862$@DOM1,C1862,C1862,?,?,AuthMap,Success")
+        output: tokenized log line (e.g., "0 5 6 7 6 7 7 8 9 10 11 1")
+        """
 
         data = string.split(",")
 
@@ -107,4 +111,5 @@ class Int2Word(Detokenizer):
         logon_type = self.logon_dict[data[6]]
         auth_orient = self.orient_dict[data[7]]
         success = self.success_dict[data[8].strip()]
-        return f"{self.sos} {src_user} {src_domain} {dst_user} {dst_domain} {src_pc} {dst_pc} {auth_type} {logon_type} {auth_orient} {success} {self.eos}"
+        output = f"{self.sos} {src_user} {src_domain} {dst_user} {dst_domain} {src_pc} {dst_pc} {auth_type} {logon_type} {auth_orient} {success} {self.eos}"
+        return output
