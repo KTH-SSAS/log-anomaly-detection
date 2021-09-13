@@ -29,6 +29,7 @@ class Int2Char(Detokenizer):
         restored_txt = "".join(restored_lst)	
         return restored_txt
 
+class Int2Word(Detokenizer):	
     def __init__(self, json_folder):	
         super().__init__()	
 
@@ -44,10 +45,6 @@ class Int2Char(Detokenizer):
             self.auth_dict = json.load(json_file)
         with open(os.path.join(json_folder, 'logon_map.json')) as json_file:
             self.logon_dict = json.load(json_file)
-        """
-        string: text log line (e.g., "1,U101@DOM1,C1862$@DOM1,C1862,C1862,?,?,AuthMap,Success")
-        output: tokenized log line (e.g., "0 5 6 7 6 7 7 8 9 10 11 1")
-        """
         with open(os.path.join(json_folder, 'orient_map.json')) as json_file:
             self.orient_dict = json.load(json_file)
         with open(os.path.join(json_folder, 'success_map.json')) as json_file:
@@ -62,7 +59,15 @@ class Int2Char(Detokenizer):
         self.curr_ind = 5
 
     def run_detokenizer(self, tokens):	
-        restored_lst = [self.search_dict[str(t)] for t in tokens]	
+        """
+        tokens: tokenized log line (e.g., "0 5 6 7 6 7 7 8 9 10 11 1")
+        restored_txt: text log line (e.g., "1,U101@DOM1,C1862$@DOM1,C1862,C1862,?,?,AuthMap,Success")
+        """
+        if type(tokens) is list:
+            list_int_tokens = [int(t) for t in tokens if int(t) > 1]
+        elif type(tokens) is str:
+            list_int_tokens = [int(t) for t in tokens.split(' ') if int(t) > 1]
+        restored_lst = [self.search_dict[str(t)] for t in list_int_tokens]	
         restored_txt = ",".join(restored_lst)	
         return restored_txt	
 
