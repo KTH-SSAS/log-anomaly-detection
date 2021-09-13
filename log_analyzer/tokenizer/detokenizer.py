@@ -8,8 +8,16 @@ class Int2Char(Detokenizer):
     def __init__(self):	
         super().__init__()	
 
-    def run_tokenizer(self, line_minus_time, total_len):
+    def run_detokenizer(self, tokens):
         """
+        tokens: tokenized log lines (e.g., 0 55 19 18 19 34 38 49 47 19 ...... 74 47 67 82 14 53 87 69 69 71 85 85 1 0 0 0 0)
+        restored_txt: text log line (e.g., U101@DOM1,C1862$@DOM1,C1862,C1862,?,?,AuthMap,Success)
+        """	
+        if type(tokens) is list:
+            list_int_tokens = [int(t) for t in tokens if int(t) > 1] # skip 0 and 1 since they are <SOS> and <EOS> 
+        elif type(tokens) is str:
+            list_int_tokens = [int(t) for t in tokens.split(' ') if int(t) > 1] # skip 0 and 1 since they are <SOS> and <EOS> 
+        restored_lst = [chr(t+30) for t in list_int_tokens]	
         string: text log line (e.g., "U101@DOM1,C1862$@DOM1,C1862,C1862,?,?,AuthMap,Success")
         output: tokenized log line (e.g., 0 55 19 18 19 34 38 49 47 19 ...... 74 47 67 82 14 53 87 69 69 71 85 85 1 0 0 0 0)
         """
