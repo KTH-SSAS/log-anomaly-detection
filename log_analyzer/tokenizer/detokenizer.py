@@ -65,6 +65,10 @@ class Int2Char(Detokenizer):
             self.auth_dict = json.load(json_file)
         with open(os.path.join(json_folder, 'logon_map.json')) as json_file:
             self.logon_dict = json.load(json_file)
+        """
+        string: text log line (e.g., "1,U101@DOM1,C1862$@DOM1,C1862,C1862,?,?,AuthMap,Success")
+        output: tokenized log line (e.g., "0 5 6 7 6 7 7 8 9 10 11 1")
+        """
         with open(os.path.join(json_folder, 'orient_map.json')) as json_file:
             self.orient_dict = json.load(json_file)
         with open(os.path.join(json_folder, 'success_map.json')) as json_file:
@@ -87,8 +91,8 @@ class Int2Char(Detokenizer):
         """
         Turn raw some fields of raw log line from auth_h.txt into a list of word tokens
         (needed for consistent user ids and domain ids)
-
-        :param string: Raw log line from auth_h.txt
+        output = f"{self.sos} {src_user} {src_domain} {dst_user} {dst_domain} {src_pc} {dst_pc} {auth_type} {logon_type} {auth_orient} {success} {self.eos}"
+        return output        :param string: Raw log line from auth_h.txt
         :return: (list) word tokens for some fields of auth_h.txt
         """
         data = string.strip().split(',')
