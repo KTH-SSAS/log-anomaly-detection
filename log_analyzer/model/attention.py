@@ -5,6 +5,7 @@ import torch
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from typing import Tuple
+import log_analyzer.application as application
 
 def generate_mask(seq_len, hidden_dim, use_cuda=False):
     """Generate mask for unidirectional attention"""
@@ -34,7 +35,7 @@ class SelfAttention(nn.Module):
 
     def __init__(self, hidden_dim, attention_dim, attention_type, seq_len=None):
         super().__init__()
-        self.use_cuda = torch.cuda.is_available()
+        self.use_cuda = application.Application.instance().using_cuda
         self.w_a = nn.Parameter(torch.Tensor(hidden_dim, attention_dim))
         torch.nn.init.xavier_normal_(self.w_a)
         # TODO add the other types
