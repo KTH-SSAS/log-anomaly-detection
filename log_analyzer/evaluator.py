@@ -307,7 +307,7 @@ class Evaluator:
             plt.legend()
         plt.title("Aggregate line losses by time")
 
-    def plot_roc_curve(self, color="orange", xaxis="FPR", title="ROC", use_wandb=False):
+    def plot_roc_curve(self, color="orange", xaxis="FPR", title="ROC", auc_in_title=True, use_wandb=False):
         """Plots the ROC (Receiver Operating Characteristic) curve, i.e. TP-FP tradeoff
         Also returns the corresponding auc score. Options for xaxis are:
         'FPR': False-positive rate. The default.
@@ -330,6 +330,8 @@ class Evaluator:
             tp_rate = np.append(tp_rate, full_tp_rate[-1])
         # Erase the full fp and tp lists
         full_fp_rate = full_tp_rate = []
+        if auc_in_title:
+            title += f", AUC={auc_score:.3f}"
         if use_wandb:
             # ROC Curve is to be uploaded to wandb, so plot using a "fixed" version of their plot.roc_curve function
             table = wandb.Table(columns=["class", "fpr", "tpr"], data=list(zip(["" for _ in fp_rate], fp_rate, tp_rate)))
