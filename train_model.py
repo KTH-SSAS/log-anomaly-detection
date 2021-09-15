@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
 from log_analyzer.train_loop import init_from_args, train_model
 from eval_model import eval_model
-import log_analyzer.application as application
+from log_analyzer.application import Application
 import wandb
 import os
 import logging
@@ -37,7 +37,7 @@ def main(args):
     else:
         cuda = args.use_cuda
 
-    application.Application(cuda=cuda, wandb=wandb_initalized)
+    Application(cuda=cuda, wandb=wandb_initalized)
 
     if args.verbose:
         log_level = 'DEBUG'
@@ -52,7 +52,7 @@ def main(args):
     train_model(trainer, train_loader, test_loader, store_eval_data=args.eval_model)
 
     # Perform standard evaluation on the model
-    if args.eval_model and application.wandb_initalized:
+    if args.eval_model and Application.instance().wandb_initialized:
         eval_model(trainer)
 
 
