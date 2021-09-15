@@ -151,6 +151,8 @@ class Trainer(ABC):
             self.evaluator.add_evaluation_data(
                 targets, preds, batch["user"], line_losses, batch["second"], batch["red"],
             )
+            self.evaluator.test_loss += loss
+            self.evaluator.test_count += 1
 
         # Return both the loss and the output token probabilities
         return loss, output

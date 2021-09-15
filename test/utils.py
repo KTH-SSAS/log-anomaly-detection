@@ -34,5 +34,5 @@ def set_args(bidir, model_type, token_level):
 
 def run_test(args):
     trainer, train_loader, test_loader = init_from_config_classes(**args)
-    train_losses, test_losses = train_model(trainer, train_loader, test_loader)
+    train_losses, test_losses = train_model(trainer, train_loader, test_loader, store_eval_data=False)
     return train_losses, test_losses

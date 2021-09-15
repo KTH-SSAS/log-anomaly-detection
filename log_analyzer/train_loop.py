@@ -134,7 +134,7 @@ def init_from_config_files(model_type: str, bidirectional, model_config_file: st
     return init_from_config_classes(model_type, bidirectional, model_config, trainer_config, data_config, data_folder, base_logdir)
 
 
-def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=False):
+def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=True):
     """Perform 1 epoch of training on lm_trainer"""
 
     logger = logging.getLogger(application.TRAINER_LOGGER)
@@ -158,8 +158,8 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
                 continue
         else:
             loss, done = lm_trainer.train_step(batch)
-            if Application.instance().wandb_initialized:
-                wandb.log({"train/loss": loss, "train/iteration": iteration, "train/day": batch["day"][0]})
+        if Application.instance().wandb_initialized:
+            wandb.log({"train/loss": loss, "train/iteration": iteration, "train/day": batch["day"][0], "train/lr": lm_trainer.scheduler.get_last_lr()[0]})
         train_losses.append(loss.item())
         writer.add_scalar(f'Loss/train_day_{batch["day"][0]}', loss, iteration)
         if done:

@@ -21,9 +21,9 @@ def test_evaluator_lstm(tmpdir):
     metrics = trainer.evaluator.get_metrics()
     assert trainer.evaluator.data_is_prepared
 
-    assert metrics["token_accuracy"] >= 0 and metrics["token_accuracy"] <= 1
-    assert metrics["token_perplexity"] >= 1
-    assert metrics["auc_score"] >= 0 and metrics["auc_score"] <= 1
+    assert metrics["eval/token_accuracy"] >= 0 and metrics["eval/token_accuracy"] <= 1
+    assert metrics["eval/token_perplexity"] >= 1
+    assert metrics["eval/AUC"] >= 0 and metrics["eval/AUC"] <= 1
 
     # Line loss percentiles plot
     for percentiles in [[75, 95, 99], [75, 95], [50, 75, 95, 99]]:
@@ -40,7 +40,7 @@ def test_evaluator_lstm(tmpdir):
 
     # ROC curve plot
     for xaxis in ["FPR", "alerts", "alerts-FPR"]:
-        auc_score = trainer.evaluator.plot_roc_curve(xaxis=xaxis)
+        auc_score, _ = trainer.evaluator.plot_roc_curve(xaxis=xaxis)
         assert auc_score > 0 and auc_score < 1
 
     # Data normalisation
