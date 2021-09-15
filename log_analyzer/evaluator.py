@@ -6,6 +6,7 @@ from tqdm import tqdm
 from sklearn import metrics
 import os
 from log_analyzer.tokenizer.tokenizer import Char_tokenizer
+import wandb
 
 
 
@@ -140,6 +141,8 @@ class Evaluator:
         }
         self.token_accuracy = 0
         self.token_count = 0
+        self.test_loss = 0
+        self.test_count = 0
         self.data_is_prepared = False
 
     def prepare_evaluation_data(self):
@@ -154,6 +157,9 @@ class Evaluator:
             sorted_indices = np.argsort(self.data["seconds"])
             for key in ["users", "losses", "seconds", "red_flags"]:
                 self.data[key] = self.data[key][sorted_indices]
+        # Compute final test loss
+        self.test_loss /= max(self.test_count, 1)
+        self.test_count = 1
         self.data_is_prepared = True
 
     def normalize_losses(self):
@@ -177,14 +183,23 @@ class Evaluator:
     def get_metrics(self):
         """Computes and returns all metrics"""
         metrics = {
-            "token_accuracy": self.get_token_accuracy(),
-            "token_perplexity": self.get_token_perplexity(),
-            "auc_score": self.get_auc_score(),
+            "eval/loss": self.get_test_loss(),
+            "eval/token_accuracy": self.get_token_accuracy(),
+            "eval/token_perplexity": self.get_token_perplexity(),
+            "eval/AUC": self.get_auc_score(),
         }
         return metrics
 
+    def get_test_loss(self):
+        """Returns the accuracy of the model token prediction"""
+        if not self.data_is_prepared:
+            self.prepare_evaluation_data()
+        return float(self.test_loss)
+
     def get_token_accuracy(self):
         """Returns the accuracy of the model token prediction"""
+        if not self.data_is_prepared:
+            self.prepare_evaluation_data()
         return self.token_accuracy
 
     def get_token_perplexity(self):
@@ -292,7 +307,7 @@ class Evaluator:
             plt.legend()
         plt.title("Aggregate line losses by time")
 
-    def plot_roc_curve(self, color="orange", xaxis="FPR"):
+    def plot_roc_curve(self, color="orange", xaxis="FPR", title="ROC", auc_in_title=True, use_wandb=False):
         """Plots the ROC (Receiver Operating Characteristic) curve, i.e. TP-FP tradeoff
         Also returns the corresponding auc score. Options for xaxis are:
         'FPR': False-positive rate. The default.
@@ -300,33 +315,63 @@ class Evaluator:
         'alerts-FPR': What % of produced alerts would be false alerts."""
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
-        fp_rate, tp_rate, _ = metrics.roc_curve(
+        auc_score = self.get_auc_score()
+        full_fp_rate, full_tp_rate, _ = metrics.roc_curve(
             self.data["red_flags"], self.data["losses"], pos_label=1
         )
-        auc_score = self.get_auc_score()
-        red_flag_count = sum(self.data["red_flags"])
-        non_red_flag_count = len(self.data["red_flags"]) - red_flag_count
-        xlabel = "False Positive Rate"
-        if xaxis.lower() == "alerts":
-            # Multiply the fp_rate by the number of events in the eval set to convert
-            # fp_rate into fp's per second
-            fp_rate *= red_flag_count
-            xlabel += " - Alerts per second"
-        elif xaxis.lower() == "alerts-fpr":
-            total_alerts = fp_rate * non_red_flag_count + tp_rate * red_flag_count
-            fp_rate = tp_rate * red_flag_count / total_alerts
-            xlabel += " - Precision"
-        plt.plot(
-            fp_rate,
-            tp_rate,
-            color=color,
-            lw=2,
-            label=f"ROC curve (area = {auc_score:.2f})",
-        )
-        if xaxis.lower() == "fpr":
-            plt.plot([0, 1], [0, 1], lw=2, linestyle="--")
-        plt.xlabel(xlabel)
-        plt.ylabel("True Positive Rate")
-        plt.title("Receiver Operating Characteristic curve")
-        plt.legend()
-        return auc_score
+        # Scale fp_rate, tp_rate down to contain <10'000 values
+        # E.g. if original length is 1'000'000, only take every 100th value
+        step_size = (len(full_fp_rate) // 10000) + 1
+        fp_rate = full_fp_rate[::step_size]
+        tp_rate = full_tp_rate[::step_size]
+        # Ensure the last value in full_fp_rate and full_tp_rate is included
+        if fp_rate[-1] != full_fp_rate[-1]:
+            fp_rate = np.append(fp_rate, full_fp_rate[-1])
+            tp_rate = np.append(tp_rate, full_tp_rate[-1])
+        # Erase the full fp and tp lists
+        full_fp_rate = full_tp_rate = []
+        if auc_in_title:
+            title += f", AUC={auc_score:.3f}"
+        if use_wandb:
+            # ROC Curve is to be uploaded to wandb, so plot using a "fixed" version of their plot.roc_curve function
+            table = wandb.Table(columns=["class", "fpr", "tpr"], data=list(zip(["" for _ in fp_rate], fp_rate, tp_rate)))
+            wandb_plot = wandb.plot_table(
+                "wandb/area-under-curve/v0",
+                table,
+                {"x": "fpr", "y": "tpr", "class": "class"},
+                {
+                    "title": title,
+                    "x-axis-title": "False positive rate",
+                    "y-axis-title": "True positive rate",
+                },
+            )
+            return auc_score, wandb_plot
+        else:
+            # Plot using scikit-learn and matplotlib
+            red_flag_count = sum(self.data["red_flags"])
+            non_red_flag_count = len(self.data["red_flags"]) - red_flag_count
+            xlabel = "False Positive Rate"
+            if xaxis.lower() == "alerts":
+                # Multiply the fp_rate by the number of events in the eval set to convert
+                # fp_rate into fp's per second
+                fp_rate *= red_flag_count
+                xlabel += " - Alerts per second"
+            elif xaxis.lower() == "alerts-fpr":
+                total_alerts = fp_rate * non_red_flag_count + tp_rate * red_flag_count
+                fp_rate = tp_rate * red_flag_count / total_alerts
+                xlabel += " - Precision"
+
+            plt.plot(
+                fp_rate,
+                tp_rate,
+                color=color,
+                lw=2,
+                label=f"ROC curve (area = {auc_score:.2f})",
+            )
+            if xaxis.lower() == "fpr":
+                plt.plot([0, 1], [0, 1], lw=2, linestyle="--")
+            plt.xlabel(xlabel)
+            plt.ylabel("True Positive Rate")
+            plt.title(title)
+            plt.legend()
+            return auc_score, plt

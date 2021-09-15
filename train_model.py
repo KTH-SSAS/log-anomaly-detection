@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 from log_analyzer.train_loop import init_from_args, train_model
-import log_analyzer.application as application
+from eval_model import eval_model
+from log_analyzer.application import Application
 import wandb
 import os
 import logging
@@ -36,7 +37,7 @@ def main(args):
     else:
         cuda = args.use_cuda
 
-    application.Application(cuda=cuda, wandb=wandb_initalized)
+    Application(cuda=cuda, wandb=wandb_initalized)
 
     if args.verbose:
         log_level = 'DEBUG'
@@ -48,7 +49,11 @@ def main(args):
     # Create the trainer+model
     trainer, train_loader, test_loader = init_from_args(args)
     # Train the model
-    train_model(trainer, train_loader, test_loader)
+    train_model(trainer, train_loader, test_loader, store_eval_data=args.eval_model)
+
+    # Perform standard evaluation on the model
+    if args.eval_model and Application.instance().wandb_initialized:
+        eval_model(trainer)
 
 
 if __name__ == "__main__":
@@ -62,6 +67,7 @@ if __name__ == "__main__":
     parser.add_argument('--bidir', dest='bidirectional', action='store_true',
                         help='Whether to use bidirectional lstm for lower tier.')
     parser.add_argument('--model-dir', type=str, help='Directory to save stats and checkpoints to', default='runs')
+    parser.add_argument('--eval_model', action='store_true', help="Including this option will run the model through standard evaluation and return appropriate metrics and plots.")
     parser.add_argument('--wandb_sync', action='store_true', help="Including this option will sync the wandb data with the cloud.")
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('--use-cuda', action='store_true', help="Use CUDA acceleration for training.")
