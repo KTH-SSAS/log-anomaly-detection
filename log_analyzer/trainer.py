@@ -6,6 +6,7 @@ from log_analyzer.model.lstm import Fwd_LSTM, Bid_LSTM, LogModel
 import log_analyzer.model.early_stopping as early_stopping
 from log_analyzer.evaluator import Evaluator
 from abc import ABC, abstractmethod
+from log_analyzer.application import Application
 
 # TODO name this something more descriptive, it might be used as a wrapper around both transformer/LSTM
 
@@ -17,12 +18,12 @@ class Trainer(ABC):
     def model(self) -> LogModel:
         pass
 
-    def __init__(self, config: TrainerConfig, verbose, checkpoint_dir):
+    def __init__(self, config: TrainerConfig, checkpoint_dir):
 
         self.config = config
 
         # Check GPU
-        self.cuda = torch.cuda.is_available()
+        self.cuda = Application.instance().using_cuda
 
         self.checkpoint_dir = checkpoint_dir
 
@@ -32,7 +33,7 @@ class Trainer(ABC):
         # Create settings for training.
         self.criterion = nn.CrossEntropyLoss(reduction='none', ignore_index=0)
         self.early_stopping = early_stopping.EarlyStopping(
-            patience=config.early_stop_patience, verbose=verbose, path=checkpoint_dir)
+            patience=config.early_stop_patience, path=checkpoint_dir)
         self.optimizer = torch.optim.Adam(
             self.model.parameters(), lr=config.learning_rate)
         self.scheduler = torch.optim.lr_scheduler.StepLR(
@@ -161,10 +162,10 @@ class LSTMTrainer(Trainer):
             raise RuntimeError("Model not intialized!")
         return self.lstm
 
-    def __init__(self, config: TrainerConfig, lstm_config: LSTMConfig, bidirectional, checkpoint_dir, verbose):
+    def __init__(self, config: TrainerConfig, lstm_config: LSTMConfig, bidirectional, checkpoint_dir):
 
         model = Bid_LSTM if bidirectional else Fwd_LSTM
         # Create a model
         self.lstm = model(lstm_config)
 
-        super().__init__(config, verbose, checkpoint_dir)
+        super().__init__(config, checkpoint_dir)

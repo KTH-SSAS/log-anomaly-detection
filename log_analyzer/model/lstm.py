@@ -8,7 +8,7 @@ import numpy as np
 from collections import OrderedDict
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from torch.nn.init import xavier_normal_, kaiming_normal_, calculate_gain
-
+from log_analyzer.application import Application
 
 def truncated_normal_(tensor, mean=0, std=1):
     size = tensor.shape
@@ -92,7 +92,7 @@ class LSTMLanguageModel(LogModel):
         x_lookups = self.embeddings(sequences)
         if self.tiered:
             cat_x_lookups = torch.Tensor([])
-            if torch.cuda.is_available():
+            if Application.instance().using_cuda:
                 cat_x_lookups = cat_x_lookups.cuda()
             # x_lookups (seq len x batch x embedding)
             x_lookups = x_lookups.transpose(0, 1)
@@ -258,7 +258,7 @@ class Tiered_LSTM(LogModel):
         tag_output = tag_output.unsqueeze(
                 3).repeat(1, 1, 1, self.config.vocab_size)
 
-        if torch.cuda.is_available():
+        if Application.instance().using_cuda:
             tag_output = tag_output.cuda()
         # number of steps (e.g., 3), number of users (e.g., 64), lengths of sequences (e.g., 10)
         for idx, sequences in enumerate(user_sequences):
