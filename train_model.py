@@ -35,7 +35,7 @@ def main(args):
     train_model(trainer, train_loader, test_loader, store_eval_data=args.eval_model)
 
     # Perform standard evaluation on the model
-    if args.eval_model:
+    if args.eval_model and application.wandb_initalized:
         eval_model(trainer)
 
 
