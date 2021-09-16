@@ -16,7 +16,9 @@ def test_Int2Char():
 
     assert tokenized_log_line == tokenized_log[:-1], "The example tokens and parsed log are not identical."
     
+    detoken_example = detokenizer.run_detokenizer(tokenized_log_line)
     assert detoken_example == line_minus_time, "The detokenized tokens and the original log input are not identical."
+    
 
 def test_Int2Word():
     log_line = '1,U101@DOM1,C1862$@DOM1,C1862,C1862,?,?,AuthMap,Success'
@@ -28,9 +30,9 @@ def test_Int2Word():
     tokenized_log = detokenizer.run_tokenizer(log_line)
     assert tokenized_log_line == tokenized_log, "The example tokens and parsed log are not identical."
 
-    ex_tokens = [int(t) for t in example_token.split(' ')]
+    ex_tokens = [int(t) for t in tokenized_log_line.split(' ')]
     detoken_example = detokenizer.run_detokenizer(ex_tokens)
-    detoken_example_minus_sos_eos = ','.join(detoken_example.split(',')[1:-1])
-    ex_log_lst = re.split(r"[$@,]+",example_log)[1:]
-    example_log_minus_time = ','.join(ex_log_lst)
-    assert example_log_minus_time == detoken_example_minus_sos_eos, "The detokenized tokens and the original log input are not identical."
+
+    ex_log_lst = re.split(r"[$@,]+",log_line)
+    log_line_minus_time = ','.join(ex_log_lst[1:])
+    assert log_line_minus_time == detoken_example, "The detokenized tokens and the original log input are not identical."
