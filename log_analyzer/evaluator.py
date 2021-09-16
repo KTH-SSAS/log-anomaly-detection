@@ -10,7 +10,7 @@ import wandb
 
 
 
-def create_attention_matrix(model: LSTMLanguageModel, sequences, output_dir, lengths=None, mask=None):
+def create_attention_matrix(model: LSTMLanguageModel, sequences, output_dir, lengths=None, mask=None, token_map_file=None): 
     """Plot attention matrix over batched input. Will produce one matrix plot for each entry in batch, in the designated output directory. 
     For word level tokenization, the function will also produce an matrix for the avergae attention weights in the batch.
     """
