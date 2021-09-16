@@ -11,13 +11,11 @@ def test_Int2Char():
    
     detokenizer = Int2Char()
     
-    line_minus_time = ','.join(example_log.strip().split(',')[1:])
-    pad_len = 120 - len(line_minus_time)
-    tokenized_log = tokenizer.tokenize_line(line_minus_time, pad_len)
-    assert example_token == tokenized_log[:-1], "The example tokens and parsed log are not identical."
+    line_minus_time = ','.join(log_line.strip().split(',')[1:])
+    tokenized_log = detokenizer.run_tokenizer(line_minus_time, 120)
+
+    assert tokenized_log_line == tokenized_log[:-1], "The example tokens and parsed log are not identical."
     
-    ex_tokens = [int(t) for t in example_token.split(' ') if int(t) > 1]
-    detoken_example = detokenizer.run_detokenizer(ex_tokens)
     assert detoken_example == line_minus_time, "The detokenized tokens and the original log input are not identical."
 
 def test_Int2Word():
@@ -27,8 +25,8 @@ def test_Int2Word():
     json_folder = 'data/data_examples/detoken_word/'
     detokenizer = Int2Word(json_folder)
     
-    tokenized_log = detokenizer.run_tokenizer(example_log)
-    assert example_token == tokenized_log, "The example tokens and parsed log are not identical."
+    tokenized_log = detokenizer.run_tokenizer(log_line)
+    assert tokenized_log_line == tokenized_log, "The example tokens and parsed log are not identical."
 
     ex_tokens = [int(t) for t in example_token.split(' ')]
     detoken_example = detokenizer.run_detokenizer(ex_tokens)
