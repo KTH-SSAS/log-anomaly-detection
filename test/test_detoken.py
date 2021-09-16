@@ -5,32 +5,6 @@ from collections import Counter
 from log_analyzer.tokenizer.detokenizer import Int2Char, Int2Word
 from log_analyzer.tokenizer.tokenizer import Char_tokenizer
 
-
-def dummy_arg_parser():
-    parser = ArgumentParser()
-    parser.add_argument('--type', 
-                        choices=['char_level', 'word_level_count', 'word_level_translate', 'word_level_both'], 
-                        required=False)
-    parser.add_argument('-authfile',
-                        type=str,
-                        help='Path to an auth file.')
-    parser.add_argument('-redfile',
-                        type=str,
-                        help='Path to a redteam file.')
-    parser.add_argument('-outpath',
-                        type=str,
-                        help='Where to write output files.')
-    parser.add_argument('-recordpath',
-                        type=str,
-                        help='Where to write record files.')
-    parser.add_argument('-max_lines',
-                        type=int,
-                        default=None,
-                        help='Maximum number of parsed lines.')
-    args = parser.parse_args()
-    return args
-
-
 def test_Int2Char():
     
     args = dummy_arg_parser()
