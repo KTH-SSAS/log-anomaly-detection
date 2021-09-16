@@ -78,12 +78,12 @@ class Transformer(LogModel):
         self.dropout = config.dropout
         self.src_mask = None
         self.pos_encoder = PositionalEncoding(
-            config.embedding_dim, dropout=self.dropout)
+            config.model_dim, dropout=self.dropout)
         encoder_layers = nn.TransformerEncoderLayer(
-            config.embedding_dim, config.attention_heads, config.attention_dim, dropout=self.dropout)
+            config.model_dim, config.attention_heads, config.feedforward_dim, dropout=self.dropout)
         self.transformer_encoder = nn.TransformerEncoder(
             encoder_layers, config.layers)
-        self.word_embedding = nn.Embedding(config.vocab_size, config.embedding_dim)
+        self.word_embedding = nn.Embedding(config.vocab_size, config.model_dim)
 
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
@@ -106,7 +106,7 @@ class Transformer(LogModel):
         else:
             self.src_mask = None
 
-        word_embeddings = self.word_embedding(src) * math.sqrt(self.config.embedding_dim)
+        word_embeddings = self.word_embedding(src) * math.sqrt(self.config.model_dim)
         tf_input = self.pos_encoder(word_embeddings)
         tf_hidden = self.transformer_encoder(tf_input, self.src_mask)
         logits = tf_hidden @ self.word_embedding.weight.t() # word embedding encoder and decoder share weights
