@@ -55,11 +55,12 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
 class NoPositionalEncoding(nn.Module):
-    def __init__(self, d_model=None, dropout=None, max_len=None):
+    def __init__(self, d_model=None, dropout=0.1, max_len=None):
         super(NoPositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x):
-        return x
+        return self.dropout(x)
 
 # Original TransformerModel code taken from PyTorch word_language_model example code:
 # https://github.com/pytorch/examples/blob/master/word_language_model/model.py
