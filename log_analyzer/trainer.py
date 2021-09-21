@@ -1,8 +1,9 @@
-from log_analyzer.config.model_config import LSTMConfig
+from log_analyzer.config.model_config import LSTMConfig, TransformerConfig
 from log_analyzer.config.trainer_config import TrainerConfig
 import torch
 import torch.nn as nn
 from log_analyzer.model.lstm import Fwd_LSTM, Bid_LSTM, LogModel
+from log_analyzer.model.transformer import Transformer
 import log_analyzer.model.early_stopping as early_stopping
 from log_analyzer.evaluator import Evaluator
 from abc import ABC, abstractmethod
@@ -38,6 +39,7 @@ class Trainer(ABC):
             self.model.parameters(), lr=config.learning_rate)
         self.scheduler = torch.optim.lr_scheduler.StepLR(
             self.optimizer, step_size=config.scheduler_step_size, gamma=config.scheduler_gamma)
+        self.use_scheduler = bool(config.scheduler_step_size)
         if config.mixed_precision:
             self.scaler = torch.cuda.amp.GradScaler()
         else:
@@ -79,8 +81,10 @@ class Trainer(ABC):
         else:
             loss.backward()
             self.optimizer.step()
-        self.scheduler.step()
-        self.early_stopping(loss, self.model)
+        if self.use_scheduler:
+            self.scheduler.step()
+        if self.config.early_stopping:
+            self.early_stopping(loss, self.model)
 
     def split_batch(self, batch: dict):
         """Splits a batch into variables containing relevant data."""
@@ -167,5 +171,19 @@ class LSTMTrainer(Trainer):
         model = Bid_LSTM if bidirectional else Fwd_LSTM
         # Create a model
         self.lstm = model(lstm_config)
+
+        super().__init__(config, checkpoint_dir)
+
+class TransformerTrainer(Trainer):
+    """Trainer class for Transformer model"""
+    @property
+    def model(self):
+        if self.transformer is None:
+            raise RuntimeError("Model not initialized!")
+        return self.transformer
+
+    def __init__(self, config: TrainerConfig, transformer_config: TransformerConfig, checkpoint_dir):
+        # Create a model
+        self.transformer = Transformer(transformer_config)
 
         super().__init__(config, checkpoint_dir)

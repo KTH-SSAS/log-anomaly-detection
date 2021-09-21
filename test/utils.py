@@ -17,6 +17,10 @@ def set_args(bidir, model_type, token_level):
 
     if model_type == 'tiered-lstm':
         model_config_file = f'config/lanl_{token_level}_config_model_tiered.json'
+
+    elif model_type == 'transformer':
+        model_config_file = f'config/lanl_{token_level}_config_{model_type}.json' #TODO We should standardize the config file names
+    
     else:
         model_config_file = f'config/lanl_{token_level}_config_model.json'
 

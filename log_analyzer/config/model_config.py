@@ -30,3 +30,16 @@ class TieredLSTMConfig(LSTMConfig):
     def input_dim(self):
         """Feature length of input to LSTM"""
         return self.embedding_dim + self.context_layers[-1]
+
+class TransformerConfig(Config):
+    """Configuration class for Transformer models"""
+
+    def __init__(self, layers, feedforward_dim, model_dim, attention_heads, vocab_size, dropout, sequence_length=None):
+        super().__init__()
+        self.layers = layers
+        self.feedforward_dim = feedforward_dim
+        self.model_dim = model_dim
+        self.attention_heads = attention_heads
+        self.vocab_size = vocab_size
+        self.dropout = dropout
+        self.sequence_length = sequence_length

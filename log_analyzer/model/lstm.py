@@ -1,45 +1,14 @@
 # LSTM LM model
 from log_analyzer.config.config import Config
 from log_analyzer.model.attention import SelfAttention
+from log_analyzer.model.model_util import initialize_weights
 from log_analyzer.config.model_config import LSTMConfig, TieredLSTMConfig
 import torch
 import torch.nn as nn
 import numpy as np
 from collections import OrderedDict
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
-from torch.nn.init import xavier_normal_, kaiming_normal_, calculate_gain
 from log_analyzer.application import Application
-
-def truncated_normal_(tensor, mean=0, std=1):
-    size = tensor.shape
-    tmp = tensor.new_empty(size + (4,)).normal_()
-    valid = (tmp < 2) & (tmp > -2)
-    ind = valid.max(-1, keepdim=True)[1]
-    tensor.data.copy_(tmp.gather(-1, ind).squeeze(-1))
-    tensor.data.mul_(std).add_(mean)
-    return tensor
-
-
-def initialize_weights(net, initrange=1.0, distribution="truncated"):
-    """Initializes the weights of the network using the given distribution
-    Distribtuion can be either 'truncated', 'xavier', or 'kaiming"""
-    if distribution == "xavier":
-        dist_func = lambda x: xavier_normal_(x, gain=calculate_gain("relu"))
-    elif distribution == "kaiming":
-        dist_func = lambda x: kaiming_normal_(x, nonlinearity="relu")
-    else:
-        # Default to truncated normal
-        dist_func = lambda x: truncated_normal_(x, mean=0.0, std=1)
-    for m in net.modules():
-        if isinstance(m, nn.Linear):
-            m_initrange = initrange * 1.0/np.sqrt(m.weight.data.shape[1])
-            m.weight.data = m_initrange * \
-                dist_func(m.weight.data)
-            if m.bias is not None:
-                m.bias.data.zero_()
-        elif isinstance(m, nn.Embedding):
-            dist_func(m.weight.data)
-
 
 class LogModel(nn.Module):
     def __init__(self, config: Config):

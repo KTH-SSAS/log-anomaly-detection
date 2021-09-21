@@ -1,0 +1,8 @@
+{
+	"layers": 6,
+	"feedforward_dim": 2048,
+	"model_dim": 512,
+	"attention_heads": 8,
+	"vocab_size": 28199,
+	"dropout": 0.1
+}
