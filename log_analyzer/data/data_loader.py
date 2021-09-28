@@ -5,7 +5,7 @@ Data loading functions
 
 from log_analyzer.config.trainer_config import DataConfig
 from typing import Iterator
-from torch.utils.data import DataLoader, IterableDataset
+from torch.utils.data import DataLoader, IterableDataset, Dataset
 import torch
 import os.path as path
 import numpy as np
@@ -39,6 +39,74 @@ def translate_line(string, pad_len):
     """
     return "0 " + " ".join([str(ord(c) - 30) for c in string]) + " 1 " + " ".join(["0"] * pad_len) + "\n"
 
+
+class LogDataSet(Dataset):
+
+    def __init__(self, filepaths, bidirectional, skipsos, jagged, sentence_length, delimiter=' ') -> None:
+        super().__init__()
+        self.delimiter = delimiter
+
+        self.skipsos = skipsos
+        self.jag = jagged
+        self.bidir = bidirectional
+        self.sentence_length = sentence_length
+
+        if type(filepaths) is str:
+            filepaths = [filepaths]
+        self.filepaths = filepaths
+        self.filepath_indices = [0 for _ in self.filepaths]
+
+        self.loglines = []
+        for i, datafile in enumerate(self.filepaths):
+            with open(datafile, 'r') as f:
+                self.loglines.extend(f.readlines())
+            self.filepath_indices[i] = len(self.loglines)
+
+    def __getitem__(self, index):
+        line = self.loglines[index]
+        split_line = line.strip().split(self.delimiter)
+        split_line = [int(x) for x in split_line]
+        data = torch.LongTensor(split_line)
+
+        endx = data.shape[0] - int(not self.bidir)
+        endt = data.shape[0] - int(self.bidir)
+
+        datafile = 'None'
+        for i in range(len(self.filepaths)):
+            if index < self.filepath_indices[i]:
+                datafile = self.filepaths[i]
+                break
+
+        datadict = {
+            'dayfile':  datafile,
+            'line':     data[0],
+            'second':   data[1],
+            'day':      data[2],
+            'user':     data[3],
+            'red':      data[4],
+            'x':        data[(5+self.jag+self.skipsos):endx],
+            't':        data[(6+self.jag+self.skipsos):endt]
+        }
+
+        if self.jag:
+            datadict['length'] = data[5]
+            if self.bidir:
+                datadict['t'] = datadict['t'].clone().detach()
+                # Mask out the last token of the target sequence
+                datadict['t'][data[5]-1] = 0
+                # include eos token in length
+                datadict['length'] += 1
+            datadict['mask'] = get_mask(
+                datadict['length']-2*self.bidir-int(self.skipsos), self.sentence_length-2*self.bidir)
+            assert datadict['length'] <= datadict['x'].shape[-1], 'Sequence found greater than num_tokens_predicted'
+            assert datadict['length'] > 0, \
+                'Sequence lengths must be greater than zero.' \
+                f'Found zero length sequence in datadict["lengths"]: {datadict["lengths"]}'
+
+        return datadict
+
+    def __len__(self):
+        return len(self.loglines)
 
 class IterableLogDataSet(IterableDataset):
 
@@ -117,15 +185,18 @@ def load_data_tiered(data_folder, train_files, test_files, batch_size, bidir, sk
     return train_loader, test_loader
 
 
-def load_data(data_folder, train_files, test_files, batch_size, bidir, skipsos, jagged, sentence_length):
-    def create_data_loader(filepath):
-        dataset = IterableLogDataSet(
-            filepath, bidir, skipsos, jagged, sentence_length)
-        data_handler = DataLoader(dataset, batch_size=batch_size)
+def load_data(data_folder, train_files, test_files, batch_size, bidir, skipsos, jagged, sentence_length, shuffle_train_data = True):
+    def create_data_loader(filepath, shuffle=False):
+        if shuffle:
+            dataset = LogDataSet(filepath, bidir, skipsos, jagged, sentence_length)
+        else:
+            dataset = IterableLogDataSet(
+                filepath, bidir, skipsos, jagged, sentence_length)
+        data_handler = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
         return data_handler
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
-    train_loader = create_data_loader(filepaths_train)
+    train_loader = create_data_loader(filepaths_train, shuffle_train_data)
     test_loader = create_data_loader(filepaths_eval)
 
     return train_loader, test_loader

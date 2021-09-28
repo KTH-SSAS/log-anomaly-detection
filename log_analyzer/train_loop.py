@@ -71,6 +71,7 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
 
     skip_sos = not bidirectional #Skip start of sequence token for forward models.
 
+    shuffle_train_data = trainer_config.shuffle_train_data
     tokenization_type = data_config.tokenization
     if tokenization_type == 'char':
         jagged = True
@@ -104,14 +105,14 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
     elif model_type == LSTM:
         train_loader, test_loader = data_utils.load_data(data_folder, train_days, test_days,
                                                          trainer_config.batch_size, bidirectional, skip_sos, jagged,
-                                                         max_input_length)
+                                                         max_input_length, shuffle_train_data)
         lm_trainer = LSTMTrainer(
             trainer_config, model_config, bidirectional, log_dir)
     elif model_type == TRANSFORMER:
         model_config: TransformerConfig = model_config
         train_loader, test_loader = data_utils.load_data(data_folder, train_days, test_days,
                                                          trainer_config.batch_size, bidirectional, skip_sos, jagged,
-                                                         max_input_length)
+                                                         max_input_length, shuffle_train_data)
         lm_trainer = TransformerTrainer(
             trainer_config, model_config, log_dir)
 

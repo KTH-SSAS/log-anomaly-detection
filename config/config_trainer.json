@@ -12,5 +12,6 @@
 	"early_stop_patience": 20,
 	"scheduler_gamma": 0.99,
 	"scheduler_step_size": 20,
-	"mixed_precision": false
+	"mixed_precision": false,
+	"shuffle_train_data": true
 }
