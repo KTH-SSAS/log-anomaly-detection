@@ -7,6 +7,7 @@
 		"2.txt"
 	],
 	"batch_size": 15,
+	"epochs": 3,
 	"learning_rate": 0.001,
 	"early_stopping": true,
 	"early_stop_patience": 20,
