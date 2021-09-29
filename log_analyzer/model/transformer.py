@@ -37,10 +37,10 @@ class PositionalEncoding(nn.Module):
             0, d_model, 2).float() * (-math.log(10000.0) / d_model))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0).transpose(0, 1)
+        pe = pe.unsqueeze(0)
         self.register_buffer('pe', pe)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         r"""Inputs of forward function
         Args:
             x: the sequence fed to the positional encoder model (required).
@@ -50,8 +50,8 @@ class PositionalEncoding(nn.Module):
         Examples:
             >>> output = pos_encoder(x)
         """
-
-        x = x + self.pe[:x.size(0), :]
+        seq_len = x.shape[1]
+        x = x + self.pe[:, :seq_len, :]
         return self.dropout(x)
 
 class NoPositionalEncoding(nn.Module):
