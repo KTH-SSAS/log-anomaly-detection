@@ -1,6 +1,6 @@
 from log_analyzer.config.trainer_config import DataConfig
 from torch.utils.data import DataLoader
-from log_analyzer.data.data_loader import IterableLogDataSet, LogDataSet
+from log_analyzer.data.data_loader import IterableLogDataset, MapLogDataset
 import torch
 
 def batch_equal(v1: torch.Tensor, v2: torch.Tensor):
@@ -16,8 +16,8 @@ def test_data_loader_char():
     skip_sos = False
     jagged = True
     input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skip_sos)
-    itdataset = IterableLogDataSet(filepath, bidirectional, skip_sos, jagged, sentence_length=input_length)
-    mapdataset = LogDataSet(filepath, bidirectional, skip_sos, jagged, sentence_length=input_length)
+    itdataset = IterableLogDataset(filepath, bidirectional, skip_sos, jagged, sentence_length=input_length)
+    mapdataset = MapLogDataset(filepath, bidirectional, skip_sos, jagged, sentence_length=input_length)
     for dataset, shuffle in zip([itdataset, mapdataset], [False, True]):
         data_handler = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
         for batch in data_handler:
@@ -31,8 +31,8 @@ def test_data_loader_char():
     bidirectional = True
 
     input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skip_sos)
-    itdataset = IterableLogDataSet(filepath, bidirectional, skip_sos, jagged, sentence_length=input_length)
-    mapdataset = LogDataSet(filepath, bidirectional, skip_sos, jagged, sentence_length=input_length)
+    itdataset = IterableLogDataset(filepath, bidirectional, skip_sos, jagged, sentence_length=input_length)
+    mapdataset = MapLogDataset(filepath, bidirectional, skip_sos, jagged, sentence_length=input_length)
     for dataset, shuffle in zip([itdataset, mapdataset], [False, True]):
         data_handler = DataLoader(dataset, batch_size=batch_size)
         for batch in data_handler:
@@ -54,8 +54,8 @@ def test_data_loader_word():
     skip_sos = False
     jagged = False
     input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skip_sos)
-    itdataset = IterableLogDataSet(filepath, bidirectional, skip_sos, jagged, sentence_length=input_length)
-    mapdataset = LogDataSet(filepath, bidirectional, skip_sos, jagged, sentence_length=input_length)
+    itdataset = IterableLogDataset(filepath, bidirectional, skip_sos, jagged, sentence_length=input_length)
+    mapdataset = MapLogDataset(filepath, bidirectional, skip_sos, jagged, sentence_length=input_length)
     for dataset, shuffle in zip([itdataset, mapdataset], [False, True]):
         data_handler = DataLoader(dataset, batch_size=batch_size)
         for batch in data_handler:
@@ -68,8 +68,8 @@ def test_data_loader_word():
     skip_sos = False
 
     input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skip_sos)
-    itdataset = IterableLogDataSet(filepath, bidirectional, skip_sos, jagged, sentence_length=input_length)
-    mapdataset = LogDataSet(filepath, bidirectional, skip_sos, jagged, sentence_length=input_length)
+    itdataset = IterableLogDataset(filepath, bidirectional, skip_sos, jagged, sentence_length=input_length)
+    mapdataset = MapLogDataset(filepath, bidirectional, skip_sos, jagged, sentence_length=input_length)
     for dataset, shuffle in zip([itdataset, mapdataset], [False, True]):
         data_handler = DataLoader(dataset, batch_size=batch_size)
         for batch in data_handler:

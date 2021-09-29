@@ -39,10 +39,8 @@ def translate_line(string, pad_len):
     """
     return "0 " + " ".join([str(ord(c) - 30) for c in string]) + " 1 " + " ".join(["0"] * pad_len) + "\n"
 
-
-class LogDataSet(Dataset):
-
-    def __init__(self, filepaths, bidirectional, skipsos, jagged, sentence_length, delimiter=' ') -> None:
+class LogDataset():
+    def __init__(self, filepaths, bidirectional, skipsos, jagged, sentence_length, delimiter=' '):
         super().__init__()
         self.delimiter = delimiter
 
@@ -54,28 +52,29 @@ class LogDataSet(Dataset):
         if type(filepaths) is str:
             filepaths = [filepaths]
         self.filepaths = filepaths
-        self.filepath_indices = [0 for _ in self.filepaths]
+        self.datafile_lengths = []
 
-        self.loglines = []
+    def read_lines(self, parse=True):
+        # Reads in lines from the datafiles. If parse=True, also parses them into the
+        # format used by the model
         for i, datafile in enumerate(self.filepaths):
+            self.datafile_lengths.append(0)
             with open(datafile, 'r') as f:
-                self.loglines.extend(f.readlines())
-            self.filepath_indices[i] = len(self.loglines)
+                for line in f:
+                    self.datafile_lengths[i] += 1
+                    if parse:
+                        yield self.parse_line(line, datafile)
+                    else:
+                        yield line
 
-    def __getitem__(self, index):
-        line = self.loglines[index]
+    def parse_line(self, line, datafile='None'):
+        # Parses a line into the format used by the model. Called from read_lines() if parse=True
         split_line = line.strip().split(self.delimiter)
         split_line = [int(x) for x in split_line]
         data = torch.LongTensor(split_line)
 
         endx = data.shape[0] - int(not self.bidir)
         endt = data.shape[0] - int(self.bidir)
-
-        datafile = 'None'
-        for i in range(len(self.filepaths)):
-            if index < self.filepath_indices[i]:
-                datafile = self.filepaths[i]
-                break
 
         datadict = {
             'dayfile':  datafile,
@@ -105,65 +104,33 @@ class LogDataSet(Dataset):
 
         return datadict
 
+class MapLogDataset(LogDataset, Dataset):
+    def __init__(self, filepaths, bidirectional, skipsos, jagged, sentence_length, delimiter=' ') -> None:
+        super().__init__(filepaths, bidirectional, skipsos, jagged, sentence_length, delimiter)
+
+        self.loglines = []
+        self.loglines.extend(self.read_lines(parse=False))
+
+    def __getitem__(self, index):
+        log_line = self.loglines[index]
+        for i in range(len(self.filepaths)):
+            index -= self.datafile_lengths[i]
+            if index < 0:
+                datafile = self.filepaths[i]
+                break
+
+        parsed_line = self.parse_line(log_line, datafile)
+        return parsed_line
+
     def __len__(self):
         return len(self.loglines)
 
-class IterableLogDataSet(IterableDataset):
-
+class IterableLogDataset(LogDataset, IterableDataset):
     def __init__(self, filepaths, bidirectional, skipsos, jagged, sentence_length, delimiter=' ') -> None:
-        super().__init__()
-        self.delimiter = delimiter
-
-        self.skipsos = skipsos
-        self.jag = jagged
-        self.bidir = bidirectional
-        self.sentence_length = sentence_length
-
-        if type(filepaths) is str:
-            filepaths = [filepaths]
-        self.filepaths = filepaths
-
-    def parse_lines(self):
-        for datafile in self.filepaths:
-            with open(datafile, 'r') as f:
-                for line in f:
-                    split_line = line.strip().split(self.delimiter)
-                    split_line = [int(x) for x in split_line]
-                    data = torch.LongTensor(split_line)
-
-                    endx = data.shape[0] - int(not self.bidir)
-                    endt = data.shape[0] - int(self.bidir)
-
-                    datadict = {
-                        'dayfile':  datafile,
-                        'line':     data[0],
-                        'second':   data[1],
-                        'day':      data[2],
-                        'user':     data[3],
-                        'red':      data[4],
-                        'x':        data[(5+self.jag+self.skipsos):endx],
-                        't':        data[(6+self.jag+self.skipsos):endt]
-                    }
-
-                    if self.jag:
-                        datadict['length'] = data[5]
-                        if self.bidir:
-                            datadict['t'] = datadict['t'].clone().detach()
-                            # Mask out the last token of the target sequence
-                            datadict['t'][data[5]-1] = 0
-                            # include eos token in length
-                            datadict['length'] += 1
-                        datadict['mask'] = get_mask(
-                            datadict['length']-2*self.bidir-int(self.skipsos), self.sentence_length-2*self.bidir)
-                        assert datadict['length'] <= datadict['x'].shape[-1], 'Sequence found greater than num_tokens_predicted'
-                        assert datadict['length'] > 0, \
-                            'Sequence lengths must be greater than zero.' \
-                            f'Found zero length sequence in datadict["lengths"]: {datadict["lengths"]}'
-
-                    yield datadict
+        super().__init__(filepaths, bidirectional, skipsos, jagged, sentence_length, delimiter)
 
     def __iter__(self):
-        return self.parse_lines()
+        return self.read_lines(parse=True)
 
 
 def load_data_tiered(data_folder, train_files, test_files, batch_size, bidir, skipsos, jagged, sentence_length, num_steps, context_layers):
@@ -188,9 +155,9 @@ def load_data_tiered(data_folder, train_files, test_files, batch_size, bidir, sk
 def load_data(data_folder, train_files, test_files, batch_size, bidir, skipsos, jagged, sentence_length, shuffle_train_data = True):
     def create_data_loader(filepath, shuffle=False):
         if shuffle:
-            dataset = LogDataSet(filepath, bidir, skipsos, jagged, sentence_length)
+            dataset = MapLogDataset(filepath, bidir, skipsos, jagged, sentence_length)
         else:
-            dataset = IterableLogDataSet(
+            dataset = IterableLogDataset(
                 filepath, bidir, skipsos, jagged, sentence_length)
         data_handler = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
         return data_handler
