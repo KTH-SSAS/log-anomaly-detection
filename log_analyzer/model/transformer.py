@@ -112,4 +112,5 @@ class Transformer(LogModel):
         logits = tf_hidden @ self.word_embedding.weight.t() # word embedding encoder and decoder share weights
         # Trainer expects model to return a tuple of results (for the LSTMs this would be (lstm_out, final_hidden_state))
         # So we have to return a tuple here too (all but the first value of the tuple are discarded)
-        return logits, []
+        return logits, tf_hidden # To feed the output of 
+        
