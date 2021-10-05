@@ -114,3 +114,56 @@ class Transformer(LogModel):
         # So we have to return a tuple here too (all but the first value of the tuple are discarded)
         return logits, tf_hidden # To feed the output of 
         
+class Context_Transformer(LogModel):
+    """Container module with an encoder, a recurrent or transformer module, and a decoder."""
+
+    def __init__(self, config: TransformerConfig):
+        self.name = "Tiered_Transformer"
+        super().__init__(config)
+
+        self.config = config
+        self.src_mask = None
+        self.context_dropout = config.context_dropout
+        self.context_pos_encoder = PositionalEncoding(
+            2 * config.model_dim, dropout=self.context_dropout)
+        context_encoder_layers = nn.TransformerEncoderLayer(
+            2 * config.model_dim, config.context_attention_heads, 
+            config.context_feedforward_dim, dropout=self.context_dropout)
+        self.context_transformer_encoder = nn.TransformerEncoder(
+            context_encoder_layers, config.context_layers)
+
+        initialize_weights(self, dist_func=nn.init.xavier_uniform_)
+
+    def _generate_square_subsequent_mask(self, sz):
+        mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
+        mask = mask.float().masked_fill(mask == 0, float(
+            '-inf')).masked_fill(mask == 1, float(0.0))
+        return mask
+
+    def forward(self, ctx_history, low_lv_output, lengths=None, mask=None, has_mask=True):
+        
+        mean_hidden = torch.mean(low_lv_output, dim=1)            # mean_hidden: Mean of a low level output. 
+        final_hidden = low_lv_output[:,-1,:]                      # final_hidden: The last time step output of the low level output
+        cat_input = torch.cat((mean_hidden, final_hidden), dim=1) # cat_input: concatenation of mean_hidden and final_hidden (batch size, 2 * model dimension) 
+        
+        synthetic_input = torch.unsqueeze(cat_input, dim=1)       # synthetic_input: unsqueeze to concatenate with the history of a specific user. (batch size, 1, 2 * model dimension) 
+        
+        if ctx_history is None:
+            ctx_history = synthetic_input
+        else: 
+            ctx_history = torch.cat((ctx_history, synthetic_input), dim=1) # ctx_history: concatination to generate a sequence of low level outputs (batch size, sequence length, model dimension)
+
+        if has_mask:
+            device = low_lv_output.device
+            if self.src_mask is None or self.src_mask.size(0) != len(low_lv_output):
+                mask = self._generate_square_subsequent_mask(
+                    ctx_history.shape[1]).to(device)
+                self.src_mask = mask
+        else:
+            self.src_mask = None
+
+        ctx_embeddings = ctx_history * math.sqrt(self.config.model_dim * 2)
+        tf_input = self.context_pos_encoder(ctx_embeddings)
+        tf_hidden = self.context_transformer_encoder(tf_input, self.src_mask)
+
+        return tf_hidden 
