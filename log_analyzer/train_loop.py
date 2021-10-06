@@ -105,14 +105,14 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
     elif model_type == LSTM:
         train_loader, test_loader = data_utils.load_data(data_folder, train_days, test_days,
                                                          trainer_config.batch_size, bidirectional, skip_sos, jagged,
-                                                         max_input_length, shuffle_train_data)
+                                                         data_config.sentence_length, shuffle_train_data)
         lm_trainer = LSTMTrainer(
             trainer_config, model_config, bidirectional, log_dir)
     elif model_type == TRANSFORMER:
         model_config: TransformerConfig = model_config
         train_loader, test_loader = data_utils.load_data(data_folder, train_days, test_days,
                                                          trainer_config.batch_size, bidirectional, skip_sos, jagged,
-                                                         max_input_length, shuffle_train_data)
+                                                         data_config.sentence_length, shuffle_train_data)
         lm_trainer = TransformerTrainer(
             trainer_config, model_config, log_dir)
 
