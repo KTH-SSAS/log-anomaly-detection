@@ -175,10 +175,10 @@ def get_mask(lens, num_tokens):
              For each row there are: lens[i] values of 1/lens[i]
                                      followed by num_tokens - lens[i] zeros
     """
+    mask_template = torch.arange(num_tokens, dtype=torch.float)
     if Application.instance().using_cuda:
-        mask_template = torch.arange(num_tokens, dtype=torch.float).cuda()
-    else:
-        mask_template = torch.arange(num_tokens, dtype=torch.float)
+        mask_template = mask_template.cuda()
+
     return (mask_template < lens) / lens
 
 
