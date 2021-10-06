@@ -108,6 +108,7 @@ class LogDataSet(Dataset):
     def __len__(self):
         return len(self.loglines)
 
+
 class IterableLogDataSet(IterableDataset):
 
     def __init__(self, filepaths, bidirectional, skipsos, jagged, sentence_length, delimiter=' ') -> None:
@@ -185,14 +186,16 @@ def load_data_tiered(data_folder, train_files, test_files, batch_size, bidir, sk
     return train_loader, test_loader
 
 
-def load_data(data_folder, train_files, test_files, batch_size, bidir, skipsos, jagged, sentence_length, shuffle_train_data = True):
+def load_data(data_folder, train_files, test_files, batch_size, bidir, skipsos, jagged, sentence_length, shuffle_train_data=True):
     def create_data_loader(filepath, shuffle=False):
         if shuffle:
-            dataset = LogDataSet(filepath, bidir, skipsos, jagged, sentence_length)
+            dataset = LogDataSet(filepath, bidir, skipsos,
+                                 jagged, sentence_length)
         else:
             dataset = IterableLogDataSet(
                 filepath, bidir, skipsos, jagged, sentence_length)
-        data_handler = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+        data_handler = DataLoader(
+            dataset, batch_size=batch_size, shuffle=shuffle)
         return data_handler
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
@@ -240,7 +243,8 @@ class OnlineLMBatcher:
         self.num_steps = num_steps  # The number of log lines for each user in a batch
         self.user_logs = {}
         self.flush = False
-        self.skip_file = False # Used by the trainer to signal if the rest of the current file should be skipped when flush is reached
+        # Used by the trainer to signal if the rest of the current file should be skipped when flush is reached
+        self.skip_file = False
         self.empty = False
         self.staggler_num_steps = 1
         # the list of users whose saved log lines are greater than or equal to the self.num_steps
@@ -282,14 +286,19 @@ class OnlineLMBatcher:
                                     self.user_logs[user] = []
                                     if self.cuda:
                                         self.saved_lstm[user] = (
-                                            torch.zeros((self.context_size[0])).cuda(),
-                                            torch.zeros((len(self.context_size), self.context_size[0])).cuda(),
-                                            torch.zeros((len(self.context_size), self.context_size[0])).cuda()
-                                            )
+                                            torch.zeros(
+                                                (self.context_size[0])).cuda(),
+                                            torch.zeros(
+                                                (len(self.context_size), self.context_size[0])).cuda(),
+                                            torch.zeros(
+                                                (len(self.context_size), self.context_size[0])).cuda()
+                                        )
                                     else:
                                         self.saved_lstm[user] = (
-                                            torch.zeros((self.context_size[0])),
-                                            torch.zeros((len(self.context_size), self.context_size[0])),
+                                            torch.zeros(
+                                                (self.context_size[0])),
+                                            torch.zeros(
+                                                (len(self.context_size), self.context_size[0])),
                                             torch.zeros((len(self.context_size), self.context_size[0])))
                                 self.user_logs[user].append(rowtext)
                                 if user not in self.users_ge_num_steps and len(self.user_logs[user]) >= self.num_steps:
