@@ -84,6 +84,8 @@ class Transformer(LogModel):
         self.transformer_encoder = nn.TransformerEncoder(
             encoder_layers, config.layers)
         self.word_embedding = nn.Embedding(config.vocab_size, config.model_dim)
+        if config.context_model_dim is not None:
+            self.reduce_dimension = nn.Linear(config.model_dim + config.context_model_dim, config.model_dim)
 
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
@@ -93,7 +95,7 @@ class Transformer(LogModel):
             '-inf')).masked_fill(mask == 1, float(0.0))
         return mask
 
-    def forward(self, src, lengths=None, mask=None, has_mask=True):
+    def forward(self, src, ctx_vector=None, lengths=None, mask=None, has_mask=True):
         # batch size, sequence length, embedded dimension
         # lengths is currently ignored, added for compatibility with LSTM-training code
         #TODO: compatibility with character level encoding
@@ -107,6 +109,22 @@ class Transformer(LogModel):
             self.src_mask = None
 
         word_embeddings = self.word_embedding(src) * math.sqrt(self.config.model_dim)
+        if ctx_vector is not None:
+            cat_word_embeddings = torch.Tensor([])
+            trans_word_embeddings = word_embeddings.transpose(0, 1)
+            # Output: trans_word_embeddings: (sequence length x batch x embedded dimension)
+            for trans_word_embedding in trans_word_embeddings:
+                # trans_word_embedding (batch x embedding)
+                trans_word_embedding = torch.unsqueeze(
+                     torch.cat((trans_word_embedding, ctx_vector), dim=1), dim=0) 
+                    # Input: trans_word_embedding (batch x embedded dimension), ctx_vector (batch x context dimension)
+                    # Output: trans_word_embedding: (1 x batch x embedded dimension + context dimension)
+                cat_word_embeddings = torch.cat((cat_word_embeddings, trans_word_embedding), dim=0)
+                # Output: cat_word_embeddings: (sequence length x batch x embedded dimension + context dimension)
+            trans_cat_word_embeddings = cat_word_embeddings.transpose(0,1)
+            # Output: trans_cat_word_embeddings: (batch x sequence length x embedded dimension + context dimension)
+            word_embeddings = self.reduce_dimension(trans_cat_word_embeddings)
+            # Output: word_embeddings: (batch x sequence length x embedded dimension)
         tf_input = self.pos_encoder(word_embeddings)
         tf_hidden = self.transformer_encoder(tf_input, self.src_mask)
         logits = tf_hidden @ self.word_embedding.weight.t() # word embedding encoder and decoder share weights
