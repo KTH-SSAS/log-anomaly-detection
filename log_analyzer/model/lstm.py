@@ -1,4 +1,5 @@
 # LSTM LM model
+from torch import Tensor
 from log_analyzer.config.config import Config
 from log_analyzer.model.attention import SelfAttention
 from log_analyzer.model.model_util import initialize_weights
@@ -56,7 +57,7 @@ class LSTMLanguageModel(LogModel):
         raise NotImplementedError(
             "Bidirectional property has to be set in child class.")
 
-    def forward(self, sequences, lengths=None, context_vectors=None):
+    def forward(self, sequences, lengths: Tensor=None, context_vectors=None):
         # batch size, sequence length, embedded dimension
         x_lookups = self.embeddings(sequences)
         if self.tiered:
@@ -79,6 +80,8 @@ class LSTMLanguageModel(LogModel):
         pack_input = lengths is not None
 
         if pack_input:
+            if len(lengths.shape) > 1:
+                lengths = lengths.squeeze() 
             lstm_in = pack_padded_sequence(
                 lstm_in, lengths.cpu(), enforce_sorted=False, batch_first=True)
 
