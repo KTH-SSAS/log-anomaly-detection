@@ -125,12 +125,13 @@ class Context_Transformer(LogModel):
         self.src_mask = None
         self.context_dropout = config.context_dropout
         self.context_pos_encoder = PositionalEncoding(
-            2 * config.model_dim, dropout=self.context_dropout)
+            config.context_model_dim, dropout=self.context_dropout)
         context_encoder_layers = nn.TransformerEncoderLayer(
-            2 * config.model_dim, config.context_attention_heads, 
+            config.context_model_dim, config.context_attention_heads, 
             config.context_feedforward_dim, dropout=self.context_dropout, batch_first=True)
         self.context_transformer_encoder = nn.TransformerEncoder(
             context_encoder_layers, config.context_layers)
+        self.reduce_dimension = nn.Linear(2 * config.model_dim, config.context_model_dim)
 
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
@@ -140,30 +141,20 @@ class Context_Transformer(LogModel):
             '-inf')).masked_fill(mask == 1, float(0.0))
         return mask
 
-    def forward(self, low_lv_output, ctx_history, lengths=None, mask=None, has_mask=True):
-        
-        mean_hidden = torch.mean(low_lv_output, dim=1)            # mean_hidden: Mean of a low level output. 
-        final_hidden = low_lv_output[:,-1,:]                      # final_hidden: The last time step output of the low level output
-        cat_input = torch.cat((mean_hidden, final_hidden), dim=1) # cat_input: concatenation of mean_hidden and final_hidden (batch size, 2 * model dimension) 
-        
-        synthetic_input = torch.unsqueeze(cat_input, dim=1)       # synthetic_input: unsqueeze to concatenate with the history of a specific user. (batch size, 1, 2 * model dimension) 
-        
-        if ctx_history is None:
-            ctx_history = synthetic_input
-        else: 
-            ctx_history = torch.cat((ctx_history, synthetic_input), dim=1) # ctx_history: concatination to generate a sequence of low level outputs (batch size, sequence length, model dimension)
+    def forward(self, ctx_history, lengths=None, mask=None, has_mask=True):
 
         if has_mask:
-            device = low_lv_output.device
+            device = ctx_history.device
             if self.src_mask is None or self.src_mask.shape[-1] != ctx_history.shape[-1]:
                 mask = self._generate_square_subsequent_mask(ctx_history.shape[-1]).to(device)
                 self.src_mask = mask
         else:
             self.src_mask = None
 
-        ctx_embeddings = ctx_history * math.sqrt(self.config.model_dim * 2)
-        tf_input = self.context_pos_encoder(ctx_embeddings)
-        context_output = self.context_transformer_encoder(tf_input, self.src_mask)
+        ctx_input = self.reduce_dimension(ctx_history) # ctx_input (batch size, sequence length, 2 * model dimension)
+        ctx_embeddings = ctx_input * math.sqrt(self.config.context_model_dim * 2) # ctx_embeddings (batch size, sequence length, model dimension)
+        tf_input = self.context_pos_encoder(ctx_embeddings) # tf_input (batch size, sequence length, model dimension)
+        context_output = self.context_transformer_encoder(tf_input, self.src_mask)[:,-1,:] # context_output (batch size, model dimension)
 
         return context_output 
 
