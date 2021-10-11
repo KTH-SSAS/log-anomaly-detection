@@ -140,7 +140,7 @@ class Context_Transformer(LogModel):
             '-inf')).masked_fill(mask == 1, float(0.0))
         return mask
 
-    def forward(self, ctx_history, low_lv_output, lengths=None, mask=None, has_mask=True):
+    def forward(self, low_lv_output, ctx_history, lengths=None, mask=None, has_mask=True):
         
         mean_hidden = torch.mean(low_lv_output, dim=1)            # mean_hidden: Mean of a low level output. 
         final_hidden = low_lv_output[:,-1,:]                      # final_hidden: The last time step output of the low level output
@@ -155,9 +155,8 @@ class Context_Transformer(LogModel):
 
         if has_mask:
             device = low_lv_output.device
-            if self.src_mask is None or self.src_mask.size(0) != len(low_lv_output):
-                mask = self._generate_square_subsequent_mask(
-                    ctx_history.shape[1]).to(device)
+            if self.src_mask is None or self.src_mask.shape[-1] != ctx_history.shape[-1]:
+                mask = self._generate_square_subsequent_mask(ctx_history.shape[-1]).to(device)
                 self.src_mask = mask
         else:
             self.src_mask = None
