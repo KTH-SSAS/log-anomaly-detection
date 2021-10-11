@@ -44,58 +44,68 @@ def translate_line(string, pad_len):
     return "0 " + " ".join([str(ord(c) - 30) for c in string]) + " 1 " + " ".join(["0"] * pad_len) + "\n"
 
 
-def parse_file(datafile, jag, bidir, skipsos, delimiter=' '):
+def parse_multiple_files(filepaths, jag, bidir, skipsos, raw_lines=False):
+    for datafile in filepaths:
+        return read_file(datafile, jag, bidir, skipsos, raw_lines)
 
-    skipeos = True
+
+def read_file(datafile, jag, bidir, skipsos, raw_lines=False):
     with open(datafile, 'r') as f:
         for line in f:
-            split_line = line.strip().split(delimiter)
-            split_line = [int(x) for x in split_line]
-            data = torch.LongTensor(split_line)
-
-            metadata_offset = 5
-
-            if jag:
-                length = data[metadata_offset].item()
+            if raw_lines:
+                yield line
             else:
-                length = data.shape[0] - metadata_offset - int(skipeos) - int(skipsos)
+                yield parse_line(line, jag, bidir, skipsos)
 
-            offset = int(jag) + int(skipsos)
-            
-            input_start = metadata_offset + offset
-            input_end = input_start + length
-            
-            target_start = input_start + 1
-            target_end = input_end + 1
 
-            if bidir:
-                input_end += 1
-                target_end -= 1
+def parse_line(line, jag, bidir, skipsos, delimiter=' '):
+    skipeos = True
+    split_line = line.strip().split(delimiter)
+    split_line = [int(x) for x in split_line]
+    data = torch.LongTensor(split_line)
 
-            datadict = {
-                'line':     data[0],
-                'second':   data[1],
-                'day':      data[2],
-                'user':     data[3],
-                'red':      data[4],
-                'input':    data[input_start:input_end],
-                'target':   data[target_start:target_end],
-            }
+    metadata_offset = 5
 
-            if jag:  # Input is variable length
-                length = datadict['input'].shape[0]
-                datadict['length'] = torch.LongTensor([length])
-                datadict['mask'] = get_mask(length-2*bidir)
-                assert length <= datadict['input'].shape[-1], 'Sequence found greater than num_tokens_predicted'
-                assert length > 0, \
-                    'Sequence lengths must be greater than zero.' \
-                    f'Found zero length sequence in datadict["lengths"]: {datadict["lengths"]}'
+    if jag:
+        length = data[metadata_offset].item()
+    else:
+        length = data.shape[0] - metadata_offset - int(skipeos) - int(skipsos)
 
-            yield datadict
+    offset = int(jag) + int(skipsos)
+    
+    input_start = metadata_offset + offset
+    input_end = input_start + length
+    
+    target_start = input_start + 1
+    target_end = input_end + 1
+
+    if bidir:
+        input_end += 1
+        target_end -= 1
+
+    datadict = {
+        'line':     data[0],
+        'second':   data[1],
+        'day':      data[2],
+        'user':     data[3],
+        'red':      data[4],
+        'input':    data[input_start:input_end],
+        'target':   data[target_start:target_end],
+    }
+
+    if jag:  # Input is variable length
+        length = datadict['input'].shape[0]
+        datadict['length'] = torch.LongTensor([length])
+        datadict['mask'] = get_mask(length-2*bidir)
+        assert length <= datadict['input'].shape[-1], 'Sequence found greater than num_tokens_predicted'
+        assert length > 0, \
+            'Sequence lengths must be greater than zero.' \
+            f'Found zero length sequence in datadict["lengths"]: {datadict["lengths"]}'
+
+    return datadict
+
 
 # Pads the input fields to the length of the longest sequence in the batch
-
-
 def collate_fn(data, jagged=False):
     batch = {}
 
@@ -119,11 +129,6 @@ def collate_fn(data, jagged=False):
     return batch
 
 
-def parse_multiple_files(filepaths, jag, bidir, skipsos):
-    for datafile in filepaths:
-        return parse_file(datafile, jag, bidir, skipsos)
-
-
 class LogDataset():
 
     def __init__(self, filepaths, bidirectional, skipsos, jagged, delimiter=' ') -> None:
@@ -145,14 +150,13 @@ class MapLogDataset(LogDataset, Dataset):
 
         self.loglines = []
         iterator = parse_multiple_files(
-            self.filepaths, jagged, bidirectional, skipsos)
+            self.filepaths, jagged, bidirectional, skipsos, raw_lines=True)
 
         self.loglines.extend(iterator)
 
     def __getitem__(self, index):
         log_line = self.loglines[index]
-        parsed_line = log_line
-        #parsed_line = self.parse_line(log_line)
+        parsed_line = parse_line(log_line, self.jag, self.bidir, self.skipsos)
         return parsed_line
 
     def __len__(self):
