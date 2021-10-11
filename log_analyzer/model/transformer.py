@@ -128,7 +128,7 @@ class Context_Transformer(LogModel):
             2 * config.model_dim, dropout=self.context_dropout)
         context_encoder_layers = nn.TransformerEncoderLayer(
             2 * config.model_dim, config.context_attention_heads, 
-            config.context_feedforward_dim, dropout=self.context_dropout)
+            config.context_feedforward_dim, dropout=self.context_dropout, batch_first=True)
         self.context_transformer_encoder = nn.TransformerEncoder(
             context_encoder_layers, config.context_layers)
 
