@@ -118,7 +118,7 @@ class Context_Transformer(LogModel):
     """Container module with an encoder, a recurrent or transformer module, and a decoder."""
 
     def __init__(self, config: TransformerConfig):
-        self.name = "Tiered_Transformer"
+        self.name = "Context_Transformer"
         super().__init__(config)
 
         self.config = config
