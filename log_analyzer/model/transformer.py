@@ -184,8 +184,6 @@ class Tiered_Transformer(LogModel):
         self.src_mask = None
         self.log_transformer = Transformer(config)
         self.context_transformer = Context_Transformer(config)
-        self.ctxt_vector = None
-        self.ctx_history = torch.Tensor([])
         
     def forward(self, src, ctx_history, lengths=None, mask=None, has_mask=True):
         # src (num of series, batch size, sequence length, embedded dimension)
@@ -197,13 +195,13 @@ class Tiered_Transformer(LogModel):
         # batch (batch size, sequence length, embedded dimension)
             if ctx_history is None:
                 ################ First loop without any history ##############################
-                self.ctxt_vector = torch.zeros(batch_size, self.config.context_model_dim)
+                ctxt_vector = torch.zeros(batch_size, self.config.context_model_dim)
             else:
                 ################ Context level transformer with history #######################
-                self.ctxt_vector = self.context_transformer(ctx_history)
+                ctxt_vector = self.context_transformer(ctx_history)
 
             ################ Low level transformer ############################################
-            logits, tf_hidden = self.log_transformer(batch, ctx_vector = self.ctxt_vector) 
+            logits, tf_hidden = self.log_transformer(batch, ctx_vector = ctxt_vector) 
             
             ################ Process the output of the low level transformer ##################
             mean_hidden = torch.mean(tf_hidden, dim=1)            # mean_hidden: Mean of a low level output. 
