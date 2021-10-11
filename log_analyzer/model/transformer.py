@@ -163,6 +163,6 @@ class Context_Transformer(LogModel):
 
         ctx_embeddings = ctx_history * math.sqrt(self.config.model_dim * 2)
         tf_input = self.context_pos_encoder(ctx_embeddings)
-        tf_hidden = self.context_transformer_encoder(tf_input, self.src_mask)
+        context_output = self.context_transformer_encoder(tf_input, self.src_mask)
 
-        return tf_hidden 
+        return context_output 
