@@ -61,6 +61,15 @@ def init_from_args(args):
         args.model_config, args.data_config,
         args.trainer_config, args.data_folder)
 
+
+def init_from_config_files(model_type: str, bidirectional, model_config_file: str, data_config_file: str, trainer_config_file: str, data_folder: str, base_logdir='runs'):
+    """Creates a model plus trainer given the specifications in args"""
+    model_config = get_model_config(model_config_file, model_type)
+    data_config = DataConfig.init_from_file(data_config_file)
+    trainer_config = TrainerConfig.init_from_file(trainer_config_file)
+    return init_from_config_classes(model_type, bidirectional, model_config, trainer_config, data_config, data_folder, base_logdir)
+
+
 def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig, trainer_config: TrainerConfig, data_config: DataConfig, data_folder, base_logdir='runs'):
     """Creates a model plus trainer given the specifications in args"""
     if not os.path.isdir(base_logdir):
@@ -71,6 +80,7 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
 
     skip_sos = not bidirectional #Skip start of sequence token for forward models.
 
+    shuffle_train_data = trainer_config.shuffle_train_data
     tokenization_type = data_config.tokenization
     if tokenization_type == 'char':
         jagged = True
@@ -104,14 +114,14 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
     elif model_type == LSTM:
         train_loader, test_loader = data_utils.load_data(data_folder, train_days, test_days,
                                                          trainer_config.batch_size, bidirectional, skip_sos, jagged,
-                                                         max_input_length)
+                                                         data_config.sentence_length, shuffle_train_data)
         lm_trainer = LSTMTrainer(
             trainer_config, model_config, bidirectional, log_dir)
     elif model_type == TRANSFORMER:
         model_config: TransformerConfig = model_config
         train_loader, test_loader = data_utils.load_data(data_folder, train_days, test_days,
                                                          trainer_config.batch_size, bidirectional, skip_sos, jagged,
-                                                         max_input_length)
+                                                         data_config.sentence_length, shuffle_train_data)
         lm_trainer = TransformerTrainer(
             trainer_config, model_config, log_dir)
 
@@ -124,14 +134,6 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
     Application.artifact_name += "-bidir" if bidirectional else ""
 
     return lm_trainer, train_loader, test_loader
-
-
-def init_from_config_files(model_type: str, bidirectional, model_config_file: str, data_config_file: str, trainer_config_file: str, data_folder: str, base_logdir='runs'):
-    """Creates a model plus trainer given the specifications in args"""
-    model_config = get_model_config(model_config_file, model_type)
-    data_config = DataConfig.init_from_file(data_config_file)
-    trainer_config = TrainerConfig.init_from_file(trainer_config_file)
-    return init_from_config_classes(model_type, bidirectional, model_config, trainer_config, data_config, data_folder, base_logdir)
 
 
 def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=True):

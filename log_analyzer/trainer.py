@@ -49,22 +49,20 @@ class Trainer(ABC):
 
     def compute_loss(self, output: torch.Tensor, Y, lengths, mask: torch.Tensor):
         """Computes the loss for the given model output and ground truth."""
+        targets = Y
         if lengths is not None:
             if self.model.bidirectional:
-                targets = Y[:, : max(lengths) - 2]
                 token_losses = self.criterion(
                     output.transpose(1, 2), targets
                 )
-                masked_losses = token_losses * mask[:, : max(lengths) - 2]
+                masked_losses = token_losses * mask
             else:
-                targets = Y[:, :max(lengths)]
                 token_losses = self.criterion(
                     output.transpose(1, 2), targets
                 )
-                masked_losses = token_losses * mask[:, : max(lengths)]
+                masked_losses = token_losses * mask
             line_losses = torch.sum(masked_losses, dim=1)
         else:
-            targets = Y
             token_losses = self.criterion(output.transpose(1, 2), Y)
             line_losses = torch.mean(token_losses, dim=1)
         loss = torch.mean(line_losses, dim=0)
@@ -88,8 +86,8 @@ class Trainer(ABC):
 
     def split_batch(self, batch: dict):
         """Splits a batch into variables containing relevant data."""
-        X = batch['x']
-        Y = batch['t']
+        X = batch['input']
+        Y = batch['target']
 
         # Optional fields
         L = batch.get('length')

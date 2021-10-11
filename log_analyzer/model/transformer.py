@@ -37,10 +37,10 @@ class PositionalEncoding(nn.Module):
             0, d_model, 2).float() * (-math.log(10000.0) / d_model))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0).transpose(0, 1)
+        pe = pe.unsqueeze(0)
         self.register_buffer('pe', pe)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         r"""Inputs of forward function
         Args:
             x: the sequence fed to the positional encoder model (required).
@@ -50,8 +50,8 @@ class PositionalEncoding(nn.Module):
         Examples:
             >>> output = pos_encoder(x)
         """
-
-        x = x + self.pe[:x.size(0), :]
+        seq_len = x.shape[1]
+        x = x + self.pe[:, :seq_len, :]
         return self.dropout(x)
 
 class NoPositionalEncoding(nn.Module):
@@ -80,7 +80,7 @@ class Transformer(LogModel):
         self.pos_encoder = PositionalEncoding(
             config.model_dim, dropout=self.dropout)
         encoder_layers = nn.TransformerEncoderLayer(
-            config.model_dim, config.attention_heads, config.feedforward_dim, dropout=self.dropout)
+            config.model_dim, config.attention_heads, config.feedforward_dim, dropout=self.dropout, batch_first=True)
         self.transformer_encoder = nn.TransformerEncoder(
             encoder_layers, config.layers)
         self.word_embedding = nn.Embedding(config.vocab_size, config.model_dim)
@@ -93,15 +93,14 @@ class Transformer(LogModel):
             '-inf')).masked_fill(mask == 1, float(0.0))
         return mask
 
-    def forward(self, src, lengths=None, mask=None, has_mask=True):
+    def forward(self, src: torch.Tensor, lengths=None, mask=None, has_mask=True):
         # batch size, sequence length, embedded dimension
         # lengths is currently ignored, added for compatibility with LSTM-training code
         #TODO: compatibility with character level encoding
         if has_mask:
             device = src.device
-            if self.src_mask is None or self.src_mask.size(0) != len(src):
-                mask = self._generate_square_subsequent_mask(
-                    len(src)).to(device)
+            if self.src_mask is None or self.src_mask.shape[-1] != src.shape[-1]:
+                mask = self._generate_square_subsequent_mask(src.shape[-1]).to(device)
                 self.src_mask = mask
         else:
             self.src_mask = None
