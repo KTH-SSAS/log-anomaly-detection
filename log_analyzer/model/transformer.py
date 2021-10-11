@@ -166,3 +166,41 @@ class Context_Transformer(LogModel):
         context_output = self.context_transformer_encoder(tf_input, self.src_mask)
 
         return context_output 
+
+class Tiered_Transformer(LogModel):
+
+    def __init__(self, config: TransformerConfig):
+        self.name = "Tiered_Transformer"
+        self.config = config
+        self.src_mask = None
+        self.log_transformer = Transformer(config)
+        self.context_transformer = Context_Transformer(config)
+        self.ctxt_vector = None
+        self.ctx_history = torch.Tensor([])
+        
+    def forward(self, src, ctx_history, lengths=None, mask=None, has_mask=True):
+        # src (num of series, batch size, sequence length, embedded dimension)
+        # lengths is currently ignored, added for compatibility with LSTM-training code
+        #TODO: compatibility with character level encoding
+        batch_size = src.shape[1]
+        
+        for batch in src:
+        # batch (batch size, sequence length, embedded dimension)
+            if ctx_history is None:
+                ################ First loop without any history ##############################
+                self.ctxt_vector = torch.zeros(batch_size, self.config.context_model_dim)
+            else:
+                ################ Context level transformer with history #######################
+                self.ctxt_vector = self.context_transformer(ctx_history)
+
+            ################ Low level transformer ############################################
+            logits, tf_hidden = self.log_transformer(batch, ctx_vector = self.ctxt_vector) 
+            
+            ################ Process the output of the low level transformer ##################
+            mean_hidden = torch.mean(tf_hidden, dim=1)            # mean_hidden: Mean of a low level output. 
+            final_hidden = tf_hidden[:,-1,:]                      # final_hidden: The last time step output of the low level output
+            ctx_input = torch.cat((mean_hidden, final_hidden), dim=1) # cat_input: concatenation of mean_hidden and final_hidden (batch size, 2 * model dimension) 
+            unsqz_ctx_input = torch.unsqueeze(ctx_input, dim=1)       # synthetic_input: unsqueeze to concatenate with the history of a specific user. (batch size, 1, 2 * model dimension) 
+            ctx_history = torch.cat((unsqz_ctx_input, ctx_input), dim=1) # ctx_history: concatination to generate a sequence of low level outputs (batch size, history length, 2 * model dimension)
+
+        return logits, ctx_history # To feed the output of 
