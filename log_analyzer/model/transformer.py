@@ -84,8 +84,8 @@ class Transformer(LogModel):
         self.transformer_encoder = nn.TransformerEncoder(
             encoder_layers, config.layers)
         self.word_embedding = nn.Embedding(config.vocab_size, config.model_dim)
-        if config.context_model_dim is not None:
-            self.reduce_dimension = nn.Linear(config.model_dim + config.context_model_dim, config.model_dim)
+        if config.input_dim is not None:
+            self.reduce_dimension = nn.Linear(config.input_dim, config.model_dim)
 
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
