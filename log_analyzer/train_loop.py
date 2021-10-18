@@ -29,6 +29,7 @@ Helper functions for model creation and training
 LSTM = 'lstm'
 TRANSFORMER = 'transformer'
 TIERED_LSTM = 'tiered-lstm'
+TIERED_TRANSFORMER = 'tiered-transformer'
 
 def calculate_max_input_length(data_length, bidirectional, skip_sos):
     """
@@ -44,6 +45,8 @@ def get_model_config(filename, model_type) -> Config:
         return LSTMConfig.init_from_file(filename)
     elif model_type == TRANSFORMER:
         return TransformerConfig.init_from_file(filename)
+    elif model_type == TIERED_TRANSFORMER:
+        return TieredTransformerConfig.init_from_file(filename)
     else:
         raise RuntimeError('Invalid model type.')
 
@@ -114,6 +117,15 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
                                                          max_input_length)
         lm_trainer = TransformerTrainer(
             trainer_config, model_config, log_dir)
+    elif model_type == TIERED_TRANSFORMER:
+        model_config: TieredTransformerConfig = model_config
+        train_loader, test_loader = data_utils.load_data_tiered(data_folder, train_days, test_days,
+                                                                trainer_config.batch_size, bidirectional, skip_sos, jagged,
+                                                                max_input_length, num_steps=3,
+                                                                context_layers=model_config.context_layers)
+        lm_trainer = TieredTransformerTrainer(
+            trainer_config, model_config, log_dir)
+
 
     if Application.instance().wandb_initialized:
         wandb.config.update(model_config)
