@@ -158,7 +158,7 @@ class OnlineLMBatcher:
                  batch_size=100, num_steps=5, delimiter=" ",
                  skiprows=0):
         self.sentence_length = sentence_length
-        self.context_size = context_size
+        self.context_size = context_size if type(context_size) is list else [context_size]
         self.jagged = jagged
         self.skipsos = skipsos
         self.bidir = bidir
