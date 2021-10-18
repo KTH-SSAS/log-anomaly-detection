@@ -6,6 +6,7 @@
 	"vocab_size": 28199,
 	"dropout": 0.1,
 
+	"context_model_dim": 512,
 	"context_layers": 6,
 	"context_feedforward_dim": 2048,
 	"context_attention_heads": 8,
