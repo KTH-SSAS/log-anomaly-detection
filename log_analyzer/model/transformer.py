@@ -176,16 +176,17 @@ class ContextTransformer(LogModel):
 
         return context_output 
 
-class Tiered_Transformer(LogModel):
+class TieredTransformer(LogModel):
 
     def __init__(self, config: TransformerConfig):
+        super().__init__(config)
         self.name = "Tiered_Transformer"
         self.config = config
         self.src_mask = None
         self.log_transformer = Transformer(config)
-        self.context_transformer = Context_Transformer(config)
+        self.context_transformer = ContextTransformer(config)
         
-    def forward(self, src, ctx_history, lengths=None, mask=None, has_mask=True):
+    def forward(self, src, ctx_history = None, lengths=None, mask=None, has_mask=True):
         # src (num of series, batch size, sequence length, embedded dimension)
         # lengths is currently ignored, added for compatibility with LSTM-training code
         #TODO: compatibility with character level encoding
@@ -208,6 +209,11 @@ class Tiered_Transformer(LogModel):
             final_hidden = tf_hidden[:,-1,:]                      # final_hidden: The last time step output of the low level output
             ctx_input = torch.cat((mean_hidden, final_hidden), dim=1) # cat_input: concatenation of mean_hidden and final_hidden (batch size, 2 * model dimension) 
             unsqz_ctx_input = torch.unsqueeze(ctx_input, dim=1)       # synthetic_input: unsqueeze to concatenate with the history of a specific user. (batch size, 1, 2 * model dimension) 
-            ctx_history = torch.cat((unsqz_ctx_input, ctx_input), dim=1) # ctx_history: concatination to generate a sequence of low level outputs (batch size, history length, 2 * model dimension)
+            
+            if ctx_history is None:
+                ctx_history = unsqz_ctx_input
+            else: 
+                ctx_history = torch.cat((unsqz_ctx_input, ctx_history), dim=1)
+            # ctx_history: concatination to generate a sequence of low level outputs (batch size, history length, 2 * model dimension)
 
         return logits, ctx_history # To feed the output of 
