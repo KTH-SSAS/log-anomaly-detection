@@ -1,6 +1,6 @@
 from log_analyzer.config.config import Config
 
-from log_analyzer.config.model_config import LSTMConfig, TieredLSTMConfig, TransformerConfig
+from log_analyzer.config.model_config import LSTMConfig, TieredLSTMConfig, TransformerConfig, TieredTransformerConfig
 from log_analyzer.config.trainer_config import DataConfig, TrainerConfig
 import os
 import json
@@ -8,7 +8,7 @@ import socket
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 import log_analyzer.data.data_loader as data_utils
-from log_analyzer.trainer import LSTMTrainer, TransformerTrainer, Trainer
+from log_analyzer.trainer import LSTMTrainer, TransformerTrainer, TieredTransformerTrainer, Trainer
 from log_analyzer.tiered_trainer import TieredTrainer
 from tqdm import tqdm
 import wandb
