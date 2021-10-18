@@ -43,3 +43,19 @@ class TransformerConfig(Config):
         self.vocab_size = vocab_size
         self.dropout = dropout
         self.sequence_length = sequence_length
+
+class TieredTransformerConfig(TransformerConfig):
+    """Configuration class for Tiered Transformer models"""
+
+    def __init__(self, context_model_dim, context_layers, context_feedforward_dim, context_attention_heads, context_dropout, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.context_model_dim = context_model_dim
+        self.context_layers =  context_layers
+        self.context_feedforward_dim = context_feedforward_dim
+        self.context_attention_heads = context_attention_heads
+        self.context_dropout = context_dropout
+
+    @property
+    def input_dim(self):
+        """Feature length of input to LSTM"""
+        return self.model_dim + self.context_model_dim
