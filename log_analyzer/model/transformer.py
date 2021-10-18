@@ -163,8 +163,8 @@ class ContextTransformer(LogModel):
 
         if has_mask:
             device = ctx_history.device
-            if self.src_mask is None or self.src_mask.shape[-1] != ctx_history.shape[-1]:
-                mask = self._generate_square_subsequent_mask(ctx_history.shape[-1]).to(device)
+            if self.src_mask is None or self.src_mask.shape[-1] != ctx_history.shape[1]:
+                mask = self._generate_square_subsequent_mask(ctx_history.shape[1]).to(device)
                 self.src_mask = mask
         else:
             self.src_mask = None
