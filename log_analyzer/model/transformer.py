@@ -116,6 +116,23 @@ class TransformerLanguageModel(LogModel):
         return self.src_mask
 
         
+class Transformer(TransformerLanguageModel):
+    """Container module with an encoder, a recurrent or transformer module, and a decoder."""
+
+    def __init__(self, config: TransformerConfig):
+        self.name = "Transformer"
+        super().__init__(config)
+        self.word_embedding = nn.Embedding(self.vocab_size, self.model_dim)
+        if config.__class__.__name__ == 'TieredTransformerConfig':
+            self.reduce_dimension = nn.Linear(self.config.input_dim, self.model_dim)
+        initialize_weights(self, dist_func=nn.init.xavier_uniform_)
+
+    def forward(self, src, ctx_vector=None, lengths=None, mask=None, has_mask=True):
+        # batch size, sequence length, embedded dimension
+        # lengths is currently ignored, added for compatibility with LSTM-training code
+        #TODO: compatibility with character level encoding
+
+        self.src_mask = super().forward(src, has_mask)
         word_embeddings = self.word_embedding(src) * math.sqrt(self.config.model_dim)
         if ctx_vector is not None:
             cat_word_embeddings = torch.Tensor([])
