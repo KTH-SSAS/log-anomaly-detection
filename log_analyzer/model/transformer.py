@@ -157,47 +157,22 @@ class Transformer(TransformerLanguageModel):
         # So we have to return a tuple here too (all but the first value of the tuple are discarded)
         return logits, tf_hidden # 2nd output (tf hidden) for context transformer. 
         
-class ContextTransformer(LogModel):
+class ContextTransformer(TransformerLanguageModel):
     """Container module with an encoder, a recurrent or transformer module, and a decoder."""
 
     def __init__(self, config: TransformerConfig):
         self.name = "Context_Transformer"
         super().__init__(config)
-
-        self.config = config
-        self.src_mask = None
-        self.context_dropout = config.context_dropout
-        self.context_pos_encoder = PositionalEncoding(
-            config.context_model_dim, dropout=self.context_dropout)
-        context_encoder_layers = nn.TransformerEncoderLayer(
-            config.context_model_dim, config.context_attention_heads, 
-            config.context_feedforward_dim, dropout=self.context_dropout, batch_first=True)
-        self.context_transformer_encoder = nn.TransformerEncoder(
-            context_encoder_layers, config.context_layers)
         self.reduce_dimension = nn.Linear(2 * config.model_dim, config.context_model_dim)
-
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
-
-    def _generate_square_subsequent_mask(self, sz):
-        mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
-        mask = mask.float().masked_fill(mask == 0, float(
-            '-inf')).masked_fill(mask == 1, float(0.0))
-        return mask
 
     def forward(self, ctx_history, lengths=None, mask=None, has_mask=True):
 
-        if has_mask:
-            device = ctx_history.device
-            if self.src_mask is None or self.src_mask.shape[-1] != ctx_history.shape[1]:
-                mask = self._generate_square_subsequent_mask(ctx_history.shape[1]).to(device)
-                self.src_mask = mask
-        else:
-            self.src_mask = None
-
+        self.src_mask = super().forward(ctx_history, has_mask)
         ctx_input = self.reduce_dimension(ctx_history) # ctx_input (batch size, sequence length, 2 * model dimension)
         ctx_embeddings = ctx_input * math.sqrt(self.config.context_model_dim * 2) # ctx_embeddings (batch size, sequence length, model dimension)
-        tf_input = self.context_pos_encoder(ctx_embeddings) # tf_input (batch size, sequence length, model dimension)
-        context_output = self.context_transformer_encoder(tf_input, self.src_mask)[:,-1,:] # context_output (batch size, model dimension)
+        tf_input = self.pos_encoder(ctx_embeddings) # tf_input (batch size, sequence length, model dimension)
+        context_output = self.transformer_encoder(tf_input, self.src_mask)[:,-1,:] # context_output (batch size, model dimension)
 
         return context_output 
 
