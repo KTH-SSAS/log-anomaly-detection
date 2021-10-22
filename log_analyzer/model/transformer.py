@@ -115,7 +115,7 @@ class TransformerLanguageModel(LogModel):
             self.src_mask = None
         return self.src_mask
 
-        
+
 class Transformer(TransformerLanguageModel):
     """Container module with an encoder, a recurrent or transformer module, and a decoder."""
 
