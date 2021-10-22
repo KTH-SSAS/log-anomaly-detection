@@ -66,28 +66,32 @@ class NoPositionalEncoding(nn.Module):
 # https://github.com/pytorch/examples/blob/master/word_language_model/model.py
 
 
-class Transformer(LogModel):
-    """Container module with an encoder, a recurrent or transformer module, and a decoder."""
-
+class TransformerLanguageModel(LogModel):
     def __init__(self, config: TransformerConfig):
-        self.name = "Transformer"
         super().__init__(config)
-
         self.config = config
-
-        self.dropout = config.dropout
         self.src_mask = None
-        self.pos_encoder = PositionalEncoding(
-            config.model_dim, dropout=self.dropout)
-        encoder_layers = nn.TransformerEncoderLayer(
-            config.model_dim, config.attention_heads, config.feedforward_dim, dropout=self.dropout)
-        self.transformer_encoder = nn.TransformerEncoder(
-            encoder_layers, config.layers)
-        self.word_embedding = nn.Embedding(config.vocab_size, config.model_dim)
-        if config.input_dim is not None:
-            self.reduce_dimension = nn.Linear(config.input_dim, config.model_dim)
+        if self.__class__.__name__ == 'Transformer':
+            self.dropout = config.dropout
+            self.model_dim = config.model_dim
+            self.layers = config.layers
+            self.attention_heads = config.attention_heads
+            self.feedforward_dim = config.feedforward_dim
+            self.vocab_size = config.vocab_size
+        elif self.__class__.__name__ == 'ContextTransformer':
+            self.dropout = config.context_dropout
+            self.model_dim = config.context_model_dim
+            self.layers =  config.context_layers
+            self.attention_heads = config.context_attention_heads
+            self.feedforward_dim = config.context_feedforward_dim
 
-        initialize_weights(self, dist_func=nn.init.xavier_uniform_)
+        self.pos_encoder = PositionalEncoding(
+            self.model_dim, dropout=self.dropout)
+        encoder_layers = nn.TransformerEncoderLayer(
+            self.model_dim, self.attention_heads, 
+            self.feedforward_dim, dropout=self.dropout, batch_first=True)
+        self.transformer_encoder = nn.TransformerEncoder(
+            encoder_layers, self.layers)
 
     def _generate_square_subsequent_mask(self, sz):
         mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
@@ -95,19 +99,23 @@ class Transformer(LogModel):
             '-inf')).masked_fill(mask == 1, float(0.0))
         return mask
 
-    def forward(self, src, ctx_vector=None, lengths=None, mask=None, has_mask=True):
-        # batch size, sequence length, embedded dimension
-        # lengths is currently ignored, added for compatibility with LSTM-training code
-        #TODO: compatibility with character level encoding
+    def forward(self, src, has_mask):
+        if self.__class__.__name__ == 'ContextTransformer':
+            seq_len = src.shape[1]
+        else:
+            seq_len = src.shape[-1]
+
         if has_mask:
             device = src.device
-            if self.src_mask is None or self.src_mask.size(0) != len(src):
+            if self.src_mask is None or self.src_mask.shape[-1] != seq_len:
                 mask = self._generate_square_subsequent_mask(
-                    len(src)).to(device)
+                    seq_len).to(device)
                 self.src_mask = mask
         else:
             self.src_mask = None
+        return self.src_mask
 
+        
         word_embeddings = self.word_embedding(src) * math.sqrt(self.config.model_dim)
         if ctx_vector is not None:
             cat_word_embeddings = torch.Tensor([])
