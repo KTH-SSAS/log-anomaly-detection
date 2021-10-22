@@ -186,7 +186,7 @@ class TieredTransformer(LogModel):
         self.log_transformer = Transformer(config)
         self.context_transformer = ContextTransformer(config)
         
-    def forward(self, src, ctx_history = None, lengths=None, mask=None, has_mask=True):
+    def forward(self, src, ctxt_vector = None, ctx_history = None, lengths=None, mask=None, has_mask=True):
         # src (num of series, batch size, sequence length, embedded dimension)
         # lengths is currently ignored, added for compatibility with LSTM-training code
         #TODO: compatibility with character level encoding
@@ -194,19 +194,17 @@ class TieredTransformer(LogModel):
         
         for batch in src:
         # batch (batch size, sequence length, embedded dimension)
-            if ctx_history is None:
+            if ctxt_vector is None:
                 ################ First loop without any history ##############################
-                ctxt_vector = torch.zeros(batch_size, self.config.context_model_dim)
-            else:
-                ################ Context level transformer with history #######################
-                ctxt_vector = self.context_transformer(ctx_history)
+                device = src.device
+                ctxt_vector = torch.zeros(batch_size, self.config.context_model_dim).to(device)              
 
             ################ Low level transformer ############################################
-            logits, tf_hidden = self.log_transformer(batch, ctx_vector = ctxt_vector) 
+            logits, tf_hidden = self.log_transformer(batch, ctx_vector = ctxt_vector) # (batch size, sequence length, model dimension)
             
             ################ Process the output of the low level transformer ##################
-            mean_hidden = torch.mean(tf_hidden, dim=1)            # mean_hidden: Mean of a low level output. 
-            final_hidden = tf_hidden[:,-1,:]                      # final_hidden: The last time step output of the low level output
+            mean_hidden = torch.mean(tf_hidden, dim=1)            # mean_hidden: Mean of a low level output. (batch size, model dimension) TODO: remove this mean and see performance improvement.
+            final_hidden = tf_hidden[:,-1,:]                      # final_hidden: The last token step output of the low level output
             ctx_input = torch.cat((mean_hidden, final_hidden), dim=1) # cat_input: concatenation of mean_hidden and final_hidden (batch size, 2 * model dimension) 
             unsqz_ctx_input = torch.unsqueeze(ctx_input, dim=1)       # synthetic_input: unsqueeze to concatenate with the history of a specific user. (batch size, 1, 2 * model dimension) 
             
@@ -216,4 +214,7 @@ class TieredTransformer(LogModel):
                 ctx_history = torch.cat((unsqz_ctx_input, ctx_history), dim=1)
             # ctx_history: concatination to generate a sequence of low level outputs (batch size, history length, 2 * model dimension)
 
-        return logits, ctx_history # To feed the output of 
+            ################ Context level transformer with history #######################
+            ctxt_vector = self.context_transformer(ctx_history)
+
+        return logits, ctx_history, ctxt_vector # To feed the output of 
