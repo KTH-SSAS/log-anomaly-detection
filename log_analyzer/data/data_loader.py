@@ -46,16 +46,12 @@ def translate_line(string, pad_len):
 
 def parse_multiple_files(filepaths, jag, bidir, skipsos, raw_lines=False):
     for datafile in filepaths:
-        return read_file(datafile, jag, bidir, skipsos, raw_lines)
-
-
-def read_file(datafile, jag, bidir, skipsos, raw_lines=False):
-    with open(datafile, 'r') as f:
-        for line in f:
-            if raw_lines:
-                yield line
-            else:
-                yield parse_line(line, jag, bidir, skipsos)
+        with open(datafile, 'r') as f:
+            for line in f:
+                if raw_lines:
+                    yield line
+                else:
+                    yield parse_line(line, jag, bidir, skipsos)
 
 
 def parse_line(line, jag, bidir, skipsos, delimiter=' '):
