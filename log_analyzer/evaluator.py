@@ -373,3 +373,51 @@ class Evaluator:
             plt.title(title)
             plt.legend()
             return auc_score, plt
+
+    def plot_pr_curve(self, color="orange", title="Precision-Recall Curve", use_wandb=False):
+        """Plots the Precision-Recall curve, and returns the corresponding auc score."""
+        if not self.data_is_prepared:
+            self.prepare_evaluation_data()
+        full_precision, full_recall, full_thresh = metrics.precision_recall_curve(self.data["red_flags"], self.data["losses"], pos_label=1)
+        # Get average precision score as a summary score for PR
+        AP_score = metrics.average_precision_score(self.data["red_flags"], self.data["losses"])
+        
+        # Scale precision, recall down to contain <10'000 values
+        # E.g. if original length is 1'000'000, only take every 100th value
+        step_size = (len(full_precision) // 10000) + 1
+        precision = full_precision[::step_size]
+        recall = full_recall[::step_size]
+        thresh = full_thresh[::step_size]
+        print(f"prec: {len(full_precision)}, rec: {len(full_recall)}, thresh: {len(full_thresh)}")
+        max_precision_index = np.argmax(full_precision[:-1])
+        max_precision_recall = full_recall[max_precision_index]
+        max_precision_thresh = full_thresh[max_precision_index]
+        max_precision = full_precision[max_precision_index]
+        # Ensure the last value in full_precision and full_recall is included
+        if precision[-1] != full_precision[-1]:
+            precision = np.append(precision, full_precision[-1])
+            recall = np.append(recall, full_recall[-1])
+            thresh = np.append(thresh, full_thresh[-1])
+        # Erase the full fp and tp lists
+        full_precision = full_recall = full_thresh = []
+
+        if use_wandb:
+            # PR Curve is to be uploaded to wandb, so plot using a their plot.pr_curve function
+            wandb_plot = wandb.plot.pr_curve(self.data["red_flags"], self.data["losses"])
+            return AP_score, wandb_plot
+        else:
+            # Plot using scikit-learn and matplotlib
+            xlabel = "Recall"
+            ylabel = "Precision"
+            plt.plot(
+                recall,
+                precision,
+                color=color,
+                lw=2,
+                label=f"Precision Recall Curve",
+            )
+            plt.xlabel(xlabel)
+            plt.ylabel(ylabel)
+            plt.title(title)
+            plt.legend()
+            return AP_score, plt
