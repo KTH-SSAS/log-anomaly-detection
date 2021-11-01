@@ -388,11 +388,10 @@ class Evaluator:
         precision = full_precision[::step_size]
         recall = full_recall[::step_size]
         thresh = full_thresh[::step_size]
-        print(f"prec: {len(full_precision)}, rec: {len(full_recall)}, thresh: {len(full_thresh)}")
-        max_precision_index = np.argmax(full_precision[:-1])
-        max_precision_recall = full_recall[max_precision_index]
-        max_precision_thresh = full_thresh[max_precision_index]
-        max_precision = full_precision[max_precision_index]
+        # max_precision_index = np.argmax(full_precision[:-1])
+        # max_precision_recall = full_recall[max_precision_index]
+        # max_precision_thresh = full_thresh[max_precision_index]
+        # max_precision = full_precision[max_precision_index]
         # Ensure the last value in full_precision and full_recall is included
         if precision[-1] != full_precision[-1]:
             precision = np.append(precision, full_precision[-1])
