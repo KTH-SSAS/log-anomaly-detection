@@ -293,12 +293,12 @@ class OnlineLMBatcher:
 
                 while True:
                     output = []
-                    if self.skip_file == True:
+                    if self.skip_file:
                         # Skip the rest of the current file, because it is flush and
                         # we're currently training (see train_loop.py)
                         break
                     while output == []:
-                        if self.flush == False:
+                        if not self.flush:
                             l = f.readline()
                             if l == '':
                                 self.flush = True
@@ -336,18 +336,18 @@ class OnlineLMBatcher:
                             output, ctxt_vector, h_state, c_state = self.load_lines()
 
                         # When the data loader read the last line of the log.
-                        elif len(self.users_ge_num_steps) > 0 and self.flush == True:
+                        elif len(self.users_ge_num_steps) > 0 and self.flush:
                             output, ctxt_vector, h_state, c_state = self.load_lines()
 
                         # Activate the staggler mode.
-                        elif len(self.users_ge_num_steps) == 0 and self.flush == True:
+                        elif len(self.users_ge_num_steps) == 0 and self.flush:
                             if self.num_steps == self.staggler_num_steps:
                                 self.empty = True
                                 break
                             self.mb_size = self.num_steps * self.mb_size
                             self.num_steps = self.staggler_num_steps
 
-                    if self.empty == True:
+                    if self.empty:
                         break
 
                     output = torch.Tensor(output).long()
@@ -368,13 +368,15 @@ class OnlineLMBatcher:
                         if self.cuda:
                             datadict['length'] = torch.LongTensor(
                                 batch[:, :, 5] - int(self.skipsos)).cuda()
-                            datadict['mask'] = torch.empty(
-                                datadict['length'].shape[0], datadict['input'].shape[1], datadict['input'].shape[-1] - 2 * self.bidir).cuda()
+                            datadict['mask'] = torch.empty(datadict['length'].shape[0],
+                                                           datadict['input'].shape[1],
+                                                           datadict['input'].shape[-1] - 2 * self.bidir).cuda()
                         else:
                             datadict['length'] = torch.LongTensor(
                                 batch[:, :, 5] - int(self.skipsos))
-                            datadict['mask'] = torch.empty(
-                                datadict['length'].shape[0], datadict['input'].shape[1], datadict['input'].shape[-1] - 2 * self.bidir)
+                            datadict['mask'] = torch.empty(datadict['length'].shape[0],
+                                                           datadict['input'].shape[1],
+                                                           datadict['input'].shape[-1] - 2 * self.bidir)
 
                         for i, seq_len_matrix in enumerate(datadict['length']):
                             for j, seq_length in enumerate(seq_len_matrix):
