@@ -7,7 +7,7 @@ from log_analyzer.trainer import Trainer
 
 
 class TieredTrainer(Trainer):
-    """Trainer class for tiered LSTM model"""
+    """Trainer class for tiered LSTM model."""
 
     @property
     def model(self):
@@ -69,7 +69,11 @@ class TieredTrainer(Trainer):
         return X, Y, L, M, C_V, C_H, C_C
 
     def train_step(self, batch):
-        """Defines a single training step. Feeds data through the model, computes the loss and makes an optimization step."""
+        """Defines a single training step.
+
+        Feeds data through the model, computes the loss and makes an
+        optimization step.
+        """
         self.model.train()
         self.optimizer.zero_grad()
 
@@ -104,7 +108,10 @@ class TieredTrainer(Trainer):
         return loss, self.early_stopping.early_stop
 
     def eval_step(self, batch, store_eval_data=False):
-        """Defines a single evaluation step. Feeds data through the model and computes the loss."""
+        """Defines a single evaluation step.
+
+        Feeds data through the model and computes the loss.
+        """
         self.model.eval()
 
         # Split the batch into input, ground truth, etc.

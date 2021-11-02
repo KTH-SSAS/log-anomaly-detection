@@ -157,8 +157,7 @@ class Word_tokenizer(Char_tokenizer):
             print("Directory ", self.recordpath, " already exists")
 
     def increment_freq(self, ind_dict, key):
-        """
-        Used during -make_counts to track the frequencies of each element
+        """Used during -make_counts to track the frequencies of each element.
 
         :param ind_dict: (dict) keys: Raw word token, values: integer representation
         :param key: Raw word token
@@ -169,9 +168,8 @@ class Word_tokenizer(Char_tokenizer):
             ind_dict[key] = 1
 
     def split_line(self, string):
-        """
-        Turn raw some fields of raw log line from auth_h.txt into a list of word tokens
-        (needed for consistent user ids and domain ids)
+        """Turn raw some fields of raw log line from auth_h.txt into a list of
+        word tokens (needed for consistent user ids and domain ids)
 
         :param string: Raw log line from auth_h.txt
         :return: (list) word tokens for some fields of auth_h.txt
@@ -226,8 +224,9 @@ class Word_tokenizer(Char_tokenizer):
         self.write_sorted_counts(self.domain_counts, self.path_domain_cnts)
 
     def write_sorted_counts(self, count_dict, out_fn):
-        """
-        Sorts all of the elements in a dictionary by their counts and writes them to json and plain text
+        """Sorts all of the elements in a dictionary by their counts and writes
+        them to json and plain text.
+
         :param count_dict: (dict) keys: word tokens, values: number of occurrences
         :param out_fn: (str) Where to write .json and .txt files to (extensions are appended)
         """
@@ -260,8 +259,9 @@ class Word_tokenizer(Char_tokenizer):
             return ind_dict[word]
 
     def translate_line(self, string, domain_counts, pc_counts):
-        """
-        Translates raw log line into sequence of integer representations for word tokens with sos and eos tokens.
+        """Translates raw log line into sequence of integer representations for
+        word tokens with sos and eos tokens.
+
         :param string: Raw log line from auth_h.txt
         :return: (list) Sequence of integer representations for word tokens with sos and eos tokens.
         """

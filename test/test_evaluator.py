@@ -1,4 +1,4 @@
-"""Functions to test different model configurations"""
+"""Functions to test different model configurations."""
 import os
 
 import pytest

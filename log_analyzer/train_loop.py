@@ -32,9 +32,7 @@ TIERED_LSTM = 'tiered-lstm'
 
 
 def calculate_max_input_length(data_length, bidirectional, skip_sos):
-    """
-    Maximum input length to model.
-    """
+    """Maximum input length to model."""
     return data_length - 1 - int(skip_sos) + int(bidirectional)
 
 
@@ -65,7 +63,7 @@ def init_from_args(args):
 
 def init_from_config_files(model_type: str, bidirectional, model_config_file: str,
                            data_config_file: str, trainer_config_file: str, data_folder: str, base_logdir='runs'):
-    """Creates a model plus trainer given the specifications in args"""
+    """Creates a model plus trainer given the specifications in args."""
     model_config = get_model_config(model_config_file, model_type)
     data_config = DataConfig.init_from_file(data_config_file)
     trainer_config = TrainerConfig.init_from_file(trainer_config_file)
@@ -75,7 +73,7 @@ def init_from_config_files(model_type: str, bidirectional, model_config_file: st
 
 def init_from_config_classes(model_type, bidirectional, model_config: ModelConfig,
                              trainer_config: TrainerConfig, data_config: DataConfig, data_folder, base_logdir='runs'):
-    """Creates a model plus trainer given the specifications in args"""
+    """Creates a model plus trainer given the specifications in args."""
     if not os.path.isdir(base_logdir):
         os.mkdir(base_logdir)
     id_string = create_identifier_string(model_type)
@@ -111,7 +109,8 @@ def init_from_config_classes(model_type, bidirectional, model_config: ModelConfi
 
     # Settings for model
     lm_trainer: Trainer
-    if model_type == TIERED_LSTM and isinstance(model_config, TieredLSTMConfig):
+    if model_type == TIERED_LSTM and isinstance(
+            model_config, TieredLSTMConfig):
         train_loader, test_loader = data_utils.load_data_tiered(data_folder, train_days, test_days,
                                                                 trainer_config.batch_size, bidirectional, skip_sos, jagged,
                                                                 max_input_length, num_steps=3,
@@ -144,7 +143,7 @@ def init_from_config_classes(model_type, bidirectional, model_config: ModelConfi
 
 def train_model(lm_trainer: Trainer, train_loader,
                 test_loader, store_eval_data=True):
-    """Perform 1 epoch of training on lm_trainer"""
+    """Perform 1 epoch of training on lm_trainer."""
 
     logger = logging.getLogger(application.TRAINER_LOGGER)
 

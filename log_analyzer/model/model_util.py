@@ -25,7 +25,7 @@ def kaiming_normal_():
 
 def initialize_weights(net, initrange=1.0, dist_func=truncated_normal_):
     """Initializes the weights of the network using the given distribution
-    Distribtuion can be either 'truncated', 'xavier', or 'kaiming"""
+    Distribtuion can be either 'truncated', 'xavier', or 'kaiming."""
     for m in net.modules():
         if isinstance(m, nn.Linear):
             this_initrange = initrange * 1.0 / np.sqrt(m.weight.data.shape[1])

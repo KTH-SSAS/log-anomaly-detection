@@ -1,4 +1,4 @@
-"""Code related to Transformer language model"""
+"""Code related to Transformer language model."""
 import math
 
 import torch
@@ -71,7 +71,8 @@ class NoPositionalEncoding(nn.Module):
 
 
 class Transformer(LogModel):
-    """Container module with an encoder, a recurrent or transformer module, and a decoder."""
+    """Container module with an encoder, a recurrent or transformer module, and
+    a decoder."""
 
     def __init__(self, config: TransformerConfig):
         self.name = "Transformer"

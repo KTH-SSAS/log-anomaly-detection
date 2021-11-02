@@ -1,4 +1,4 @@
-"""Code related to different forms of attention"""
+"""Code related to different forms of attention."""
 
 import matplotlib.pyplot as plt
 import torch
@@ -10,22 +10,20 @@ import log_analyzer.application as application
 
 
 def generate_mask(seq_len, hidden_dim, use_cuda=False):
-    """Generate mask for unidirectional attention"""
+    """Generate mask for unidirectional attention."""
     mask = torch.triu(torch.ones(hidden_dim, seq_len, seq_len))
     mask = mask.cuda() if use_cuda else mask
     return mask.unsqueeze(0)  # Unsqueeze to allow broadcasting over batch
 
 
 def generate_softmax_mask(seq_len, use_cuda=False):
-    """
-    Generate mask that prevents the zeros in a lower triangular matrix from being counted when applying the softmax function.
-    Creates a matrix where the lower diagonal are zeros, and the upper diagonal are -inf (to make e^x 0).
-    The mask is applied by adding it to the input matrix.
-    Example for a 3x3 matrix:
-        0 -inf -inf
-        0   0  -inf
-        0   0    0
+    """Generate mask that prevents the zeros in a lower triangular matrix from
+    being counted when applying the softmax function.
 
+    Creates a matrix where the lower diagonal are zeros, and the upper
+    diagonal are -inf (to make e^x 0). The mask is applied by adding it
+    to the input matrix. Example for a 3x3 matrix:     0 -inf -inf     0
+    0  -inf     0   0    0
     """
     softmax_mask: torch.Tensor = ((torch.tril(torch.ones(seq_len, seq_len),
                                               diagonal=0) != 1) * -float('inf')).nan_to_num(nan=0)
@@ -70,7 +68,7 @@ class SelfAttention(nn.Module):
             self.softmax_mask = None
 
     def forward(self, x: torch.Tensor, attention_mask: torch.Tensor = None):
-        """Calculate attention weights for input sequence"""
+        """Calculate attention weights for input sequence."""
 
         use_cuda = self.use_cuda
 

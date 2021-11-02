@@ -5,18 +5,18 @@ from dataclasses import dataclass
 
 @dataclass
 class Config():
-    """Parent class for configs"""
+    """Parent class for configs."""
 
     def __init__(self) -> None:
         pass
 
     def save_config(self, filename):
-        "save configuration as json file"
+        """save configuration as json file."""
         with open(filename, 'w') as f:
             json.dump(self.__dict__, f, indent="\t")
 
     def load_config(self, filename):
-        "load configuration from json file"
+        """load configuration from json file."""
         with open(filename, 'r') as f:
             data = json.load(f)
 

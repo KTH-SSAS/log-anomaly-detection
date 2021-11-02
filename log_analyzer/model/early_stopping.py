@@ -8,7 +8,8 @@ from log_analyzer.application import TRAINER_LOGGER
 
 
 class EarlyStopping:
-    """Early stops the training if validation loss doesn't improve after a given patience."""
+    """Early stops the training if validation loss doesn't improve after a
+    given patience."""
 
     def __init__(self, patience=7, delta=0, path='./'):
         """
@@ -58,7 +59,7 @@ class EarlyStopping:
         self.val_loss_min = val_loss
 
     def save_checkpoint(self):
-        '''Saves model when validation loss decrease.'''
+        """Saves model when validation loss decrease."""
 
         logging.getLogger(TRAINER_LOGGER).info(
             'Best Loss: %.6f, Saving model ...', self.val_loss_min)

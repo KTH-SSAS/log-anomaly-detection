@@ -61,7 +61,8 @@ class LSTMLanguageModel(LogModel):
         raise NotImplementedError(
             "Bidirectional property has to be set in child class.")
 
-    def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None):
+    def forward(self, sequences, lengths: Tensor = None,
+                context_vectors=None, mask=None):
         # batch size, sequence length, embedded dimension
         x_lookups = self.embeddings(sequences)
         if self.tiered:

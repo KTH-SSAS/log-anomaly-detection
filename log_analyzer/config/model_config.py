@@ -11,7 +11,7 @@ class ModelConfig(Config):
 
 @dataclass
 class LSTMConfig(ModelConfig):
-    """Configuration class for LSTM models"""
+    """Configuration class for LSTM models."""
     layers: List[int]
     attention_type: str
     attention_dim: int
@@ -20,24 +20,24 @@ class LSTMConfig(ModelConfig):
 
     @property
     def input_dim(self):
-        """Feature length of input to LSTM"""
+        """Feature length of input to LSTM."""
         return self.embedding_dim
 
 
 @dataclass
 class TieredLSTMConfig(LSTMConfig):
-    """Configuration class for LSTM models"""
+    """Configuration class for LSTM models."""
     context_layers: list
 
     @property
     def input_dim(self):
-        """Feature length of input to LSTM"""
+        """Feature length of input to LSTM."""
         return self.embedding_dim + self.context_layers[-1]
 
 
 @dataclass
 class TransformerConfig(ModelConfig):
-    """Configuration class for Transformer models"""
+    """Configuration class for Transformer models."""
     layers: int
     feedforward_dim: int
     model_dim: int

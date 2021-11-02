@@ -105,7 +105,11 @@ class Trainer(ABC):
         return X, Y, L, M
 
     def train_step(self, batch):
-        """Defines a single training step. Feeds data through the model, computes the loss and makes an optimization step."""
+        """Defines a single training step.
+
+        Feeds data through the model, computes the loss and makes an
+        optimization step.
+        """
 
         self.model.train()
         self.optimizer.zero_grad()
@@ -133,7 +137,10 @@ class Trainer(ABC):
         return loss, self.early_stopping.early_stop
 
     def eval_step(self, batch, store_eval_data=False):
-        """Defines a single evaluation step. Feeds data through the model and computes the loss."""
+        """Defines a single evaluation step.
+
+        Feeds data through the model and computes the loss.
+        """
         # TODO add more metrics, like perplexity.
         self.model.eval()
 
@@ -161,7 +168,7 @@ class Trainer(ABC):
 
 
 class LSTMTrainer(Trainer):
-    """Trainer class for forward and bidirectional LSTM model"""
+    """Trainer class for forward and bidirectional LSTM model."""
     @property
     def model(self):
         if self.lstm is None:
@@ -179,7 +186,7 @@ class LSTMTrainer(Trainer):
 
 
 class TransformerTrainer(Trainer):
-    """Trainer class for Transformer model"""
+    """Trainer class for Transformer model."""
     @property
     def model(self):
         if self.transformer is None:

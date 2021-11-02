@@ -1,4 +1,4 @@
-"""Application level singleton (fancy term for global) variables"""
+"""Application level singleton (fancy term for global) variables."""
 
 TRAINER_LOGGER = 'trainer-logger'
 
@@ -11,8 +11,9 @@ class Application:
 
     @classmethod
     def instance(cls):
-        """For smooth integration, the application will init itself with default options
-        if the instance is requested before being explicitly initalized."""
+        """For smooth integration, the application will init itself with
+        default options if the instance is requested before being explicitly
+        initalized."""
         if Application.__instance is None:
             Application.__instance = Application()
 

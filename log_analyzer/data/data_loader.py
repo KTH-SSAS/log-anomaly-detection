@@ -1,7 +1,5 @@
 
-"""
-Data loading functions
-"""
+"""Data loading functions."""
 
 import os.path as path
 from functools import partial
@@ -227,9 +225,9 @@ def load_data(data_folder, train_files, test_files, batch_size,
 
 
 def get_mask(lens, max_len=None):
-    """
-    For masking output of lm_rnn for jagged sequences for correct gradient update.
-    Sequence length of 0 will output nan for that row of mask so don't do this.
+    """For masking output of lm_rnn for jagged sequences for correct gradient
+    update. Sequence length of 0 will output nan for that row of mask so don't
+    do this.
 
     :param lens: Numpy vector of sequence lengths
     :param num_tokens: (int) Number of predicted tokens in sentence.
@@ -248,8 +246,9 @@ def get_mask(lens, max_len=None):
 
 
 class OnlineLMBatcher:
-    """
-    For use with tiered_lm.py. Batcher keeps track of user states in upper tier RNN.
+    """For use with tiered_lm.py.
+
+    Batcher keeps track of user states in upper tier RNN.
     """
 
     def __init__(self, filepaths, sentence_length, context_size, skipsos, jagged, bidir,

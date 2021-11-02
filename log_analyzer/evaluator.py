@@ -12,8 +12,12 @@ from log_analyzer.tokenizer.tokenizer import Char_tokenizer
 
 def create_attention_matrix(model: LSTMLanguageModel, sequences,
                             output_dir, lengths=None, mask=None, token_map_file=None):
-    """Plot attention matrix over batched input. Will produce one matrix plot for each entry in batch, in the designated output directory.
-    For word level tokenization, the function will also produce an matrix for the avergae attention weights in the batch.
+    """Plot attention matrix over batched input.
+
+    Will produce one matrix plot for each entry in batch, in the
+    designated output directory. For word level tokenization, the
+    function will also produce an matrix for the avergae attention
+    weights in the batch.
     """
     if model.attention is None:
         raise RuntimeError(
@@ -102,7 +106,8 @@ def create_attention_matrix(model: LSTMLanguageModel, sequences,
 
 class Evaluator:
     def __init__(self):
-        """Creates an Evaluator instance that provides methods for model evaluation"""
+        """Creates an Evaluator instance that provides methods for model
+        evaluation."""
         self.data_is_prepared = False
         self.data_is_normalized = False
         self.reset_evaluation_data()
@@ -110,7 +115,7 @@ class Evaluator:
     def add_evaluation_data(
         self, log_line, predictions, users, losses, seconds, red_flags
     ):
-        """Extend the data stored in self.data with the inputs"""
+        """Extend the data stored in self.data with the inputs."""
         log_line = log_line.cpu().detach().flatten()
         predictions = predictions.cpu().detach().flatten()
         losses = losses.cpu().detach()
@@ -149,7 +154,7 @@ class Evaluator:
         self.token_accuracy = new_token_accuracy
 
     def reset_evaluation_data(self):
-        """Delete the stored evaluation data"""
+        """Delete the stored evaluation data."""
         self.data = {
             "users": np.zeros(0, int),
             "losses": np.zeros(0, float),
@@ -170,8 +175,10 @@ class Evaluator:
 
     def prepare_evaluation_data(self):
         """Prepares the evaluation data by:
+
         1. Trimming any remaining allocated entries for the evaluation data lists
-        2. Sorting the data (by second) if it is not sorted"""
+        2. Sorting the data (by second) if it is not sorted
+        """
         for key in self.data.keys():
             self.data[key] = self.data[key][: self.index[key]]
         # Check if the data is sorted
@@ -186,9 +193,11 @@ class Evaluator:
         self.data_is_prepared = True
 
     def normalize_losses(self):
-        """Performs user-level anomaly score normalization by subtracting the average
-        anomaly score of the user from each event (log line).
-        Mainly relevant to word tokenization"""
+        """Performs user-level anomaly score normalization by subtracting the
+        average anomaly score of the user from each event (log line).
+
+        Mainly relevant to word tokenization
+        """
         # Do not re-normalize data
         if self.data_is_normalized:
             return
@@ -204,7 +213,7 @@ class Evaluator:
         self.data_is_normalized = True
 
     def get_metrics(self):
-        """Computes and returns all metrics"""
+        """Computes and returns all metrics."""
         metrics = {
             "eval/loss": self.get_test_loss(),
             "eval/token_accuracy": self.get_token_accuracy(),
@@ -214,19 +223,20 @@ class Evaluator:
         return metrics
 
     def get_test_loss(self):
-        """Returns the accuracy of the model token prediction"""
+        """Returns the accuracy of the model token prediction."""
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
         return float(self.test_loss)
 
     def get_token_accuracy(self):
-        """Returns the accuracy of the model token prediction"""
+        """Returns the accuracy of the model token prediction."""
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
         return self.token_accuracy
 
     def get_token_perplexity(self):
-        """Computes and returns the perplexity of the model token prediction"""
+        """Computes and returns the perplexity of the model token
+        prediction."""
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
         # Compute the average loss
@@ -257,12 +267,14 @@ class Evaluator:
         outliers=60,
         legend=True
     ):
-        """Computes and plots the given (default 75/95/99) percentiles of anomaly score
-        (loss) by line for each segment.
-        Smoothing indicates how many seconds are processed as one batch for percentile
-        calculations (e.g. 60 means percentiles are computed for every minute).
-        Outliers determines how many non-redteam outliers are plotted onto the graph (per
-        hour of data)."""
+        """Computes and plots the given (default 75/95/99) percentiles of
+        anomaly score (loss) by line for each segment.
+
+        Smoothing indicates how many seconds are processed as one batch
+        for percentile calculations (e.g. 60 means percentiles are
+        computed for every minute). Outliers determines how many non-
+        redteam outliers are plotted onto the graph (per hour of data).
+        """
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
         # Ensure percentiles is sorted in ascending order
@@ -335,11 +347,14 @@ class Evaluator:
 
     def plot_roc_curve(self, color="orange", xaxis="FPR",
                        title="ROC", auc_in_title=True, use_wandb=False):
-        """Plots the ROC (Receiver Operating Characteristic) curve, i.e. TP-FP tradeoff
-        Also returns the corresponding auc score. Options for xaxis are:
+        """Plots the ROC (Receiver Operating Characteristic) curve, i.e. TP-FP
+        tradeoff Also returns the corresponding auc score.
+
+        Options for xaxis are:
         'FPR': False-positive rate. The default.
         'alerts': # of alerts per second (average) the FPR would be equivalent to.
-        'alerts-FPR': What % of produced alerts would be false alerts."""
+        'alerts-FPR': What % of produced alerts would be false alerts.
+        """
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
         auc_score = self.get_auc_score()
