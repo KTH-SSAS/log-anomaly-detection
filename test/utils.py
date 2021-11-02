@@ -1,7 +1,6 @@
 from log_analyzer.config.model_config import LSTMConfig, TieredLSTMConfig
 from log_analyzer.config.trainer_config import DataConfig, TrainerConfig
-from log_analyzer.train_loop import (get_model_config,
-                                     init_from_config_classes, train_model)
+from log_analyzer.train_loop import get_model_config, init_from_config_classes, train_model
 
 
 def set_args(bidir, model_type, token_level):

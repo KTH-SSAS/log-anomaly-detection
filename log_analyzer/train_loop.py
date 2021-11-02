@@ -10,9 +10,7 @@ import log_analyzer.application as application
 import log_analyzer.data.data_loader as data_utils
 import wandb
 from log_analyzer.application import Application
-from log_analyzer.config.model_config import (LSTMConfig, ModelConfig,
-                                              TieredLSTMConfig,
-                                              TransformerConfig)
+from log_analyzer.config.model_config import LSTMConfig, ModelConfig, TieredLSTMConfig, TransformerConfig
 from log_analyzer.config.trainer_config import DataConfig, TrainerConfig
 from log_analyzer.tiered_trainer import TieredTrainer
 from log_analyzer.trainer import LSTMTrainer, Trainer, TransformerTrainer
