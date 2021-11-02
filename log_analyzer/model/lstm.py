@@ -1,5 +1,7 @@
 # LSTM LM model
 
+from typing import Type
+
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -25,7 +27,7 @@ class LSTMLanguageModel(LogModel):
 
         self.config = config
         # Parameter setting
-        self.tiered = None
+        self.tiered: bool = False
 
         # Layers
         self.embeddings = nn.Embedding(config.vocab_size, config.embedding_dim)
@@ -45,8 +47,9 @@ class LSTMLanguageModel(LogModel):
             self.attention = SelfAttention(
                 fc_input_dim, config.attention_dim, attention_type=config.attention_type, seq_len=seq_len)
             fc_input_dim *= 2
+            self.has_attention = True
         else:
-            self.attention = None
+            self.has_attention = False
 
         self.hidden2tag = nn.Linear(fc_input_dim, config.vocab_size)
 
@@ -58,7 +61,7 @@ class LSTMLanguageModel(LogModel):
         raise NotImplementedError(
             "Bidirectional property has to be set in child class.")
 
-    def forward(self, sequences, lengths: Tensor = None, context_vectors=None):
+    def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None):
         # batch size, sequence length, embedded dimension
         x_lookups = self.embeddings(sequences)
         if self.tiered:
@@ -79,9 +82,7 @@ class LSTMLanguageModel(LogModel):
 
         lstm_in = x_lookups
 
-        pack_input = lengths is not None
-
-        if pack_input:
+        if lengths is not None:
             if len(lengths.shape) > 1:
                 lengths = lengths.squeeze()
             lstm_in = pack_padded_sequence(
@@ -89,7 +90,7 @@ class LSTMLanguageModel(LogModel):
 
         lstm_out, (hx, cx) = self.stacked_lstm(lstm_in)
 
-        if pack_input:
+        if lengths is not None:
             lstm_out, _ = pad_packed_sequence(lstm_out, batch_first=True)
 
         return lstm_out, hx
@@ -104,7 +105,7 @@ class Fwd_LSTM(LSTMLanguageModel):
                 context_vectors=None, mask=None):
         lstm_out, hx = super().forward(sequences, lengths, context_vectors)
 
-        if self.attention is not None:
+        if self.has_attention:
             attention, _ = self.attention(lstm_out, mask)
             output = torch.cat((lstm_out, attention), dim=-1)
         else:
@@ -148,7 +149,7 @@ class Bid_LSTM(LSTMLanguageModel):
         b_f_concat = torch.cat(
             [forward_hidden_states, backward_hidden_states], -1)
 
-        if self.attention is not None:
+        if self.has_attention:
             attention, _ = self.attention(b_f_concat, mask)
             b_f_concat = torch.cat((b_f_concat, attention.squeeze()), dim=-1)
 
@@ -196,6 +197,7 @@ class Tiered_LSTM(LogModel):
 
         super().__init__(config)
         # Parameter setting
+        self.model: Type[LSTMLanguageModel]
         if bidirectional:
             self.model = Bid_LSTM
         else:

@@ -10,8 +10,8 @@ import log_analyzer.application as application
 import log_analyzer.data.data_loader as data_utils
 import wandb
 from log_analyzer.application import Application
-from log_analyzer.config.config import Config
-from log_analyzer.config.model_config import (LSTMConfig, TieredLSTMConfig,
+from log_analyzer.config.model_config import (LSTMConfig, ModelConfig,
+                                              TieredLSTMConfig,
                                               TransformerConfig)
 from log_analyzer.config.trainer_config import DataConfig, TrainerConfig
 from log_analyzer.tiered_trainer import TieredTrainer
@@ -38,7 +38,7 @@ def calculate_max_input_length(data_length, bidirectional, skip_sos):
     return data_length - 1 - int(skip_sos) + int(bidirectional)
 
 
-def get_model_config(filename, model_type) -> Config:
+def get_model_config(filename, model_type) -> ModelConfig:
     if model_type == TIERED_LSTM:
         return TieredLSTMConfig.init_from_file(filename)
     elif model_type == LSTM:
@@ -73,7 +73,7 @@ def init_from_config_files(model_type: str, bidirectional, model_config_file: st
         model_type, bidirectional, model_config, trainer_config, data_config, data_folder, base_logdir)
 
 
-def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig,
+def init_from_config_classes(model_type, bidirectional, model_config: ModelConfig,
                              trainer_config: TrainerConfig, data_config: DataConfig, data_folder, base_logdir='runs'):
     """Creates a model plus trainer given the specifications in args"""
     if not os.path.isdir(base_logdir):
@@ -110,22 +110,21 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
             model_config.sequence_length = max_input_length
 
     # Settings for model
-    if model_type == TIERED_LSTM:
-        model_config: TieredLSTMConfig = model_config
+    lm_trainer: Trainer
+    if model_type == TIERED_LSTM and isinstance(model_config, TieredLSTMConfig):
         train_loader, test_loader = data_utils.load_data_tiered(data_folder, train_days, test_days,
                                                                 trainer_config.batch_size, bidirectional, skip_sos, jagged,
                                                                 max_input_length, num_steps=3,
                                                                 context_layers=model_config.context_layers)
         lm_trainer = TieredTrainer(
             trainer_config, model_config, bidirectional, log_dir, train_loader)
-    elif model_type == LSTM:
+    elif model_type == LSTM and isinstance(model_config, LSTMConfig):
         train_loader, test_loader = data_utils.load_data(data_folder, train_days, test_days,
                                                          trainer_config.batch_size, bidirectional, skip_sos, jagged,
                                                          data_config.sentence_length, shuffle_train_data)
         lm_trainer = LSTMTrainer(
             trainer_config, model_config, bidirectional, log_dir)
-    elif model_type == TRANSFORMER:
-        model_config: TransformerConfig = model_config
+    elif model_type == TRANSFORMER and isinstance(model_config, TransformerConfig):
         train_loader, test_loader = data_utils.load_data(data_folder, train_days, test_days,
                                                          trainer_config.batch_size, bidirectional, skip_sos, jagged,
                                                          data_config.sentence_length, shuffle_train_data)

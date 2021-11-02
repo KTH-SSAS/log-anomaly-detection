@@ -43,14 +43,17 @@ if __name__ == '__main__':
     else:
         tokenizer = Word_tokenizer(args, weekend_days)
         tokenizer.prepare_routes(args.type)
-
-    if args.type == 'word_level_count':
-        tokenizer.count_words()
-    elif args.type in ['char_level', 'word_level_translate']:
-        tokenizer.tokenize()
-    elif args.type == 'word_level_both':
-        tokenizer.count_words()
-        tokenizer.tokenize()
+        if args.type == 'word_level':
+            pass
+        elif args.type == 'word_level_count':
+            tokenizer.count_words()
+        elif args.type in ['char_level', 'word_level_translate']:
+            tokenizer.tokenize()
+        elif args.type == 'word_level_both':
+            tokenizer.count_words()
+            tokenizer.tokenize()
+        else:
+            pass
 
 """
 In order to run it for the initial *n* lines of the file, you need to specify the number of lines you want to process after -max_lines.

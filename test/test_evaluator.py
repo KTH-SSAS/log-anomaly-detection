@@ -2,8 +2,8 @@
 import os
 
 import pytest
-
 import utils
+
 from log_analyzer.train_loop import init_from_config_classes, train_model
 
 

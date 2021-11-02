@@ -1,18 +1,22 @@
+from dataclasses import dataclass
+from typing import List
+
 from log_analyzer.config.config import Config
 
 
-class LSTMConfig(Config):
-    """Configuration class for LSTM models"""
+@dataclass
+class ModelConfig(Config):
+    sequence_length: int
 
-    def __init__(self, layers, vocab_size, embedding_dim,
-                 attention_type, attention_dim, sequence_length=None) -> None:
-        super().__init__()
-        self.layers = layers
-        self.attention_type = attention_type
-        self.attention_dim = attention_dim
-        self.embedding_dim = embedding_dim
-        self.vocab_size = vocab_size
-        self.sequence_length = sequence_length
+
+@dataclass
+class LSTMConfig(ModelConfig):
+    """Configuration class for LSTM models"""
+    layers: List[int]
+    attention_type: str
+    attention_dim: int
+    embedding_dim: int
+    vocab_size: int
 
     @property
     def input_dim(self):
@@ -20,12 +24,10 @@ class LSTMConfig(Config):
         return self.embedding_dim
 
 
+@dataclass
 class TieredLSTMConfig(LSTMConfig):
     """Configuration class for LSTM models"""
-
-    def __init__(self, context_layers, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.context_layers = context_layers
+    context_layers: list
 
     @property
     def input_dim(self):
@@ -33,16 +35,12 @@ class TieredLSTMConfig(LSTMConfig):
         return self.embedding_dim + self.context_layers[-1]
 
 
-class TransformerConfig(Config):
+@dataclass
+class TransformerConfig(ModelConfig):
     """Configuration class for Transformer models"""
-
-    def __init__(self, layers, feedforward_dim, model_dim,
-                 attention_heads, vocab_size, dropout, sequence_length=None):
-        super().__init__()
-        self.layers = layers
-        self.feedforward_dim = feedforward_dim
-        self.model_dim = model_dim
-        self.attention_heads = attention_heads
-        self.vocab_size = vocab_size
-        self.dropout = dropout
-        self.sequence_length = sequence_length
+    layers: int
+    feedforward_dim: int
+    model_dim: int
+    attention_heads: int
+    vocab_size: int
+    dropout: float

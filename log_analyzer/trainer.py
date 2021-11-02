@@ -45,8 +45,7 @@ class Trainer(ABC):
         self.use_scheduler = bool(config.scheduler_step_size)
         if config.mixed_precision:
             self.scaler = torch.cuda.amp.GradScaler()
-        else:
-            self.scaler = None
+
         # Create evaluator
         self.evaluator = Evaluator()
 
@@ -76,7 +75,7 @@ class Trainer(ABC):
 
     def optimizer_step(self, loss: torch.Tensor):
         """Performs one step of optimization on the given loss."""
-        if self.scaler is not None:
+        if self.config.mixed_precision:
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
             self.scaler.update()
@@ -114,7 +113,7 @@ class Trainer(ABC):
         # Split the batch into input, ground truth, etc.
         X, Y, L, M = self.split_batch(batch)
 
-        if self.scaler is not None:
+        if self.config.mixed_precision:
             with torch.cuda.amp.autocast():
                 # Apply the model to input to produce the output
                 output, *_ = self.model(X, lengths=L, mask=M)

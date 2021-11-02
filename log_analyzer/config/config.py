@@ -1,9 +1,11 @@
 import json
 from copy import deepcopy
+from dataclasses import dataclass
 
 
+@dataclass
 class Config():
-    """Parent class for confi"""
+    """Parent class for configs"""
 
     def __init__(self) -> None:
         pass

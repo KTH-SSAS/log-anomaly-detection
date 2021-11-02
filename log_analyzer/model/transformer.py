@@ -3,6 +3,7 @@ import math
 
 import torch
 import torch.nn as nn
+from torch import Tensor
 
 from log_analyzer.config.model_config import TransformerConfig
 from log_analyzer.model.lstm import LogModel
@@ -40,6 +41,7 @@ class PositionalEncoding(nn.Module):
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0)
         self.register_buffer('pe', pe)
+        self.pe: Tensor
 
     def forward(self, x: torch.Tensor):
         r"""Inputs of forward function
@@ -75,7 +77,7 @@ class Transformer(LogModel):
         self.name = "Transformer"
         super().__init__(config)
 
-        self.config = config
+        self.config: TransformerConfig = config
 
         self.dropout = config.dropout
         self.src_mask = None
