@@ -1,5 +1,4 @@
 """Code related to different forms of attention"""
-from typing import Tuple
 
 import matplotlib.pyplot as plt
 import torch

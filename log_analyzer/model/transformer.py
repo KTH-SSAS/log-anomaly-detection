@@ -3,7 +3,6 @@ import math
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from log_analyzer.config.model_config import TransformerConfig
 from log_analyzer.model.lstm import LogModel

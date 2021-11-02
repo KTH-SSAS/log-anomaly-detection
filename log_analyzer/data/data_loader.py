@@ -5,17 +5,12 @@ Data loading functions
 
 import os.path as path
 from functools import partial
-from typing import Iterator
 
-import dask.dataframe as dd
-import numpy as np
-import pandas as pd
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 from log_analyzer.application import Application
-from log_analyzer.config.trainer_config import DataConfig
 
 DEFAULT_HEADERS = [
     "line_number",
