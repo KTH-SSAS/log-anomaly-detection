@@ -1,6 +1,8 @@
 """Functions to test different model configurations"""
 import os
+
 import pytest
+
 import utils
 from log_analyzer.train_loop import init_from_config_classes, train_model
 
@@ -58,7 +60,8 @@ def test_evaluator_tiered(tmpdir):
     args['base_logdir'] = os.path.join(tmpdir, 'runs')
 
     trainer, train_loader, test_loader = init_from_config_classes(**args)
-    # Only unique thing in the tiered version of the evaluator is the data storing code
+    # Only unique thing in the tiered version of the evaluator is the data
+    # storing code
     train_losses, test_losses = train_model(
         trainer, train_loader, test_loader, store_eval_data=True)
     assert True

@@ -4,7 +4,8 @@ from log_analyzer.config.config import Config
 class LSTMConfig(Config):
     """Configuration class for LSTM models"""
 
-    def __init__(self, layers, vocab_size, embedding_dim, attention_type, attention_dim, sequence_length=None) -> None:
+    def __init__(self, layers, vocab_size, embedding_dim,
+                 attention_type, attention_dim, sequence_length=None) -> None:
         super().__init__()
         self.layers = layers
         self.attention_type = attention_type
@@ -31,10 +32,12 @@ class TieredLSTMConfig(LSTMConfig):
         """Feature length of input to LSTM"""
         return self.embedding_dim + self.context_layers[-1]
 
+
 class TransformerConfig(Config):
     """Configuration class for Transformer models"""
 
-    def __init__(self, layers, feedforward_dim, model_dim, attention_heads, vocab_size, dropout, sequence_length=None):
+    def __init__(self, layers, feedforward_dim, model_dim,
+                 attention_heads, vocab_size, dropout, sequence_length=None):
         super().__init__()
         self.layers = layers
         self.feedforward_dim = feedforward_dim

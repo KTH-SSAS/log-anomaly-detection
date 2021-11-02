@@ -3,19 +3,19 @@
 Data loading functions
 """
 
-from log_analyzer.config.trainer_config import DataConfig
-from typing import Iterator
-from torch.utils.data import DataLoader, IterableDataset, Dataset
-import torch
 import os.path as path
-import numpy as np
-import dask.dataframe as dd
-import pandas as pd
-from log_analyzer.application import Application
-
-from torch.nn.utils.rnn import pad_sequence
-
 from functools import partial
+from typing import Iterator
+
+import dask.dataframe as dd
+import numpy as np
+import pandas as pd
+import torch
+from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import DataLoader, Dataset, IterableDataset
+
+from log_analyzer.application import Application
+from log_analyzer.config.trainer_config import DataConfig
 
 DEFAULT_HEADERS = [
     "line_number",
@@ -41,7 +41,8 @@ def translate_line(string, pad_len):
     :param pad_len:
     :return:
     """
-    return "0 " + " ".join([str(ord(c) - 30) for c in string]) + " 1 " + " ".join(["0"] * pad_len) + "\n"
+    return "0 " + " ".join([str(ord(c) - 30) for c in string]) + \
+        " 1 " + " ".join(["0"] * pad_len) + "\n"
 
 
 def parse_multiple_files(filepaths, jag, bidir, skipsos, raw_lines=False):
@@ -68,10 +69,10 @@ def parse_line(line, jag, bidir, skipsos, delimiter=' '):
         length = data.shape[0] - metadata_offset - int(skipeos) - int(skipsos)
 
     offset = int(jag) + int(skipsos)
-    
+
     input_start = metadata_offset + offset
     input_end = input_start + length
-    
+
     target_start = input_start + 1
     target_end = input_end + 1
 
@@ -80,19 +81,19 @@ def parse_line(line, jag, bidir, skipsos, delimiter=' '):
         target_end -= 1
 
     datadict = {
-        'line':     data[0],
-        'second':   data[1],
-        'day':      data[2],
-        'user':     data[3],
-        'red':      data[4],
-        'input':    data[input_start:input_end],
-        'target':   data[target_start:target_end],
+        'line': data[0],
+        'second': data[1],
+        'day': data[2],
+        'user': data[3],
+        'red': data[4],
+        'input': data[input_start:input_end],
+        'target': data[target_start:target_end],
     }
 
     if jag:  # Input is variable length
         length = datadict['input'].shape[0]
         datadict['length'] = torch.LongTensor([length])
-        datadict['mask'] = get_mask(length-2*bidir)
+        datadict['mask'] = get_mask(length - 2 * bidir)
         assert length <= datadict['input'].shape[-1], 'Sequence found greater than num_tokens_predicted'
         assert length > 0, \
             'Sequence lengths must be greater than zero.' \
@@ -127,7 +128,8 @@ def collate_fn(data, jagged=False):
 
 class LogDataset():
 
-    def __init__(self, filepaths, bidirectional, skipsos, jagged, delimiter=' ') -> None:
+    def __init__(self, filepaths, bidirectional,
+                 skipsos, jagged, delimiter=' ') -> None:
         super().__init__()
         self.delimiter = delimiter
 
@@ -141,7 +143,8 @@ class LogDataset():
 
 
 class MapLogDataset(LogDataset, Dataset):
-    def __init__(self, filepaths, bidirectional, skipsos, jagged, delimiter=' ') -> None:
+    def __init__(self, filepaths, bidirectional,
+                 skipsos, jagged, delimiter=' ') -> None:
         super().__init__(filepaths, bidirectional, skipsos, jagged, delimiter)
 
         self.loglines = []
@@ -158,15 +161,19 @@ class MapLogDataset(LogDataset, Dataset):
     def __len__(self):
         return len(self.loglines)
 
+
 class IterableLogDataset(LogDataset, IterableDataset):
-    def __init__(self, filepaths, bidirectional, skipsos, jagged, delimiter=' ') -> None:
+    def __init__(self, filepaths, bidirectional,
+                 skipsos, jagged, delimiter=' ') -> None:
         super().__init__(filepaths, bidirectional, skipsos, jagged, delimiter)
 
     def __iter__(self):
-        return parse_multiple_files(self.filepaths, self.jag, self.bidir, self.skipsos)
+        return parse_multiple_files(
+            self.filepaths, self.jag, self.bidir, self.skipsos)
 
 
-def load_data_tiered(data_folder, train_files, test_files, batch_size, bidir, skipsos, jagged, sentence_length, num_steps, context_layers):
+def load_data_tiered(data_folder, train_files, test_files, batch_size,
+                     bidir, skipsos, jagged, sentence_length, num_steps, context_layers):
     def create_tiered_data_loader(filepath):
         data_handler = OnlineLMBatcher(filepath,
                                        sentence_length,
@@ -185,10 +192,11 @@ def load_data_tiered(data_folder, train_files, test_files, batch_size, bidir, sk
     return train_loader, test_loader
 
 
-def create_data_loader(filepath, batch_size, bidir, skipsos, jagged, max_len, shuffle=False):
+def create_data_loader(filepath, batch_size, bidir,
+                       skipsos, jagged, max_len, shuffle=False):
     if shuffle:
         dataset = MapLogDataset(filepath, bidir, skipsos,
-                             jagged, max_len)
+                                jagged, max_len)
     else:
         dataset = IterableLogDataset(
             filepath, bidir, skipsos, jagged, max_len)
@@ -199,12 +207,26 @@ def create_data_loader(filepath, batch_size, bidir, skipsos, jagged, max_len, sh
     return data_handler
 
 
-def load_data(data_folder, train_files, test_files, batch_size, bidir, skipsos, jagged, sentence_length, shuffle_train_data=True):
+def load_data(data_folder, train_files, test_files, batch_size,
+              bidir, skipsos, jagged, sentence_length, shuffle_train_data=True):
 
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
-    train_loader = create_data_loader(filepaths_train, batch_size, bidir, skipsos, jagged, sentence_length, shuffle_train_data)
-    test_loader = create_data_loader(filepaths_eval, batch_size, bidir, skipsos, jagged, sentence_length)
+    train_loader = create_data_loader(
+        filepaths_train,
+        batch_size,
+        bidir,
+        skipsos,
+        jagged,
+        sentence_length,
+        shuffle_train_data)
+    test_loader = create_data_loader(
+        filepaths_eval,
+        batch_size,
+        bidir,
+        skipsos,
+        jagged,
+        sentence_length)
 
     return train_loader, test_loader
 
@@ -250,11 +272,13 @@ class OnlineLMBatcher:
         self.num_steps = num_steps  # The number of log lines for each user in a batch
         self.user_logs = {}
         self.flush = False
-        # Used by the trainer to signal if the rest of the current file should be skipped when flush is reached
+        # Used by the trainer to signal if the rest of the current file should
+        # be skipped when flush is reached
         self.skip_file = False
         self.empty = False
         self.staggler_num_steps = 1
-        # the list of users whose saved log lines are greater than or equal to the self.num_steps
+        # the list of users whose saved log lines are greater than or equal to
+        # the self.num_steps
         self.users_ge_num_steps = []
         self.filepaths = filepaths
         self.saved_lstm = {}
@@ -308,11 +332,13 @@ class OnlineLMBatcher:
                                                 (len(self.context_size), self.context_size[0])),
                                             torch.zeros((len(self.context_size), self.context_size[0])))
                                 self.user_logs[user].append(rowtext)
-                                if user not in self.users_ge_num_steps and len(self.user_logs[user]) >= self.num_steps:
+                                if user not in self.users_ge_num_steps and len(
+                                        self.user_logs[user]) >= self.num_steps:
                                     self.users_ge_num_steps.append(user)
 
                         # Before the data loader read the last line of the log.
-                        if len(self.users_ge_num_steps) >= self.mb_size and self.flush == False:
+                        if len(
+                                self.users_ge_num_steps) >= self.mb_size and self.flush == False:
                             output, ctxt_vector, h_state, c_state = self.load_lines()
 
                         # When the data loader read the last line of the log.
@@ -389,5 +415,6 @@ class OnlineLMBatcher:
         ctxt_vectors = ctxt_vectors.data
         h_states = torch.transpose(h_states.data, 0, 1)
         c_states = torch.transpose(c_states.data, 0, 1)
-        for usr, ctxt_v, h_state, c_state in zip(self.users_ge_num_steps[:self.mb_size], ctxt_vectors, h_states, c_states):
+        for usr, ctxt_v, h_state, c_state in zip(
+                self.users_ge_num_steps[:self.mb_size], ctxt_vectors, h_states, c_states):
             self.saved_lstm[usr] = (ctxt_v, h_state, c_state)

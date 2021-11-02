@@ -1,11 +1,13 @@
 """Code related to Transformer language model"""
+import math
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from log_analyzer.config.model_config import TransformerConfig
 from log_analyzer.model.lstm import LogModel
 from log_analyzer.model.model_util import initialize_weights
-from log_analyzer.config.model_config import TransformerConfig
-import torch.nn as nn
-import torch
-import torch.nn.functional as F
-import math
 
 
 # Positional Encoding class taken from PyTorch word_language_model example code:
@@ -54,6 +56,7 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[:, :seq_len, :]
         return self.dropout(x)
 
+
 class NoPositionalEncoding(nn.Module):
     def __init__(self, d_model=None, dropout=0.1, max_len=None):
         super(NoPositionalEncoding, self).__init__()
@@ -93,22 +96,27 @@ class Transformer(LogModel):
             '-inf')).masked_fill(mask == 1, float(0.0))
         return mask
 
-    def forward(self, src: torch.Tensor, lengths=None, mask=None, has_mask=True):
+    def forward(self, src: torch.Tensor, lengths=None,
+                mask=None, has_mask=True):
         # batch size, sequence length, embedded dimension
         # lengths is currently ignored, added for compatibility with LSTM-training code
-        #TODO: compatibility with character level encoding
+        # TODO: compatibility with character level encoding
         if has_mask:
             device = src.device
             if self.src_mask is None or self.src_mask.shape[-1] != src.shape[-1]:
-                mask = self._generate_square_subsequent_mask(src.shape[-1]).to(device)
+                mask = self._generate_square_subsequent_mask(
+                    src.shape[-1]).to(device)
                 self.src_mask = mask
         else:
             self.src_mask = None
 
-        word_embeddings = self.word_embedding(src) * math.sqrt(self.config.model_dim)
+        word_embeddings = self.word_embedding(
+            src) * math.sqrt(self.config.model_dim)
         tf_input = self.pos_encoder(word_embeddings)
         tf_hidden = self.transformer_encoder(tf_input, self.src_mask)
-        logits = tf_hidden @ self.word_embedding.weight.t() # word embedding encoder and decoder share weights
+        # word embedding encoder and decoder share weights
+        logits = tf_hidden @ self.word_embedding.weight.t()
         # Trainer expects model to return a tuple of results (for the LSTMs this would be (lstm_out, final_hidden_state))
-        # So we have to return a tuple here too (all but the first value of the tuple are discarded)
+        # So we have to return a tuple here too (all but the first value of the
+        # tuple are discarded)
         return logits, []

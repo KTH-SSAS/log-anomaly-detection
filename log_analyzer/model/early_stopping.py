@@ -1,7 +1,9 @@
+import logging
+import os
+
 import numpy as np
 import torch
-import os
-import logging
+
 from log_analyzer.application import TRAINER_LOGGER
 
 
@@ -26,7 +28,7 @@ class EarlyStopping:
         self.delta = delta
         self.path = os.path.join(path, 'checkpoint.pt')
         self.model_state_dict = None
-        
+
     def __call__(self, val_loss, model):
 
         score = -val_loss
@@ -39,7 +41,8 @@ class EarlyStopping:
         elif score < self.best_score + self.delta:
             self.counter += 1
             if self.counter % 10 == 0:
-                logger.debug('EarlyStopping counter: %d out of %d. Best loss: %f', self.counter, self.patience, -self.best_score)
+                logger.debug('EarlyStopping counter: %d out of %d. Best loss: %f',
+                             self.counter, self.patience, -self.best_score)
             if self.counter >= self.patience:
                 self.early_stop = True
         else:

@@ -1,15 +1,18 @@
-from log_analyzer.config.model_config import LSTMConfig, TransformerConfig
-from log_analyzer.config.trainer_config import TrainerConfig
+from abc import ABC, abstractmethod
+
 import torch
 import torch.nn as nn
-from log_analyzer.model.lstm import Fwd_LSTM, Bid_LSTM, LogModel
-from log_analyzer.model.transformer import Transformer
-import log_analyzer.model.early_stopping as early_stopping
-from log_analyzer.evaluator import Evaluator
-from abc import ABC, abstractmethod
-from log_analyzer.application import Application
 
-# TODO name this something more descriptive, it might be used as a wrapper around both transformer/LSTM
+import log_analyzer.model.early_stopping as early_stopping
+from log_analyzer.application import Application
+from log_analyzer.config.model_config import LSTMConfig, TransformerConfig
+from log_analyzer.config.trainer_config import TrainerConfig
+from log_analyzer.evaluator import Evaluator
+from log_analyzer.model.lstm import Bid_LSTM, Fwd_LSTM, LogModel
+from log_analyzer.model.transformer import Transformer
+
+# TODO name this something more descriptive, it might be used as a wrapper
+# around both transformer/LSTM
 
 
 class Trainer(ABC):
@@ -47,7 +50,8 @@ class Trainer(ABC):
         # Create evaluator
         self.evaluator = Evaluator()
 
-    def compute_loss(self, output: torch.Tensor, Y, lengths, mask: torch.Tensor):
+    def compute_loss(self, output: torch.Tensor, Y,
+                     lengths, mask: torch.Tensor):
         """Computes the loss for the given model output and ground truth."""
         targets = Y
         if lengths is not None:
@@ -141,7 +145,8 @@ class Trainer(ABC):
         output, *_ = self.model(X, lengths=L, mask=M)
 
         # Compute the loss for the output
-        loss, line_losses, targets = self.compute_loss(output, Y, lengths=L, mask=M)
+        loss, line_losses, targets = self.compute_loss(
+            output, Y, lengths=L, mask=M)
 
         # Save the results if desired
         if store_eval_data:
@@ -164,13 +169,15 @@ class LSTMTrainer(Trainer):
             raise RuntimeError("Model not intialized!")
         return self.lstm
 
-    def __init__(self, config: TrainerConfig, lstm_config: LSTMConfig, bidirectional, checkpoint_dir):
+    def __init__(self, config: TrainerConfig,
+                 lstm_config: LSTMConfig, bidirectional, checkpoint_dir):
 
         model = Bid_LSTM if bidirectional else Fwd_LSTM
         # Create a model
         self.lstm = model(lstm_config)
 
         super().__init__(config, checkpoint_dir)
+
 
 class TransformerTrainer(Trainer):
     """Trainer class for Transformer model"""
@@ -180,7 +187,8 @@ class TransformerTrainer(Trainer):
             raise RuntimeError("Model not initialized!")
         return self.transformer
 
-    def __init__(self, config: TrainerConfig, transformer_config: TransformerConfig, checkpoint_dir):
+    def __init__(self, config: TrainerConfig,
+                 transformer_config: TransformerConfig, checkpoint_dir):
         # Create a model
         self.transformer = Transformer(transformer_config)
 

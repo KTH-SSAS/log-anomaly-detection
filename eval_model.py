@@ -1,5 +1,6 @@
-import wandb
 import matplotlib.pyplot as plt
+
+import wandb
 
 
 def eval_model(model_trainer):
@@ -11,7 +12,8 @@ def eval_model(model_trainer):
     evaluator_metrics = model_trainer.evaluator.get_metrics()
 
     # get line losses plot
-    model_trainer.evaluator.plot_line_loss_percentiles(percentiles=[75,95,99], smoothing=300, ylim=(-1,-1), outliers=1, legend=False)
+    model_trainer.evaluator.plot_line_loss_percentiles(
+        percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False)
     wandb.log({"Aggregate line losses": wandb.Image(plt)})
     plt.clf()
 
@@ -23,12 +25,14 @@ def eval_model(model_trainer):
     model_trainer.evaluator.normalize_losses()
 
     # get normalised line losses plot
-    model_trainer.evaluator.plot_line_loss_percentiles(percentiles=[75,95,99], smoothing=300, ylim=(-1,-1), outliers=1, legend=False)
+    model_trainer.evaluator.plot_line_loss_percentiles(
+        percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False)
     wandb.log({"Aggregate line losses (normalised)": wandb.Image(plt)})
     plt.clf()
 
     # get normalised roc curve
-    evaluator_metrics["eval/AUC_(normalised)"], roc_plot = model_trainer.evaluator.plot_roc_curve(title="ROC (normalised)", use_wandb=True)
+    evaluator_metrics["eval/AUC_(normalised)"], roc_plot = model_trainer.evaluator.plot_roc_curve(
+        title="ROC (normalised)", use_wandb=True)
     wandb.log({"ROC Curve (normalised)": roc_plot})
 
     # Log the evaluation results

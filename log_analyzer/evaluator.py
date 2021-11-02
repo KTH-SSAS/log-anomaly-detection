@@ -1,22 +1,25 @@
-from log_analyzer.model.lstm import LSTMLanguageModel
-import torch
-import numpy as np
-import matplotlib.pyplot as plt
-from tqdm import tqdm
-from sklearn import metrics
 import os
-from log_analyzer.tokenizer.tokenizer import Char_tokenizer
+
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+from sklearn import metrics
+from tqdm import tqdm
+
 import wandb
+from log_analyzer.model.lstm import LSTMLanguageModel
+from log_analyzer.tokenizer.tokenizer import Char_tokenizer
 
 
-
-def create_attention_matrix(model: LSTMLanguageModel, sequences, output_dir, lengths=None, mask=None, token_map_file=None): 
-    """Plot attention matrix over batched input. Will produce one matrix plot for each entry in batch, in the designated output directory. 
+def create_attention_matrix(model: LSTMLanguageModel, sequences,
+                            output_dir, lengths=None, mask=None, token_map_file=None):
+    """Plot attention matrix over batched input. Will produce one matrix plot for each entry in batch, in the designated output directory.
     For word level tokenization, the function will also produce an matrix for the avergae attention weights in the batch.
     """
     if model.attention is None:
-        raise RuntimeError("Can not create an attention matrix for a model without attention!")
-    
+        raise RuntimeError(
+            "Can not create an attention matrix for a model without attention!")
+
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
 
@@ -27,10 +30,25 @@ def create_attention_matrix(model: LSTMLanguageModel, sequences, output_dir, len
     _, attention_matrix_batch = model.attention(lstm_out, mask)
 
     def set_ticks():
-        word_tick_labels = ['<sos>', 'src user', 'src domain', 'dest user', 'dest domain', 'src PC', 'dest PC', 'auth type', 'login type', 'auth orient', 'success/fail', '<eos>']
-        input_labels = word_tick_labels[1:-1] if skip_sos else word_tick_labels[:-1]
-        attention_labels = word_tick_labels[1:-1] if skip_sos else word_tick_labels[:-1]
-        label_labels = word_tick_labels[2:] if skip_sos else word_tick_labels[1:]
+        word_tick_labels = [
+            '<sos>',
+            'src user',
+            'src domain',
+            'dest user',
+            'dest domain',
+            'src PC',
+            'dest PC',
+            'auth type',
+            'login type',
+            'auth orient',
+            'success/fail',
+            '<eos>']
+        input_labels = word_tick_labels[1:-
+                                        1] if skip_sos else word_tick_labels[:-1]
+        attention_labels = word_tick_labels[1:-
+                                            1] if skip_sos else word_tick_labels[:-1]
+        label_labels = word_tick_labels[2:
+                                        ] if skip_sos else word_tick_labels[1:]
         ax.set_xlabel("Positions attended over")
         ax.set_xticks(range(matrix.shape[0]))
         ax.set_xticklabels(attention_labels, rotation='45')
@@ -51,18 +69,21 @@ def create_attention_matrix(model: LSTMLanguageModel, sequences, output_dir, len
         set_ticks()
 
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, f"{model.attention.attention_type}_batchAverage.png"))
+    plt.savefig(
+        os.path.join(
+            output_dir,
+            f"{model.attention.attention_type}_batchAverage.png"))
 
     _, ax = plt.subplots(figsize=(10, 10))
     for i, matrix in enumerate(attention_matrix_batch):
         seq = sequences[i]
 
         if lengths is not None:
-            matrix = matrix[:lengths[i]-1, :lengths[i]-1]
+            matrix = matrix[:lengths[i] - 1, :lengths[i] - 1]
 
         ax.matshow(matrix.detach().numpy())
         if lengths is not None:
-            string = Char_tokenizer.detokenize_line(seq[:lengths[i]-1])
+            string = Char_tokenizer.detokenize_line(seq[:lengths[i] - 1])
             ax.set_xticks(range(len(string)))
             ax.set_xticklabels(string, fontsize='small')
             ax.set_yticks(range(len(string)))
@@ -73,7 +94,10 @@ def create_attention_matrix(model: LSTMLanguageModel, sequences, output_dir, len
             set_ticks()
             plt.tight_layout()
 
-        plt.savefig(os.path.join(output_dir, f"{model.attention.attention_type}_{tokenization}_#{i}.png"))
+        plt.savefig(
+            os.path.join(
+                output_dir,
+                f"{model.attention.attention_type}_{tokenization}_#{i}.png"))
         plt.cla()
 
 
@@ -208,7 +232,8 @@ class Evaluator:
             self.prepare_evaluation_data()
         # Compute the average loss
         average_loss = np.average(self.data["losses"])
-        # Assuming the loss is cross entropy loss, the perplexity is the exponential of the loss
+        # Assuming the loss is cross entropy loss, the perplexity is the
+        # exponential of the loss
         perplexity = np.exp(average_loss)
         return perplexity
 
@@ -217,7 +242,7 @@ class Evaluator:
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
         # Compute fp and tp rates if not supplied
-        if fp_rate == None or tp_rate == None:
+        if fp_rate is None or tp_rate is None:
             fp_rate, tp_rate, _ = metrics.roc_curve(
                 self.data["red_flags"], self.data["losses"], pos_label=1
             )
@@ -270,21 +295,23 @@ class Evaluator:
         red_losses = self.data["losses"][self.data["red_flags"] != 0]
 
         if outliers > 0:
-            # Extract the top X ('outliers' per hour of data) outlier non-red team events
+            # Extract the top X ('outliers' per hour of data) outlier non-red
+            # team events
             outlier_count = int(len(seconds) * outliers // 3600)
             blue_losses = self.data["losses"][self.data["red_flags"] == 0]
             blue_seconds = self.data["seconds"][self.data["red_flags"] == 0]
-            # Negate the list so we can pick the highest values (i.e. the lowest -ve values)
+            # Negate the list so we can pick the highest values (i.e. the
+            # lowest -ve values)
             outlier_indices = np.argpartition(-blue_losses,
                                               outlier_count)[:outlier_count]
             blue_losses = blue_losses[outlier_indices]
             blue_seconds = blue_seconds[outlier_indices]
-            blue_seconds = blue_seconds / (3600*24) # convert to days
+            blue_seconds = blue_seconds / (3600 * 24)  # convert to days
 
         # plot the percentile ranges
         # Convert x-axis to days
-        red_seconds = red_seconds / (3600*24)
-        segments = [s/(3600*24) for s in segments]
+        red_seconds = red_seconds / (3600 * 24)
+        segments = [s / (3600 * 24) for s in segments]
         for idx in range(len(plotting_data) - 2, -1, -1):
             plt.fill_between(
                 segments,
@@ -307,7 +334,8 @@ class Evaluator:
             plt.legend()
         plt.title("Aggregate line losses by time")
 
-    def plot_roc_curve(self, color="orange", xaxis="FPR", title="ROC", auc_in_title=True, use_wandb=False):
+    def plot_roc_curve(self, color="orange", xaxis="FPR",
+                       title="ROC", auc_in_title=True, use_wandb=False):
         """Plots the ROC (Receiver Operating Characteristic) curve, i.e. TP-FP tradeoff
         Also returns the corresponding auc score. Options for xaxis are:
         'FPR': False-positive rate. The default.
@@ -333,8 +361,10 @@ class Evaluator:
         if auc_in_title:
             title += f", AUC={auc_score:.3f}"
         if use_wandb:
-            # ROC Curve is to be uploaded to wandb, so plot using a "fixed" version of their plot.roc_curve function
-            table = wandb.Table(columns=["class", "fpr", "tpr"], data=list(zip(["" for _ in fp_rate], fp_rate, tp_rate)))
+            # ROC Curve is to be uploaded to wandb, so plot using a "fixed"
+            # version of their plot.roc_curve function
+            table = wandb.Table(columns=["class", "fpr", "tpr"], data=list(
+                zip(["" for _ in fp_rate], fp_rate, tp_rate)))
             wandb_plot = wandb.plot_table(
                 "wandb/area-under-curve/v0",
                 table,

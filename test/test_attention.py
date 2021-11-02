@@ -1,8 +1,11 @@
 
 import os
+
 import pytest
+
 import utils
 from log_analyzer.train_loop import init_from_config_classes, train_model
+
 
 def test_forward_char_attention(tmpdir):
     bidir = False
@@ -17,6 +20,7 @@ def test_forward_char_attention(tmpdir):
     utils.run_test(args)
     assert True
 
+
 def test_forward_word_attention(tmpdir):
     bidir = False
     model_type = 'lstm'
@@ -29,7 +33,8 @@ def test_forward_word_attention(tmpdir):
 
     utils.run_test(args)
     assert True
-    
+
+
 def test_forward_char_syntax_attention(tmpdir):
     bidir = False
     model_type = 'lstm'
@@ -44,6 +49,7 @@ def test_forward_char_syntax_attention(tmpdir):
     assert "sequence length has to bet set" in str(execinfo.value)
     assert True
 
+
 def test_forward_word_syntax_attention(tmpdir):
     bidir = False
     model_type = 'lstm'
@@ -56,6 +62,8 @@ def test_forward_word_syntax_attention(tmpdir):
 
     utils.run_test(args)
     assert True
+
+
 def test_forward_char_semantic_attention(tmpdir):
     bidir = False
     model_type = 'lstm'
@@ -67,6 +75,7 @@ def test_forward_char_semantic_attention(tmpdir):
     args['base_logdir'] = os.path.join(tmpdir, 'runs')
     utils.run_test(args)
     assert True
+
 
 def test_forward_word_semantic_attention(tmpdir):
     bidir = False
@@ -81,6 +90,7 @@ def test_forward_word_semantic_attention(tmpdir):
     utils.run_test(args)
     assert True
 
+
 def test_bidirectional_word_attention(tmpdir):
     bidir = True
     model_type = 'lstm'
@@ -93,6 +103,7 @@ def test_bidirectional_word_attention(tmpdir):
 
     utils.run_test(args)
     assert True
+
 
 def test_bidirectional_char_attention(tmpdir):
     bidir = True

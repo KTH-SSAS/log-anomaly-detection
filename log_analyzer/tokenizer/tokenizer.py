@@ -1,7 +1,9 @@
-import os, shutil
 import json
 import operator
+import os
+import shutil
 import sys
+
 
 class Char_tokenizer:
     def __init__(self, args, weekend_days):
@@ -11,14 +13,14 @@ class Char_tokenizer:
         self.recordpath = args.recordpath
         self.max_lines = args.max_lines
         self.weekend_days = weekend_days
-        self.LONGEST_LEN = 120 # Length of the longest line in auth.txt, used for padding
+        self.LONGEST_LEN = 120  # Length of the longest line in auth.txt, used for padding
 
     def build_output_dir(self):
         try:
-            os.makedirs(self.outpath)    
-            print("Directory " , self.outpath ,  " Created ")
+            os.makedirs(self.outpath)
+            print("Directory ", self.outpath, " Created ")
         except FileExistsError:
-            print("Directory " , self.outpath ,  " already exists")  
+            print("Directory ", self.outpath, " already exists")
 
     def tokenize_line(self, string, pad_len):
         """
@@ -26,11 +28,12 @@ class Char_tokenizer:
         :param pad_len:
         :return:
         """
-        return "0 " + " ".join([str(ord(c) - 30) for c in string]) + " 1 " + " ".join(["0"] * pad_len) + "\n"
+        return "0 " + " ".join([str(ord(c) - 30) for c in string]) + \
+            " 1 " + " ".join(["0"] * pad_len) + "\n"
 
     @classmethod
     def detokenize_line(cls, tokens):
-        return "".join([chr(t+30) for t in tokens])
+        return "".join([chr(t + 30) for t in tokens])
 
     def delete_duplicates(self):
         try:
@@ -46,7 +49,8 @@ class Char_tokenizer:
         except FileNotFoundError:
             print('Nothing to delete.')
 
-    def save_day_outfile(self, day_outfile, current_file_day, current_line, line_day):
+    def save_day_outfile(
+            self, day_outfile, current_file_day, current_line, line_day):
         if int(line_day) == int(current_file_day):
             day_outfile.write(current_line)
         else:
@@ -54,9 +58,11 @@ class Char_tokenizer:
             current_file_day = str(line_day)
             temp_path = os.path.join(self.outpath, current_file_day + '.txt')
             if os.path.isfile(temp_path):
-                day_outfile = open(temp_path, 'a') # If the file exists, reopen the file and append new lines.
+                # If the file exists, reopen the file and append new lines.
+                day_outfile = open(temp_path, 'a')
             else:
-                day_outfile = open(temp_path, 'w') # If the file doesn't exist, make new file..
+                # If the file doesn't exist, make new file..
+                day_outfile = open(temp_path, 'w')
             day_outfile.write(current_line)
 
     def tokenize(self):
@@ -64,35 +70,43 @@ class Char_tokenizer:
             redevents = set(red.readlines())
 
         with open(self.authfile, 'r') as infile:
-            infile.readline() # Skip the first line.
+            infile.readline()  # Skip the first line.
 
             self.current_day = '0'
-            day_outfile = open(os.path.join(self.outpath, self.current_day + '.txt'), 'w')
-            
+            day_outfile = open(
+                os.path.join(
+                    self.outpath,
+                    self.current_day +
+                    '.txt'),
+                'w')
+
             for line_num, line in enumerate(infile):
                 if line_num % 10000 == 0:
                     print(line_num)
                 line_minus_time = ','.join(line.strip().split(',')[1:])
                 pad_len = self.LONGEST_LEN - len(line_minus_time)
                 raw_line = line.split(",")
-                if len(raw_line) != 9: 
-                    print('bad length') 
-                    continue 
+                if len(raw_line) != 9:
+                    print('bad length')
+                    continue
                 sec = raw_line[0]
                 user = raw_line[1].strip().split('@')[0]
-                day = int(sec) // 86400 # 24 hours * 60 minutes * 60 seconds 
+                day = int(sec) // 86400  # 24 hours * 60 minutes * 60 seconds
                 red = 0
                 # Reconstruct 'line' in the format of lines in redevents
                 # Line format: second,src_user@src_domain,dst_user@dst_domain,src_pc,dst_pc,auth_type,logon,auth_orient,success
-                # redevent_line format: second,src_user@src_domain,src_pc,dst_pc\n
+                # redevent_line format:
+                # second,src_user@src_domain,src_pc,dst_pc\n
                 red_style_line = (
-                    ",".join((sec, raw_line[1].strip(), raw_line[3], raw_line[4])) + "\n"
+                    ",".join(
+                        (sec, raw_line[1].strip(), raw_line[3], raw_line[4])) + "\n"
                 )
                 red += int(red_style_line in redevents)
                 if user.startswith('U') and day not in self.weekend_days:
                     index_rep = self.tokenize_line(line_minus_time, pad_len)
                     current_line = f"{line_num} {sec} {day} {user.replace('U', '')} {red} {len(line_minus_time)+1} {index_rep}"
-                    self.save_day_outfile(day_outfile, self.current_day, current_line, day)
+                    self.save_day_outfile(
+                        day_outfile, self.current_day, current_line, day)
                 if self.max_lines is not None:
                     if line_num > self.max_lines:
                         break
@@ -125,17 +139,22 @@ class Word_tokenizer(Char_tokenizer):
         self.logon_dict = {}
         self.orient_dict = {}
         self.success_dict = {}
-        self.other_inds = {'sos': self.sos, 'eos': self.eos, 'usr_OOV': self.usr_OOV, 'pc_OOV': self.pc_OOV, 'domain_OOV': self.domain_OOV}
-        self.path_usr_cnts =  os.path.join(self.recordpath, "usr_counts")
+        self.other_inds = {
+            'sos': self.sos,
+            'eos': self.eos,
+            'usr_OOV': self.usr_OOV,
+            'pc_OOV': self.pc_OOV,
+            'domain_OOV': self.domain_OOV}
+        self.path_usr_cnts = os.path.join(self.recordpath, "usr_counts")
         self.path_pc_cnts = os.path.join(self.recordpath, "pc_counts")
         self.path_domain_cnts = os.path.join(self.recordpath, "domain_counts")
 
     def build_record_dir(self):
         try:
-            os.makedirs(self.recordpath)    
-            print("Directory " , self.recordpath ,  " Created ")
+            os.makedirs(self.recordpath)
+            print("Directory ", self.recordpath, " Created ")
         except FileExistsError:
-            print("Directory " , self.recordpath ,  " already exists")  
+            print("Directory ", self.recordpath, " already exists")
 
     def increment_freq(self, ind_dict, key):
         """
@@ -164,7 +183,8 @@ class Word_tokenizer(Char_tokenizer):
         dst_domain = data[2].split("@")[1]
         src_pc = data[3]
         dst_pc = data[4]
-        return src_user, src_domain, dst_user.replace("$", ""), dst_domain, src_pc, dst_pc
+        return src_user, src_domain, dst_user.replace(
+            "$", ""), dst_domain, src_pc, dst_pc
 
     def get_line_counts(self, line):
 
@@ -172,7 +192,8 @@ class Word_tokenizer(Char_tokenizer):
         if len(data) != 9:
             return
 
-        src_user, src_domain, dst_user, dst_domain, src_pc, dst_pc = self.split_line(line)
+        src_user, src_domain, dst_user, dst_domain, src_pc, dst_pc = self.split_line(
+            line)
 
         self.increment_freq(self.usr_counts, src_user)
         self.increment_freq(self.domain_counts, src_domain)
@@ -199,11 +220,10 @@ class Word_tokenizer(Char_tokenizer):
                 if self.max_lines is not None:
                     if line_num > self.max_lines:
                         break
-        
+
         self.write_sorted_counts(self.usr_counts, self.path_usr_cnts)
         self.write_sorted_counts(self.pc_counts, self.path_pc_cnts)
         self.write_sorted_counts(self.domain_counts, self.path_domain_cnts)
-
 
     def write_sorted_counts(self, count_dict, out_fn):
         """
@@ -247,7 +267,8 @@ class Word_tokenizer(Char_tokenizer):
         """
         data = string.split(",")
 
-        src_user, src_domain, dst_user, dst_domain, src_pc, dst_pc = self.split_line(string)
+        src_user, src_domain, dst_user, dst_domain, src_pc, dst_pc = self.split_line(
+            string)
         src_user = self.lookup(src_user, self.usr_inds, None)
         src_domain = self.lookup(src_domain, self.domain_inds, domain_counts)
 
@@ -260,7 +281,8 @@ class Word_tokenizer(Char_tokenizer):
         src_pc = self.lookup(src_pc, self.pc_inds, pc_counts)
         dst_pc = self.lookup(dst_pc, self.pc_inds, pc_counts)
 
-        if data[5].startswith("MICROSOFT_AUTH"):  # Deals with file corruption for this value.
+        # Deals with file corruption for this value.
+        if data[5].startswith("MICROSOFT_AUTH"):
             data[5] = "MICROSOFT_AUTH"
         auth_type = self.lookup(data[5], self.auth_dict, None)
         logon_type = self.lookup(data[6], self.logon_dict, None)
@@ -286,7 +308,12 @@ class Word_tokenizer(Char_tokenizer):
             sys.exit()
 
         current_day = '0'
-        day_outfile = open(os.path.join(self.outpath, current_day +'.txt'), 'w')
+        day_outfile = open(
+            os.path.join(
+                self.outpath,
+                current_day +
+                '.txt'),
+            'w')
 
         with open(self.redfile, 'r') as red:
             redevents = set(red.readlines())
@@ -305,15 +332,19 @@ class Word_tokenizer(Char_tokenizer):
                 red = 0
                 # Reconstruct 'line' in the format of lines in redevents
                 # Line format: second,src_user@src_domain,dst_user@dst_domain,src_pc,dst_pc,auth_type,logon,auth_orient,success
-                # redevent_line format: second,src_user@src_domain,src_pc,dst_pc\n
+                # redevent_line format:
+                # second,src_user@src_domain,src_pc,dst_pc\n
                 red_style_line = (
-                    ",".join((sec, raw_line[1].strip(), raw_line[3], raw_line[4])) + "\n"
+                    ",".join(
+                        (sec, raw_line[1].strip(), raw_line[3], raw_line[4])) + "\n"
                 )
                 red += int(red_style_line in redevents)
                 if user.startswith('U') and day not in self.weekend_days:
-                    index_rep = self.translate_line(line, self.domain_counts, self.pc_counts)
+                    index_rep = self.translate_line(
+                        line, self.domain_counts, self.pc_counts)
                     current_line = f"{line_num} {sec} {day} {user.replace('U', '')} {red} {index_rep}"
-                    self.save_day_outfile(day_outfile, current_day, current_line, day)
+                    self.save_day_outfile(
+                        day_outfile, current_day, current_line, day)
                 if self.max_lines is not None:
                     if line_num > self.max_lines:
                         break
@@ -321,27 +352,27 @@ class Word_tokenizer(Char_tokenizer):
         self.save_jsons()
 
     def save_jsons(self):
-        
+
         with open(os.path.join(self.recordpath, str(self.OOV_CUTOFF) + "_em_size.txt"), 'w') as emsize_file:
             emsize_file.write("%s" % self.curr_ind)
 
         for map, file in zip([self.usr_inds,
-                            self.pc_inds,
-                            self.domain_inds,
-                            self.auth_dict,
-                            self.logon_dict,
-                            self.orient_dict,
-                            self.success_dict,
-                            self.other_inds],
-                            ['usr_map.json',
-                            'pc_map.json',
-                            'domain_map.json',
-                            'auth_map.json',
-                            'logon_map.json',
-                            'orient_map.json',
-                            'success_map.json',
-                            'other_map.json']):
-            
+                              self.pc_inds,
+                              self.domain_inds,
+                              self.auth_dict,
+                              self.logon_dict,
+                              self.orient_dict,
+                              self.success_dict,
+                              self.other_inds],
+                             ['usr_map.json',
+                             'pc_map.json',
+                              'domain_map.json',
+                              'auth_map.json',
+                              'logon_map.json',
+                              'orient_map.json',
+                              'success_map.json',
+                              'other_map.json']):
+
             json.dump(map, open(os.path.join(self.recordpath, file), 'w'))
 
         b_usr_inds = {v: k for k, v in self.usr_inds.items()}
@@ -354,15 +385,21 @@ class Word_tokenizer(Char_tokenizer):
         b_other_inds = {v: k for k, v in self.other_inds.items()}
 
         back_mappings = {**b_usr_inds,
-                            **b_pc_inds,
-                            **b_domain_inds,
-                            **b_auth_inds,
-                            **b_logon_inds,
-                            **b_orient_inds,
-                            **b_success_inds,
-                            **b_other_inds}
-        
-        json.dump(back_mappings, open(os.path.join(self.recordpath, 'word_token_map.json'), 'w'))
+                         **b_pc_inds,
+                         **b_domain_inds,
+                         **b_auth_inds,
+                         **b_logon_inds,
+                         **b_orient_inds,
+                         **b_success_inds,
+                         **b_other_inds}
+
+        json.dump(
+            back_mappings,
+            open(
+                os.path.join(
+                    self.recordpath,
+                    'word_token_map.json'),
+                'w'))
 
     def prepare_routes(self, key):
 
