@@ -4,7 +4,7 @@ import os
 
 class Detokenizer:
     def __init__(self):
-        self.skip_list = ['0', '1']
+        self.skip_list = ["0", "1"]
 
 
 class Int2Char(Detokenizer):
@@ -17,8 +17,7 @@ class Int2Char(Detokenizer):
         output: tokenized log line (e.g., 0 55 19 18 19 34 38 49 47 19 ...... 74 47 67 82 14 53 87 69 69 71 85 85 1 0 0 0 0)
         """
         pad_len = total_len - len(line_minus_time)
-        return "0 " + " ".join([str(ord(c) - 30) for c in line_minus_time]
-                               ) + " 1 " + " ".join(["0"] * pad_len) + "\n"
+        return "0 " + " ".join([str(ord(c) - 30) for c in line_minus_time]) + " 1 " + " ".join(["0"] * pad_len) + "\n"
 
     def run_detokenizer(self, tokens):
         """
@@ -30,7 +29,7 @@ class Int2Char(Detokenizer):
             list_int_tokens = [int(t) for t in tokens if int(t) > 1]
         elif isinstance(tokens, str):
             # skip 0 and 1 since they are <SOS> and <EOS>
-            list_int_tokens = [int(t) for t in tokens.split(' ') if int(t) > 1]
+            list_int_tokens = [int(t) for t in tokens.split(" ") if int(t) > 1]
         restored_lst = [chr(t + 30) for t in list_int_tokens]
         restored_txt = "".join(restored_lst)
         return restored_txt
@@ -40,23 +39,23 @@ class Int2Word(Detokenizer):
     def __init__(self, json_folder):
         super().__init__()
 
-        with open(os.path.join(json_folder, 'word_token_map.json')) as json_file:
+        with open(os.path.join(json_folder, "word_token_map.json")) as json_file:
             self.search_dict = json.load(json_file)
-        with open(os.path.join(json_folder, 'usr_map.json')) as json_file:
+        with open(os.path.join(json_folder, "usr_map.json")) as json_file:
             self.usr_inds = json.load(json_file)
-        with open(os.path.join(json_folder, 'pc_map.json')) as json_file:
+        with open(os.path.join(json_folder, "pc_map.json")) as json_file:
             self.pc_inds = json.load(json_file)
-        with open(os.path.join(json_folder, 'domain_map.json')) as json_file:
+        with open(os.path.join(json_folder, "domain_map.json")) as json_file:
             self.domain_inds = json.load(json_file)
-        with open(os.path.join(json_folder, 'auth_map.json')) as json_file:
+        with open(os.path.join(json_folder, "auth_map.json")) as json_file:
             self.auth_dict = json.load(json_file)
-        with open(os.path.join(json_folder, 'logon_map.json')) as json_file:
+        with open(os.path.join(json_folder, "logon_map.json")) as json_file:
             self.logon_dict = json.load(json_file)
-        with open(os.path.join(json_folder, 'orient_map.json')) as json_file:
+        with open(os.path.join(json_folder, "orient_map.json")) as json_file:
             self.orient_dict = json.load(json_file)
-        with open(os.path.join(json_folder, 'success_map.json')) as json_file:
+        with open(os.path.join(json_folder, "success_map.json")) as json_file:
             self.success_dict = json.load(json_file)
-        with open(os.path.join(json_folder, 'other_map.json')) as json_file:
+        with open(os.path.join(json_folder, "other_map.json")) as json_file:
             self.other_inds = json.load(json_file)
         self.sos = 0
         self.eos = 1
@@ -73,7 +72,7 @@ class Int2Word(Detokenizer):
         if isinstance(tokens, list):
             list_int_tokens = [int(t) for t in tokens if int(t) > 1]
         elif isinstance(tokens, str):
-            list_int_tokens = [int(t) for t in tokens.split(' ') if int(t) > 1]
+            list_int_tokens = [int(t) for t in tokens.split(" ") if int(t) > 1]
         restored_lst = [self.search_dict[str(t)] for t in list_int_tokens]
         restored_txt = ",".join(restored_lst)
         return restored_txt
@@ -82,15 +81,21 @@ class Int2Word(Detokenizer):
         """
         string: text log line (e.g., 1,U101@DOM1,C1862$@DOM1,C1862,C1862,?,?,AuthMap,Success)
         """
-        data = string.strip().split(',')
+        data = string.strip().split(",")
         src_user = data[1].split("@")[0]
         src_domain = data[1].split("@")[1]
         dst_user = data[2].split("@")[0]
         dst_domain = data[2].split("@")[1]
         src_pc = data[3]
         dst_pc = data[4]
-        return src_user, src_domain, dst_user.replace(
-            "$", ""), dst_domain, src_pc, dst_pc
+        return (
+            src_user,
+            src_domain,
+            dst_user.replace("$", ""),
+            dst_domain,
+            src_pc,
+            dst_pc,
+        )
 
     def run_tokenizer(self, string):
         """
@@ -100,12 +105,11 @@ class Int2Word(Detokenizer):
 
         data = string.split(",")
 
-        src_user, src_domain, dst_user, dst_domain, src_pc, dst_pc = self.split_line(
-            string)
+        src_user, src_domain, dst_user, dst_domain, src_pc, dst_pc = self.split_line(string)
         src_user = self.usr_inds[src_user]
         src_domain = self.domain_inds[src_domain]
 
-        if dst_user.startswith('U'):
+        if dst_user.startswith("U"):
             dst_user = self.usr_inds[dst_user]
         else:
             dst_user = self.pc_inds[dst_user]

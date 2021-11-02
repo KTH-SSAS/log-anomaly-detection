@@ -15,8 +15,14 @@ class TieredTrainer(Trainer):
             raise RuntimeError("Model not intialized!")
         return self.lstm
 
-    def __init__(self, config: TrainerConfig, lstm_config: TieredLSTMConfig,
-                 bidirectional, checkpoint_dir, data_handler):
+    def __init__(
+        self,
+        config: TrainerConfig,
+        lstm_config: TieredLSTMConfig,
+        bidirectional,
+        checkpoint_dir,
+        data_handler,
+    ):
 
         self.lstm = Tiered_LSTM(lstm_config, bidirectional)
         self.data_handler = data_handler
@@ -29,7 +35,7 @@ class TieredTrainer(Trainer):
         if self.cuda:
             line_losses_list = line_losses_list.cuda()
         if lengths is not None:
-            targets = Y[:, :, :torch.max(lengths)]
+            targets = Y[:, :, : torch.max(lengths)]
         else:
             targets = Y
         # output (num_steps x batch x length x embedding dimension)  Y
@@ -38,13 +44,11 @@ class TieredTrainer(Trainer):
             # On notebook, I checked it with forward LSTM and word
             # tokenization. Further checks have to be done...
             if lengths is not None:
-                token_losses = self.criterion(
-                    step_output.transpose(1, 2), step_y[:, :torch.max(lengths)])
-                masked_losses = token_losses * mask[i][:, :torch.max(lengths)]
+                token_losses = self.criterion(step_output.transpose(1, 2), step_y[:, : torch.max(lengths)])
+                masked_losses = token_losses * mask[i][:, : torch.max(lengths)]
                 line_losses = torch.sum(masked_losses, dim=1)
             else:
-                token_losses = self.criterion(
-                    step_output.transpose(1, 2), step_y)
+                token_losses = self.criterion(step_output.transpose(1, 2), step_y)
                 line_losses = torch.mean(token_losses, dim=1)
             line_losses_list[i] = line_losses
             step_loss = torch.mean(line_losses, dim=0)
@@ -78,8 +82,7 @@ class TieredTrainer(Trainer):
         self.optimizer.zero_grad()
 
         # Split the batch into input, ground truth, etc.
-        X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(
-            batch)
+        X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(batch)
 
         if self.scaler is not None:
             with torch.cuda.amp.autocast():
@@ -87,16 +90,13 @@ class TieredTrainer(Trainer):
                 output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(
                     X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L
                 )
-                self.data_handler.update_state(
-                    ctxt_vector, ctxt_hidden, ctxt_cell)
+                self.data_handler.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
 
                 # Compute the loss for the output
                 loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
         else:
             # Apply the model to input to produce the output
-            output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(
-                X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L
-            )
+            output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L)
             self.data_handler.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
 
             # Compute the loss for the output
@@ -115,18 +115,14 @@ class TieredTrainer(Trainer):
         self.model.eval()
 
         # Split the batch into input, ground truth, etc.
-        X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(
-            batch)
+        X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(batch)
 
         # Apply the model to input to produce the output
-        output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(
-            X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L
-        )
+        output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L)
         self.data_handler.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
 
         # Compute the loss for the output
-        loss, line_losses, targets = self.compute_loss(
-            output, Y, lengths=L, mask=M)
+        loss, line_losses, targets = self.compute_loss(output, Y, lengths=L, mask=M)
 
         # Save the results if desired
         if store_eval_data:

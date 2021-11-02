@@ -15,8 +15,7 @@ def truncated_normal_(tensor, mean=0, std=1):
 
 
 def xavier_normal_(activation_function="relu"):
-    return lambda x: torch.nn.init.xavier_normal_(
-        x, gain=torch.nn.init.calculate_gain(activation_function))
+    return lambda x: torch.nn.init.xavier_normal_(x, gain=torch.nn.init.calculate_gain(activation_function))
 
 
 def kaiming_normal_():

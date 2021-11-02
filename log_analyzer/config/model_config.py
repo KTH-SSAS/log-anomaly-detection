@@ -12,6 +12,7 @@ class ModelConfig(Config):
 @dataclass
 class LSTMConfig(ModelConfig):
     """Configuration class for LSTM models."""
+
     layers: List[int]
     attention_type: str
     attention_dim: int
@@ -27,6 +28,7 @@ class LSTMConfig(ModelConfig):
 @dataclass
 class TieredLSTMConfig(LSTMConfig):
     """Configuration class for LSTM models."""
+
     context_layers: list
 
     @property
@@ -38,6 +40,7 @@ class TieredLSTMConfig(LSTMConfig):
 @dataclass
 class TransformerConfig(ModelConfig):
     """Configuration class for Transformer models."""
+
     layers: int
     feedforward_dim: int
     model_dim: int

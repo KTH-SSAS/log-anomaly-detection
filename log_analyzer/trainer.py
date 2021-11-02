@@ -16,7 +16,6 @@ from log_analyzer.model.transformer import Transformer
 
 
 class Trainer(ABC):
-
     @property
     @abstractmethod
     def model(self) -> LogModel:
@@ -35,13 +34,14 @@ class Trainer(ABC):
             self.model.cuda()
 
         # Create settings for training.
-        self.criterion = nn.CrossEntropyLoss(reduction='none', ignore_index=0)
-        self.early_stopping = early_stopping.EarlyStopping(
-            patience=config.early_stop_patience, path=checkpoint_dir)
-        self.optimizer = torch.optim.Adam(
-            self.model.parameters(), lr=config.learning_rate)
+        self.criterion = nn.CrossEntropyLoss(reduction="none", ignore_index=0)
+        self.early_stopping = early_stopping.EarlyStopping(patience=config.early_stop_patience, path=checkpoint_dir)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=config.learning_rate)
         self.scheduler = torch.optim.lr_scheduler.StepLR(
-            self.optimizer, step_size=config.scheduler_step_size, gamma=config.scheduler_gamma)
+            self.optimizer,
+            step_size=config.scheduler_step_size,
+            gamma=config.scheduler_gamma,
+        )
         self.use_scheduler = bool(config.scheduler_step_size)
         if config.mixed_precision:
             self.scaler = torch.cuda.amp.GradScaler()
@@ -49,20 +49,15 @@ class Trainer(ABC):
         # Create evaluator
         self.evaluator = Evaluator()
 
-    def compute_loss(self, output: torch.Tensor, Y,
-                     lengths, mask: torch.Tensor):
+    def compute_loss(self, output: torch.Tensor, Y, lengths, mask: torch.Tensor):
         """Computes the loss for the given model output and ground truth."""
         targets = Y
         if lengths is not None:
             if self.model.bidirectional:
-                token_losses = self.criterion(
-                    output.transpose(1, 2), targets
-                )
+                token_losses = self.criterion(output.transpose(1, 2), targets)
                 masked_losses = token_losses * mask
             else:
-                token_losses = self.criterion(
-                    output.transpose(1, 2), targets
-                )
+                token_losses = self.criterion(output.transpose(1, 2), targets)
                 masked_losses = token_losses * mask
             line_losses = torch.sum(masked_losses, dim=1)
         else:
@@ -89,12 +84,12 @@ class Trainer(ABC):
 
     def split_batch(self, batch: dict):
         """Splits a batch into variables containing relevant data."""
-        X = batch['input']
-        Y = batch['target']
+        X = batch["input"]
+        Y = batch["target"]
 
         # Optional fields
-        L = batch.get('length')
-        M = batch.get('mask')
+        L = batch.get("length")
+        M = batch.get("mask")
 
         if self.cuda:
             X = X.cuda()
@@ -151,14 +146,18 @@ class Trainer(ABC):
         output, *_ = self.model(X, lengths=L, mask=M)
 
         # Compute the loss for the output
-        loss, line_losses, targets = self.compute_loss(
-            output, Y, lengths=L, mask=M)
+        loss, line_losses, targets = self.compute_loss(output, Y, lengths=L, mask=M)
 
         # Save the results if desired
         if store_eval_data:
             preds = torch.argmax(output, dim=-1)
             self.evaluator.add_evaluation_data(
-                targets, preds, batch["user"], line_losses, batch["second"], batch["red"],
+                targets,
+                preds,
+                batch["user"],
+                line_losses,
+                batch["second"],
+                batch["red"],
             )
             self.evaluator.test_loss += loss
             self.evaluator.test_count += 1
@@ -169,14 +168,20 @@ class Trainer(ABC):
 
 class LSTMTrainer(Trainer):
     """Trainer class for forward and bidirectional LSTM model."""
+
     @property
     def model(self):
         if self.lstm is None:
             raise RuntimeError("Model not intialized!")
         return self.lstm
 
-    def __init__(self, config: TrainerConfig,
-                 lstm_config: LSTMConfig, bidirectional, checkpoint_dir):
+    def __init__(
+        self,
+        config: TrainerConfig,
+        lstm_config: LSTMConfig,
+        bidirectional,
+        checkpoint_dir,
+    ):
 
         model = Bid_LSTM if bidirectional else Fwd_LSTM
         # Create a model
@@ -187,14 +192,19 @@ class LSTMTrainer(Trainer):
 
 class TransformerTrainer(Trainer):
     """Trainer class for Transformer model."""
+
     @property
     def model(self):
         if self.transformer is None:
             raise RuntimeError("Model not initialized!")
         return self.transformer
 
-    def __init__(self, config: TrainerConfig,
-                 transformer_config: TransformerConfig, checkpoint_dir):
+    def __init__(
+        self,
+        config: TrainerConfig,
+        transformer_config: TransformerConfig,
+        checkpoint_dir,
+    ):
         # Create a model
         self.transformer = Transformer(transformer_config)
 

@@ -5,56 +5,39 @@ from log_analyzer.tokenizer.tokenizer import Char_tokenizer, Word_tokenizer
 
 def arg_parser():
     parser = ArgumentParser()
-    parser.add_argument('--type',
-                        choices=[
-                            'char_level',
-                            'word_level_count',
-                            'word_level_translate',
-                            'word_level_both'],
-                        required=True)
-    parser.add_argument('-authfile',
-                        type=str,
-                        help='Path to an auth file.')
-    parser.add_argument('-redfile',
-                        type=str,
-                        help='Path to a redteam file.')
-    parser.add_argument('-outpath',
-                        type=str,
-                        help='Where to write output files.')
-    parser.add_argument('-recordpath',
-                        type=str,
-                        help='Where to write record files.')
-    parser.add_argument('-max_lines',
-                        type=int,
-                        default=None,
-                        help='Maximum number of parsed lines.')
+    parser.add_argument(
+        "--type", choices=["char_level", "word_level_count", "word_level_translate", "word_level_both"], required=True
+    )
+    parser.add_argument("-authfile", type=str, help="Path to an auth file.")
+    parser.add_argument("-redfile", type=str, help="Path to a redteam file.")
+    parser.add_argument("-outpath", type=str, help="Where to write output files.")
+    parser.add_argument("-recordpath", type=str, help="Where to write record files.")
+    parser.add_argument("-max_lines", type=int, default=None, help="Maximum number of parsed lines.")
     args = parser.parse_args()
     return args
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     args = arg_parser()
-    weekend_days = [3, 4, 10, 11, 17, 18, 24,
-                    25, 31, 32, 38, 39, 45, 46, 47, 52, 53]
-    if args.type == 'char_level':
+    weekend_days = [3, 4, 10, 11, 17, 18, 24, 25, 31, 32, 38, 39, 45, 46, 47, 52, 53]
+    if args.type == "char_level":
         tokenizer = Char_tokenizer(args, weekend_days)
         tokenizer.prepare_routes()
     else:
         tokenizer = Word_tokenizer(args, weekend_days)
         tokenizer.prepare_routes(args.type)
-        if args.type == 'word_level':
+        if args.type == "word_level":
             pass
-        elif args.type == 'word_level_count':
+        elif args.type == "word_level_count":
             tokenizer.count_words()
-        elif args.type in ['char_level', 'word_level_translate']:
+        elif args.type in ["char_level", "word_level_translate"]:
             tokenizer.tokenize()
-        elif args.type == 'word_level_both':
+        elif args.type == "word_level_both":
             tokenizer.count_words()
             tokenizer.tokenize()
         else:
             pass
-
 """
 In order to run it for the initial *n* lines of the file, you need to specify the number of lines you want to process after -max_lines.
 If you want to run the below code for an entire file, you need to remove the line starts with -max_lines.

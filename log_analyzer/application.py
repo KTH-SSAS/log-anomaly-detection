@@ -1,6 +1,6 @@
 """Application level singleton (fancy term for global) variables."""
 
-TRAINER_LOGGER = 'trainer-logger'
+TRAINER_LOGGER = "trainer-logger"
 
 
 class Application:

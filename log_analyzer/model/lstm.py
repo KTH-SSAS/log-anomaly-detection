@@ -21,7 +21,6 @@ class LogModel(nn.Module):
 
 
 class LSTMLanguageModel(LogModel):
-
     def __init__(self, config: LSTMConfig):
         super().__init__(config)
 
@@ -31,8 +30,13 @@ class LSTMLanguageModel(LogModel):
 
         # Layers
         self.embeddings = nn.Embedding(config.vocab_size, config.embedding_dim)
-        self.stacked_lstm = nn.LSTM(config.input_dim, config.layers[0], len(
-            config.layers), batch_first=True, bidirectional=self.bidirectional)
+        self.stacked_lstm = nn.LSTM(
+            config.input_dim,
+            config.layers[0],
+            len(config.layers),
+            batch_first=True,
+            bidirectional=self.bidirectional,
+        )
 
         fc_input_dim = config.layers[-1]
         if self.bidirectional:  # If LSMTM is bidirectional, its output hidden states will be twice as large
@@ -45,7 +49,11 @@ class LSTMLanguageModel(LogModel):
             else:
                 seq_len = None
             self.attention = SelfAttention(
-                fc_input_dim, config.attention_dim, attention_type=config.attention_type, seq_len=seq_len)
+                fc_input_dim,
+                config.attention_dim,
+                attention_type=config.attention_type,
+                seq_len=seq_len,
+            )
             fc_input_dim *= 2
             self.has_attention = True
         else:
@@ -58,11 +66,9 @@ class LSTMLanguageModel(LogModel):
 
     @property
     def bidirectional(self):
-        raise NotImplementedError(
-            "Bidirectional property has to be set in child class.")
+        raise NotImplementedError("Bidirectional property has to be set in child class.")
 
-    def forward(self, sequences, lengths: Tensor = None,
-                context_vectors=None, mask=None):
+    def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None):
         # batch size, sequence length, embedded dimension
         x_lookups = self.embeddings(sequences)
         if self.tiered:
@@ -73,8 +79,7 @@ class LSTMLanguageModel(LogModel):
             x_lookups = x_lookups.transpose(0, 1)
             for x_lookup in x_lookups:  # x_lookup (batch x embedding).
                 # x_lookup (1 x batch x embedding)
-                x_lookup = torch.unsqueeze(
-                    torch.cat((x_lookup, context_vectors), dim=1), dim=0)
+                x_lookup = torch.unsqueeze(torch.cat((x_lookup, context_vectors), dim=1), dim=0)
                 # cat_x_lookups (n x batch x embedding) n = number of iteration
                 # where 1 =< n =< seq_len
                 cat_x_lookups = torch.cat((cat_x_lookups, x_lookup), dim=0)
@@ -86,8 +91,7 @@ class LSTMLanguageModel(LogModel):
         if lengths is not None:
             if len(lengths.shape) > 1:
                 lengths = lengths.squeeze()
-            lstm_in = pack_padded_sequence(
-                lstm_in, lengths.cpu(), enforce_sorted=False, batch_first=True)
+            lstm_in = pack_padded_sequence(lstm_in, lengths.cpu(), enforce_sorted=False, batch_first=True)
 
         lstm_out, (hx, cx) = self.stacked_lstm(lstm_in)
 
@@ -102,8 +106,7 @@ class Fwd_LSTM(LSTMLanguageModel):
         self.name = "LSTM"
         super().__init__(config)
 
-    def forward(self, sequences, lengths=None,
-                context_vectors=None, mask=None):
+    def forward(self, sequences, lengths=None, context_vectors=None, mask=None):
         lstm_out, hx = super().forward(sequences, lengths, context_vectors)
 
         if self.has_attention:
@@ -126,17 +129,14 @@ class Bid_LSTM(LSTMLanguageModel):
         self.name = "LSTM-Bid"
         super().__init__(config)
 
-    def forward(self, sequences: torch.Tensor, lengths=None,
-                context_vectors=None, mask=None):
+    def forward(self, sequences: torch.Tensor, lengths=None, context_vectors=None, mask=None):
         lstm_out, hx = super().forward(sequences, lengths, context_vectors)
         # Reshape lstm_out to make forward/backward into seperate dims
 
         if lengths is not None:
-            split = lstm_out.view(
-                sequences.shape[0], max(lengths), 2, lstm_out.shape[-1] // 2)
+            split = lstm_out.view(sequences.shape[0], max(lengths), 2, lstm_out.shape[-1] // 2)
         else:
-            split = lstm_out.view(
-                sequences.shape[0], sequences.shape[-1], 2, lstm_out.shape[-1] // 2)
+            split = lstm_out.view(sequences.shape[0], sequences.shape[-1], 2, lstm_out.shape[-1] // 2)
 
         # Seperate forward and backward hidden states
         forward_hidden_states = split[:, :, 0]
@@ -147,8 +147,7 @@ class Bid_LSTM(LSTMLanguageModel):
         backward_hidden_states = backward_hidden_states[:, 2:]
 
         # Concat them back together
-        b_f_concat = torch.cat(
-            [forward_hidden_states, backward_hidden_states], -1)
+        b_f_concat = torch.cat([forward_hidden_states, backward_hidden_states], -1)
 
         if self.has_attention:
             attention, _ = self.attention(b_f_concat, mask)
@@ -171,24 +170,20 @@ class Context_LSTM(nn.Module):
         self.input_dim = input_dim
 
         # Layers
-        self.context_lstm_layers = nn.LSTM(input_dim, self.ctxt_lv_layers[0], len(
-            ctxt_lv_layers), batch_first=True)
+        self.context_lstm_layers = nn.LSTM(input_dim, self.ctxt_lv_layers[0], len(ctxt_lv_layers), batch_first=True)
 
         # Weight initialization
         initialize_weights(self)
 
-    def forward(self, lower_lv_outputs, final_hidden,
-                context_h, context_c, seq_len=None):
+    def forward(self, lower_lv_outputs, final_hidden, context_h, context_c, seq_len=None):
 
         if seq_len is not None:
-            mean_hidden = torch.sum(
-                lower_lv_outputs, dim=1) / seq_len.view(-1, 1)
+            mean_hidden = torch.sum(lower_lv_outputs, dim=1) / seq_len.view(-1, 1)
         else:
             mean_hidden = torch.mean(lower_lv_outputs, dim=1)
         cat_input = torch.cat((mean_hidden, final_hidden[-1]), dim=1)
         synthetic_input = torch.unsqueeze(cat_input, dim=1)
-        output, (context_hx, context_cx) = self.context_lstm_layers(
-            synthetic_input, (context_h, context_c))
+        output, (context_hx, context_cx) = self.context_lstm_layers(synthetic_input, (context_h, context_c))
 
         return output, context_hx, context_cx
 
@@ -217,36 +212,34 @@ class Tiered_LSTM(LogModel):
             input_features = low_lv_layers[-1] * 4
         else:
             input_features = low_lv_layers[-1] * 2
-        self.ctxt_lv_lstm = Context_LSTM(
-            config.context_layers, input_features)
+        self.ctxt_lv_lstm = Context_LSTM(config.context_layers, input_features)
 
         # Weight initialization
         initialize_weights(self)
 
-    def forward(self, user_sequences, context_vectors,
-                context_h, context_c, lengths=None):
+    def forward(self, user_sequences, context_vectors, context_h, context_c, lengths=None):
         self.ctxt_vector = context_vectors
         self.ctxt_h = context_h
         self.ctxt_c = context_c
         if lengths is None:
             if self.low_lv_lstm.bidirectional:
                 tag_output = torch.empty(
-                    (user_sequences.shape[0],
-                     user_sequences.shape[1],
-                     user_sequences.shape[2] - 2),
-                    dtype=torch.float)
+                    (
+                        user_sequences.shape[0],
+                        user_sequences.shape[1],
+                        user_sequences.shape[2] - 2,
+                    ),
+                    dtype=torch.float,
+                )
             else:
-                tag_output = torch.empty_like(
-                    user_sequences, dtype=torch.float)
+                tag_output = torch.empty_like(user_sequences, dtype=torch.float)
         else:
             tag_output = torch.zeros(
-                (user_sequences.shape[0],
-                 user_sequences.shape[1],
-                 torch.max(lengths)),
-                dtype=torch.float)
+                (user_sequences.shape[0], user_sequences.shape[1], torch.max(lengths)),
+                dtype=torch.float,
+            )
 
-        tag_output = tag_output.unsqueeze(
-            3).repeat(1, 1, 1, self.config.vocab_size)
+        tag_output = tag_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
 
         if Application.instance().using_cuda:
             tag_output = tag_output.cuda()
@@ -255,28 +248,32 @@ class Tiered_LSTM(LogModel):
         for idx, sequences in enumerate(user_sequences):
             length = None if lengths is None else lengths[idx]
             tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
-                sequences, lengths=length, context_vectors=self.ctxt_vector)
+                sequences, lengths=length, context_vectors=self.ctxt_vector
+            )
             if self.low_lv_lstm.bidirectional:
-                final_hidden = final_hidden.view(
-                    1, final_hidden.shape[1], -1)
+                final_hidden = final_hidden.view(1, final_hidden.shape[1], -1)
             self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
-                low_lv_lstm_outputs, final_hidden, self.ctxt_h, self.ctxt_c, seq_len=length)
-            tag_output[idx][:tag_size.shape[0],
-                            :tag_size.shape[1], :tag_size.shape[2]] = tag_size
+                low_lv_lstm_outputs,
+                final_hidden,
+                self.ctxt_h,
+                self.ctxt_c,
+                seq_len=length,
+            )
+            tag_output[idx][: tag_size.shape[0], : tag_size.shape[1], : tag_size.shape[2]] = tag_size
             self.ctxt_vector = torch.squeeze(self.ctxt_vector, dim=1)
         return tag_output, self.ctxt_vector, self.ctxt_h, self.ctxt_c
 
 
 # if __name__ == "__main__":
-    # I tried to make this code self-explanatory, but if there is any difficulty to understand ti or possible improvements, please tell me.
-    # test_layers = [10, 10]  # each layer has to have the same hidden units.
-    #test_vocab_size = 96
-    #test_embedding_dim = 30
+# I tried to make this code self-explanatory, but if there is any difficulty to understand ti or possible improvements, please tell me.
+# test_layers = [10, 10]  # each layer has to have the same hidden units.
+# test_vocab_size = 96
+# test_embedding_dim = 30
 
-    # fwd_lstm_model = Fwd_LSTM(test_layers, test_vocab_size, test_embedding_dim,
-    #                          tiered=False, context_vector_size=0)
-    # print(fwd_lstm_model)
+# fwd_lstm_model = Fwd_LSTM(test_layers, test_vocab_size, test_embedding_dim,
+#                          tiered=False, context_vector_size=0)
+# print(fwd_lstm_model)
 
-    # bid_lstm_model = Bid_LSTM(test_layers, test_vocab_size, test_embedding_dim,
-    #                          tiered=False, context_vector_size=0)
-    # print(bid_lstm_model)
+# bid_lstm_model = Bid_LSTM(test_layers, test_vocab_size, test_embedding_dim,
+#                          tiered=False, context_vector_size=0)
+# print(bid_lstm_model)

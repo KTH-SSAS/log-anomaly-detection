@@ -10,8 +10,14 @@ from log_analyzer.model.lstm import LSTMLanguageModel
 from log_analyzer.tokenizer.tokenizer import Char_tokenizer
 
 
-def create_attention_matrix(model: LSTMLanguageModel, sequences,
-                            output_dir, lengths=None, mask=None, token_map_file=None):
+def create_attention_matrix(
+    model: LSTMLanguageModel,
+    sequences,
+    output_dir,
+    lengths=None,
+    mask=None,
+    token_map_file=None,
+):
     """Plot attention matrix over batched input.
 
     Will produce one matrix plot for each entry in batch, in the
@@ -20,41 +26,38 @@ def create_attention_matrix(model: LSTMLanguageModel, sequences,
     weights in the batch.
     """
     if model.attention is None:
-        raise RuntimeError(
-            "Can not create an attention matrix for a model without attention!")
+        raise RuntimeError("Can not create an attention matrix for a model without attention!")
 
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
 
     skip_sos = not model.bidirectional
-    tokenization = 'word' if lengths is None else 'char'
+    tokenization = "word" if lengths is None else "char"
 
     _, lstm_out, _ = model.forward(sequences, lengths=lengths, mask=mask)
     _, attention_matrix_batch = model.attention(lstm_out, mask)
 
     def set_ticks():
         word_tick_labels = [
-            '<sos>',
-            'src user',
-            'src domain',
-            'dest user',
-            'dest domain',
-            'src PC',
-            'dest PC',
-            'auth type',
-            'login type',
-            'auth orient',
-            'success/fail',
-            '<eos>']
-        input_labels = word_tick_labels[1:-
-                                        1] if skip_sos else word_tick_labels[:-1]
-        attention_labels = word_tick_labels[1:-
-                                            1] if skip_sos else word_tick_labels[:-1]
-        label_labels = word_tick_labels[2:
-                                        ] if skip_sos else word_tick_labels[1:]
+            "<sos>",
+            "src user",
+            "src domain",
+            "dest user",
+            "dest domain",
+            "src PC",
+            "dest PC",
+            "auth type",
+            "login type",
+            "auth orient",
+            "success/fail",
+            "<eos>",
+        ]
+        input_labels = word_tick_labels[1:-1] if skip_sos else word_tick_labels[:-1]
+        attention_labels = word_tick_labels[1:-1] if skip_sos else word_tick_labels[:-1]
+        label_labels = word_tick_labels[2:] if skip_sos else word_tick_labels[1:]
         ax.set_xlabel("Positions attended over")
         ax.set_xticks(range(matrix.shape[0]))
-        ax.set_xticklabels(attention_labels, rotation='45')
+        ax.set_xticklabels(attention_labels, rotation="45")
         ax.set_yticks(range(matrix.shape[1]))
         ax.set_yticklabels(input_labels)
         ax.set_ylabel("Input token")
@@ -72,35 +75,29 @@ def create_attention_matrix(model: LSTMLanguageModel, sequences,
         set_ticks()
 
     plt.tight_layout()
-    plt.savefig(
-        os.path.join(
-            output_dir,
-            f"{model.attention.attention_type}_batchAverage.png"))
+    plt.savefig(os.path.join(output_dir, f"{model.attention.attention_type}_batchAverage.png"))
 
     _, ax = plt.subplots(figsize=(10, 10))
     for i, matrix in enumerate(attention_matrix_batch):
         seq = sequences[i]
 
         if lengths is not None:
-            matrix = matrix[:lengths[i] - 1, :lengths[i] - 1]
+            matrix = matrix[: lengths[i] - 1, : lengths[i] - 1]
 
         ax.matshow(matrix.detach().numpy())
         if lengths is not None:
-            string = Char_tokenizer.detokenize_line(seq[:lengths[i] - 1])
+            string = Char_tokenizer.detokenize_line(seq[: lengths[i] - 1])
             ax.set_xticks(range(len(string)))
-            ax.set_xticklabels(string, fontsize='small')
+            ax.set_xticklabels(string, fontsize="small")
             ax.set_yticks(range(len(string)))
-            ax.set_yticklabels(string, fontsize='small')
+            ax.set_yticklabels(string, fontsize="small")
         else:
             twin = ax.twinx()
             twin.matshow(matrix.detach().numpy())
             set_ticks()
             plt.tight_layout()
 
-        plt.savefig(
-            os.path.join(
-                output_dir,
-                f"{model.attention.attention_type}_{tokenization}_#{i}.png"))
+        plt.savefig(os.path.join(output_dir, f"{model.attention.attention_type}_{tokenization}_#{i}.png"))
         plt.cla()
 
 
@@ -112,9 +109,7 @@ class Evaluator:
         self.data_is_normalized = False
         self.reset_evaluation_data()
 
-    def add_evaluation_data(
-        self, log_line, predictions, users, losses, seconds, red_flags
-    ):
+    def add_evaluation_data(self, log_line, predictions, users, losses, seconds, red_flags):
         """Extend the data stored in self.data with the inputs."""
         log_line = log_line.cpu().detach().flatten()
         predictions = predictions.cpu().detach().flatten()
@@ -123,32 +118,23 @@ class Evaluator:
         red_flags = red_flags.cpu().detach()
         # Check that there's enough space left for all the entries
         if len(self.data["losses"]) < self.index["losses"] + len(log_line):
-            self.data["users"] = np.concatenate(
-                (self.data["users"], np.zeros(1050000, float))
-            )
-            self.data["losses"] = np.concatenate(
-                (self.data["losses"], np.zeros(1050000, float))
-            )
-            self.data["seconds"] = np.concatenate(
-                (self.data["seconds"], np.zeros(1050000, int))
-            )
-            self.data["red_flags"] = np.concatenate(
-                (self.data["red_flags"], np.zeros(1050000, bool))
-            )
+            self.data["users"] = np.concatenate((self.data["users"], np.zeros(1050000, float)))
+            self.data["losses"] = np.concatenate((self.data["losses"], np.zeros(1050000, float)))
+            self.data["seconds"] = np.concatenate((self.data["seconds"], np.zeros(1050000, int)))
+            self.data["red_flags"] = np.concatenate((self.data["red_flags"], np.zeros(1050000, bool)))
 
         for key, new_data in zip(
             ["users", "losses", "seconds", "red_flags"],
             [users, losses, seconds, red_flags],
         ):
-            self.data[key][self.index[key]: self.index[key] + len(new_data)] = new_data
+            self.data[key][self.index[key] : self.index[key] + len(new_data)] = new_data
             self.index[key] += len(new_data)
 
         # Compute the token accuracy for this batch
         batch_token_accuracy = metrics.accuracy_score(log_line, predictions)
         new_token_count = self.token_count + len(log_line)
         new_token_accuracy = (
-            self.token_accuracy * self.token_count
-            + batch_token_accuracy * len(log_line)
+            self.token_accuracy * self.token_count + batch_token_accuracy * len(log_line)
         ) / new_token_count
         self.token_count = new_token_count
         self.token_accuracy = new_token_accuracy
@@ -252,9 +238,7 @@ class Evaluator:
             self.prepare_evaluation_data()
         # Compute fp and tp rates if not supplied
         if fp_rate is None or tp_rate is None:
-            fp_rate, tp_rate, _ = metrics.roc_curve(
-                self.data["red_flags"], self.data["losses"], pos_label=1
-            )
+            fp_rate, tp_rate, _ = metrics.roc_curve(self.data["red_flags"], self.data["losses"], pos_label=1)
         auc_score = metrics.auc(fp_rate, tp_rate)
         return auc_score
 
@@ -265,7 +249,7 @@ class Evaluator:
         colors=["darkorange", "gold"],
         ylim=(-1, -1),
         outliers=60,
-        legend=True
+        legend=True,
     ):
         """Computes and plots the given (default 75/95/99) percentiles of
         anomaly score (loss) by line for each segment.
@@ -289,13 +273,11 @@ class Evaluator:
         seconds = np.unique(self.data["seconds"])
         segments = [seconds[i] for i in range(0, len(seconds), smoothing)]
         for idx in tqdm(range(len(segments))):
-            segment_start = np.searchsorted(
-                self.data["seconds"], segments[idx])
+            segment_start = np.searchsorted(self.data["seconds"], segments[idx])
             if idx == len(segments) - 1:
                 segment_end = len(self.data["losses"])
             else:
-                segment_end = np.searchsorted(
-                    self.data["seconds"], segments[idx + 1])
+                segment_end = np.searchsorted(self.data["seconds"], segments[idx + 1])
             segment_losses = self.data["losses"][segment_start:segment_end]
             for perc_idx, p in enumerate(percentiles):
                 percentile_data = np.percentile(segment_losses, p)
@@ -313,8 +295,7 @@ class Evaluator:
             blue_seconds = self.data["seconds"][self.data["red_flags"] == 0]
             # Negate the list so we can pick the highest values (i.e. the
             # lowest -ve values)
-            outlier_indices = np.argpartition(-blue_losses,
-                                              outlier_count)[:outlier_count]
+            outlier_indices = np.argpartition(-blue_losses, outlier_count)[:outlier_count]
             blue_losses = blue_losses[outlier_indices]
             blue_seconds = blue_seconds[outlier_indices]
             blue_seconds = blue_seconds / (3600 * 24)  # convert to days
@@ -329,12 +310,11 @@ class Evaluator:
                 plotting_data[idx],
                 plotting_data[idx + 1],
                 color=colors[idx],
-                label=f"{percentiles[idx]}-{percentiles[idx + 1]} Percentile"
+                label=f"{percentiles[idx]}-{percentiles[idx + 1]} Percentile",
             )
         # plot the non-redteam outliers
         if outliers > 0:
-            plt.plot(blue_seconds, blue_losses, "bo",
-                     label="Outlier normal events")
+            plt.plot(blue_seconds, blue_losses, "bo", label="Outlier normal events")
         # plot the redteam events
         plt.plot(red_seconds, red_losses, "r+", label="Red team events")
         if ylim[0] >= 0 and ylim[1] > 0:
@@ -345,8 +325,14 @@ class Evaluator:
             plt.legend()
         plt.title("Aggregate line losses by time")
 
-    def plot_roc_curve(self, color="orange", xaxis="FPR",
-                       title="ROC", auc_in_title=True, use_wandb=False):
+    def plot_roc_curve(
+        self,
+        color="orange",
+        xaxis="FPR",
+        title="ROC",
+        auc_in_title=True,
+        use_wandb=False,
+    ):
         """Plots the ROC (Receiver Operating Characteristic) curve, i.e. TP-FP
         tradeoff Also returns the corresponding auc score.
 
@@ -358,9 +344,7 @@ class Evaluator:
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
         auc_score = self.get_auc_score()
-        full_fp_rate, full_tp_rate, _ = metrics.roc_curve(
-            self.data["red_flags"], self.data["losses"], pos_label=1
-        )
+        full_fp_rate, full_tp_rate, _ = metrics.roc_curve(self.data["red_flags"], self.data["losses"], pos_label=1)
         # Scale fp_rate, tp_rate down to contain <10'000 values
         # E.g. if original length is 1'000'000, only take every 100th value
         step_size = (len(full_fp_rate) // 10000) + 1
@@ -377,8 +361,10 @@ class Evaluator:
         if use_wandb:
             # ROC Curve is to be uploaded to wandb, so plot using a "fixed"
             # version of their plot.roc_curve function
-            table = wandb.Table(columns=["class", "fpr", "tpr"], data=list(
-                zip(["" for _ in fp_rate], fp_rate, tp_rate)))
+            table = wandb.Table(
+                columns=["class", "fpr", "tpr"],
+                data=list(zip(["" for _ in fp_rate], fp_rate, tp_rate)),
+            )
             wandb_plot = wandb.plot_table(
                 "wandb/area-under-curve/v0",
                 table,

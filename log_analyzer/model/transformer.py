@@ -35,12 +35,11 @@ class PositionalEncoding(nn.Module):
 
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(
-            0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0)
-        self.register_buffer('pe', pe)
+        self.register_buffer("pe", pe)
         self.pe: Tensor
 
     def forward(self, x: torch.Tensor):
@@ -66,6 +65,7 @@ class NoPositionalEncoding(nn.Module):
     def forward(self, x):
         return self.dropout(x)
 
+
 # Original TransformerModel code taken from PyTorch word_language_model example code:
 # https://github.com/pytorch/examples/blob/master/word_language_model/model.py
 
@@ -82,38 +82,37 @@ class Transformer(LogModel):
 
         self.dropout = config.dropout
         self.src_mask = None
-        self.pos_encoder = PositionalEncoding(
-            config.model_dim, dropout=self.dropout)
+        self.pos_encoder = PositionalEncoding(config.model_dim, dropout=self.dropout)
         encoder_layers = nn.TransformerEncoderLayer(
-            config.model_dim, config.attention_heads, config.feedforward_dim, dropout=self.dropout, batch_first=True)
-        self.transformer_encoder = nn.TransformerEncoder(
-            encoder_layers, config.layers)
+            config.model_dim,
+            config.attention_heads,
+            config.feedforward_dim,
+            dropout=self.dropout,
+            batch_first=True,
+        )
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, config.layers)
         self.word_embedding = nn.Embedding(config.vocab_size, config.model_dim)
 
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
     def _generate_square_subsequent_mask(self, sz):
         mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
-        mask = mask.float().masked_fill(mask == 0, float(
-            '-inf')).masked_fill(mask == 1, float(0.0))
+        mask = mask.float().masked_fill(mask == 0, float("-inf")).masked_fill(mask == 1, float(0.0))
         return mask
 
-    def forward(self, src: torch.Tensor, lengths=None,
-                mask=None, has_mask=True):
+    def forward(self, src: torch.Tensor, lengths=None, mask=None, has_mask=True):
         # batch size, sequence length, embedded dimension
         # lengths is currently ignored, added for compatibility with LSTM-training code
         # TODO: compatibility with character level encoding
         if has_mask:
             device = src.device
             if self.src_mask is None or self.src_mask.shape[-1] != src.shape[-1]:
-                mask = self._generate_square_subsequent_mask(
-                    src.shape[-1]).to(device)
+                mask = self._generate_square_subsequent_mask(src.shape[-1]).to(device)
                 self.src_mask = mask
         else:
             self.src_mask = None
 
-        word_embeddings = self.word_embedding(
-            src) * math.sqrt(self.config.model_dim)
+        word_embeddings = self.word_embedding(src) * math.sqrt(self.config.model_dim)
         tf_input = self.pos_encoder(word_embeddings)
         tf_hidden = self.transformer_encoder(tf_input, self.src_mask)
         # word embedding encoder and decoder share weights
