@@ -116,6 +116,24 @@ def load_data_tiered(data_folder, train_files, test_files, batch_size, bidir, sk
     test_loader = create_data_loader(filepaths_eval)
     return train_loader, test_loader
 
+def load_data_tiered_trans(data_folder, train_files, test_files, batch_size, bidir, skipsos, jagged, sentence_length, num_steps, context_model_dim, context_input_dimension):
+    def create_data_loader(filepath):
+        data_handler = TieredOnlineLMBatcher(filepath,
+                                       sentence_length,
+                                       context_model_dim,
+                                       skipsos,
+                                       jagged,
+                                       bidir,
+                                       context_input_dimension,
+                                       batch_size=batch_size,
+                                       num_steps=num_steps,
+                                       delimiter=" ")
+        return data_handler
+    filepaths_train = [path.join(data_folder, f) for f in train_files]
+    filepaths_eval = [path.join(data_folder, f) for f in test_files]
+    train_loader = create_data_loader(filepaths_train)
+    test_loader = create_data_loader(filepaths_eval)
+    return train_loader, test_loader
 
 def load_data(data_folder, train_files, test_files, batch_size, bidir, skipsos, jagged, sentence_length):
     def create_data_loader(filepath):
