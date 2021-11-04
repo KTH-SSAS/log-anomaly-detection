@@ -42,7 +42,7 @@ class TieredTrainer(Trainer):
             loss += step_loss
         loss /= len(Y)
         return loss, line_losses_list, targets
-
+        
     def split_batch(self, batch):
         """Splits a batch into variables containing relevant data."""
 
