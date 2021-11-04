@@ -74,7 +74,7 @@ class TieredTrainer(Trainer):
                 output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(
                     X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L
                 )
-                self.data_handler.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
+                self.train_loader.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
 
                 # Compute the loss for the output
                 loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
@@ -83,7 +83,7 @@ class TieredTrainer(Trainer):
             output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(
                 X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L
             )
-            self.data_handler.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
+            self.train_loader.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
 
             # Compute the loss for the output
             loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
