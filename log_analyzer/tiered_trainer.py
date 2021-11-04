@@ -124,6 +124,20 @@ class TieredTrainer(Trainer):
 
         return loss, output
 
+class TieredTrainerLSTM(TieredTrainer):
+
+    @property
+    def model(self):
+        if self.lstm is None:
+            raise RuntimeError("Model not intialized!")
+        return self.lstm
+
+    def __init__(self, config: TrainerConfig, lstm_config: TieredLSTMConfig, bidirectional, checkpoint_dir, data_handler):
+
+        self.lstm = Tiered_LSTM(lstm_config, bidirectional)
+        super().__init__(config, lstm_config, bidirectional, checkpoint_dir, data_handler)
+
+
 
         # Compute the loss for the output
         loss, line_losses, targets = self.compute_loss(output, Y, lengths=L, mask=M)
