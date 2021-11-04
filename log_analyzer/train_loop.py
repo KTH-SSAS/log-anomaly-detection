@@ -162,7 +162,7 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
 
     train_losses = []
     for iteration, batch in enumerate(tqdm(train_loader)):
-        if type(lm_trainer) is TieredTrainer:
+        if type(lm_trainer) is TieredTrainer or type(lm_trainer) is TieredTransformerTrainer:
             if train_loader.flush is False:
                 loss, done = lm_trainer.train_step(batch)
             else:
