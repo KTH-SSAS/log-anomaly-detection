@@ -122,6 +122,7 @@ class Transformer(TransformerLanguageModel):
     def __init__(self, config: TransformerConfig):
         self.name = "Transformer"
         super().__init__(config)
+        self.bidirectional = False # TODO: Change this when we make a bidirectional model.
         self.word_embedding = nn.Embedding(self.vocab_size, self.model_dim)
         if config.__class__.__name__ == 'TieredTransformerConfig':
             self.reduce_dimension = nn.Linear(self.config.input_dim, self.model_dim)
