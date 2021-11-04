@@ -119,12 +119,13 @@ def init_from_config_classes(model_type, bidirectional, model_config: LSTMConfig
             trainer_config, model_config, log_dir)
     elif model_type == TIERED_TRANSFORMER:
         model_config: TieredTransformerConfig = model_config
-        train_loader, test_loader = data_utils.load_data_tiered(data_folder, train_days, test_days,
+        train_loader, test_loader = data_utils.load_data_tiered_trans(data_folder, train_days, test_days,
                                                                 trainer_config.batch_size, bidirectional, skip_sos, jagged,
                                                                 max_input_length, num_steps=3,
-                                                                context_layers=model_config.context_layers)
+                                                                context_model_dim=model_config.context_model_dim,
+                                                                context_input_dimension= model_config.input_dim)
         lm_trainer = TieredTransformerTrainer(
-            trainer_config, model_config, log_dir)
+            trainer_config, model_config, bidirectional, log_dir, train_loader, test_loader)
 
 
     if Application.instance().wandb_initialized:
