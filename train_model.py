@@ -63,15 +63,9 @@ def main(args):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-<<<<<<< HEAD
     parser.add_argument('--model-type', choices=['lstm', 'tiered-lstm', 'transformer', 'tiered-transformer'], required=True)
     parser.add_argument('--model-config', type=str, help="Model configuration file.", required=True)
     parser.add_argument('--data-config', type=str, help="Data description file.", required=True)
-=======
-    parser.add_argument("--model-type", choices=["lstm", "tiered-lstm", "transformer"], required=True)
-    parser.add_argument("--model-config", type=str, help="Model configuration file.", required=True)
-    parser.add_argument("--data-config", type=str, help="Data description file.", required=True)
->>>>>>> master
     parser.add_argument("--data-folder", type=str, help="Path to data files.", required=True)
     parser.add_argument("--trainer-config", type=str, help="Trainer configuration file.", required=True)
     parser.add_argument("--load-from-checkpoint", type=str, help="Checkpoint to resume training from")
