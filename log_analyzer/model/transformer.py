@@ -1,11 +1,13 @@
-"""Code related to Transformer language model"""
+"""Code related to Transformer language model."""
+import math
+
+import torch
+import torch.nn as nn
+from torch import Tensor
+
+from log_analyzer.config.model_config import TransformerConfig
 from log_analyzer.model.lstm import LogModel
 from log_analyzer.model.model_util import initialize_weights
-from log_analyzer.config.model_config import TransformerConfig
-import torch.nn as nn
-import torch
-import torch.nn.functional as F
-import math
 
 
 # Positional Encoding class taken from PyTorch word_language_model example code:
@@ -33,14 +35,14 @@ class PositionalEncoding(nn.Module):
 
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(
-            0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0).transpose(0, 1)
-        self.register_buffer('pe', pe)
+        pe = pe.unsqueeze(0)
+        self.register_buffer("pe", pe)
+        self.pe: Tensor
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         r"""Inputs of forward function
         Args:
             x: the sequence fed to the positional encoder model (required).
@@ -50,9 +52,10 @@ class PositionalEncoding(nn.Module):
         Examples:
             >>> output = pos_encoder(x)
         """
-
-        x = x + self.pe[:x.size(0), :]
+        seq_len = x.shape[1]
+        x = x + self.pe[:, :seq_len, :]
         return self.dropout(x)
+
 
 class NoPositionalEncoding(nn.Module):
     def __init__(self, d_model=None, dropout=0.1, max_len=None):
@@ -62,14 +65,17 @@ class NoPositionalEncoding(nn.Module):
     def forward(self, x):
         return self.dropout(x)
 
+
 # Original TransformerModel code taken from PyTorch word_language_model example code:
 # https://github.com/pytorch/examples/blob/master/word_language_model/model.py
 
 
 class TransformerLanguageModel(LogModel):
+    """Container module with an encoder, a recurrent or transformer module, and
+    a decoder."""
     def __init__(self, config: TransformerConfig):
         super().__init__(config)
-        self.config = config
+        self.config: TransformerConfig = config
         self.src_mask = None
         if self.__class__.__name__ == 'Transformer':
             self.dropout = config.dropout
@@ -95,8 +101,7 @@ class TransformerLanguageModel(LogModel):
 
     def _generate_square_subsequent_mask(self, sz):
         mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
-        mask = mask.float().masked_fill(mask == 0, float(
-            '-inf')).masked_fill(mask == 1, float(0.0))
+        mask = mask.float().masked_fill(mask == 0, float("-inf")).masked_fill(mask == 1, float(0.0))
         return mask
 
     def forward(self, src, has_mask):
@@ -153,7 +158,8 @@ class Transformer(TransformerLanguageModel):
             # Output: word_embeddings: (batch x sequence length x embedded dimension)
         tf_input = self.pos_encoder(word_embeddings)
         tf_hidden = self.transformer_encoder(tf_input, self.src_mask)
-        logits = tf_hidden @ self.word_embedding.weight.t() # word embedding encoder and decoder share weights
+        # word embedding encoder and decoder share weights
+        logits = tf_hidden @ self.word_embedding.weight.t()
         # Trainer expects model to return a tuple of results (for the LSTMs this would be (lstm_out, final_hidden_state))
         # So we have to return a tuple here too (all but the first value of the tuple are discarded)
         return logits, tf_hidden # 2nd output (tf hidden) for context transformer. 

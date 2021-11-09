@@ -2,7 +2,6 @@ from log_analyzer.config.config import Config
 
 
 class DataConfig(Config):
-
     def __init__(self, sentence_length, vocab_size, number_of_days, tokenization) -> None:
         super().__init__()
         self.tokenization = tokenization
@@ -12,14 +11,27 @@ class DataConfig(Config):
 
 
 class TrainerConfig(Config):
-
-    def __init__(self, train_files, test_files, batch_size, learning_rate, early_stopping,
-                 early_stop_patience, scheduler_gamma, scheduler_step_size, mixed_precision) -> None:
+    def __init__(
+        self,
+        train_files,
+        test_files,
+        shuffle_train_data,
+        batch_size,
+        epochs,
+        learning_rate,
+        early_stopping,
+        early_stop_patience,
+        scheduler_gamma,
+        scheduler_step_size,
+        mixed_precision,
+    ) -> None:
         super().__init__()
 
         # Data settings
         self.train_files = train_files
         self.test_files = test_files
+        self.shuffle_train_data = shuffle_train_data
+        self.epochs = epochs
 
         # Optimization
         self.batch_size = batch_size

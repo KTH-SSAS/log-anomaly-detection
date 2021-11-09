@@ -1,21 +1,22 @@
-"""Functions to test different model configurations"""
+"""Functions to test different model configurations."""
 import os
+
 import pytest
 import utils
+
 from log_analyzer.train_loop import init_from_config_classes, train_model
 
 
 def test_evaluator_lstm(tmpdir):
     bidir = False
-    model_type = 'lstm'
-    token_level = 'word'
+    model_type = "lstm"
+    token_level = "word"
 
     args = utils.set_args(bidir, model_type, token_level)
-    args['base_logdir'] = os.path.join(tmpdir, 'runs')
+    args["base_logdir"] = os.path.join(tmpdir, "runs")
 
     trainer, train_loader, test_loader = init_from_config_classes(**args)
-    train_losses, test_losses = train_model(
-        trainer, train_loader, test_loader, store_eval_data=True)
+    train_losses, test_losses = train_model(trainer, train_loader, test_loader, store_eval_data=True)
 
     # Numerical metrics
     metrics = trainer.evaluator.get_metrics()
@@ -35,7 +36,7 @@ def test_evaluator_lstm(tmpdir):
                     colors=["purple", "darkblue", "blue", "skyblue"],
                     ylim=(-1, -1),
                     outliers=outliers,
-                    legend=smoothing % 2 == 0
+                    legend=smoothing % 2 == 0,
                 )
 
     # ROC curve plot
@@ -51,14 +52,14 @@ def test_evaluator_lstm(tmpdir):
 
 def test_evaluator_tiered(tmpdir):
     bidir = True
-    model_type = 'tiered-lstm'
-    token_level = 'char'
+    model_type = "tiered-lstm"
+    token_level = "char"
 
     args = utils.set_args(bidir, model_type, token_level)
-    args['base_logdir'] = os.path.join(tmpdir, 'runs')
+    args["base_logdir"] = os.path.join(tmpdir, "runs")
 
     trainer, train_loader, test_loader = init_from_config_classes(**args)
-    # Only unique thing in the tiered version of the evaluator is the data storing code
-    train_losses, test_losses = train_model(
-        trainer, train_loader, test_loader, store_eval_data=True)
+    # Only unique thing in the tiered version of the evaluator is the data
+    # storing code
+    train_losses, test_losses = train_model(trainer, train_loader, test_loader, store_eval_data=True)
     assert True

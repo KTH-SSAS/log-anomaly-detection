@@ -1,9 +1,12 @@
-import pytest
 import os
+
+import pytest
+
 
 def test_save_load_config(tmpdir):
     from log_analyzer.config.trainer_config import TrainerConfig
-    config = TrainerConfig.init_from_file('config/config_trainer.json')
+
+    config = TrainerConfig.init_from_file("config/config_trainer.json")
     savepath = os.path.join(tmpdir, "config.json")
     config.save_config(savepath)
 
