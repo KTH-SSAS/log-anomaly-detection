@@ -6,8 +6,6 @@ import torch.cuda
 import utils
 
 
-
-
 @pytest.mark.parametrize("tokenization", ["word", "char"])
 @pytest.mark.parametrize("bidir", [True, False])
 @pytest.mark.parametrize("model_type", ["lstm", "tiered-lstm"])
@@ -25,7 +23,9 @@ def test_lstm(tmpdir, model_type, bidir, tokenization, cuda):
 
 
 # TODO make the char test not fail
-@pytest.mark.parametrize("tokenization", ["word", pytest.param("char", marks=pytest.mark.skip(reason="Not implemented"))])
+@pytest.mark.parametrize(
+    "tokenization", ["word", pytest.param("char", marks=pytest.mark.skip(reason="Not implemented"))]
+)
 def test_transformer(tmpdir, tokenization):
 
     args = utils.set_args(False, "transformer", tokenization)
