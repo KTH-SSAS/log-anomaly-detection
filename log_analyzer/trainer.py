@@ -44,6 +44,8 @@ class Trainer(ABC):
         self.use_scheduler = bool(config.scheduler_step_size)
         if config.mixed_precision:
             self.scaler = torch.cuda.amp.GradScaler()
+        else:
+            self.scaler = None
 
         # Create evaluator
         self.evaluator = Evaluator()
