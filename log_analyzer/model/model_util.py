@@ -1,6 +1,6 @@
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
 import torch.nn.init
 
 
@@ -24,10 +24,10 @@ def kaiming_normal_():
 
 def initialize_weights(net, initrange=1.0, dist_func=truncated_normal_):
     """Initializes the weights of the network using the given distribution
-    Distribtuion can be either 'truncated', 'xavier', or 'kaiming"""
+    Distribtuion can be either 'truncated', 'xavier', or 'kaiming."""
     for m in net.modules():
         if isinstance(m, nn.Linear):
-            this_initrange = initrange * 1.0/np.sqrt(m.weight.data.shape[1])
+            this_initrange = initrange * 1.0 / np.sqrt(m.weight.data.shape[1])
             m.weight.data = this_initrange * dist_func(m.weight.data)
             if m.bias is not None:
                 m.bias.data.zero_()

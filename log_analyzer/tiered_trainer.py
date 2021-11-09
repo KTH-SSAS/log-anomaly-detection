@@ -1,14 +1,13 @@
-from log_analyzer.config.trainer_config import TrainerConfig
-from log_analyzer.config.model_config import TieredLSTMConfig
 import torch
-from log_analyzer.trainer import Trainer
-from log_analyzer.model.lstm import Tiered_LSTM
-from log_analyzer.data.data_loader import OnlineLMBatcher
 
+from log_analyzer.config.model_config import TieredLSTMConfig
+from log_analyzer.config.trainer_config import TrainerConfig
+from log_analyzer.model.lstm import Tiered_LSTM
+from log_analyzer.trainer import Trainer
 
 
 class TieredTrainer(Trainer):
-    """Trainer class for tiered LSTM model"""
+    """Trainer class for tiered LSTM model."""
 
     @property
     def model(self):
@@ -16,7 +15,14 @@ class TieredTrainer(Trainer):
             raise RuntimeError("Model not intialized!")
         return self.lstm
 
-    def __init__(self, config: TrainerConfig, lstm_config: TieredLSTMConfig, bidirectional, checkpoint_dir, data_handler):
+    def __init__(
+        self,
+        config: TrainerConfig,
+        lstm_config: TieredLSTMConfig,
+        bidirectional,
+        checkpoint_dir,
+        data_handler,
+    ):
 
         self.lstm = Tiered_LSTM(lstm_config, bidirectional)
         self.data_handler = data_handler
@@ -29,15 +35,17 @@ class TieredTrainer(Trainer):
         if self.cuda:
             line_losses_list = line_losses_list.cuda()
         if lengths is not None:
-            targets = Y[:,:,:torch.max(lengths)]
+            targets = Y[:, :, : torch.max(lengths)]
         else:
             targets = Y
-        # output (num_steps x batch x length x embedding dimension)  Y (num_steps x batch x length)
+        # output (num_steps x batch x length x embedding dimension)  Y
+        # (num_steps x batch x length)
         for i, (step_output, step_y) in enumerate(zip(output, Y)):
-            if lengths is not None:  # On notebook, I checked it with forward LSTM and word tokenization. Further checks have to be done...
-                token_losses = self.criterion(
-                    step_output.transpose(1, 2), step_y[:, :torch.max(lengths)])
-                masked_losses = token_losses * mask[i][:, :torch.max(lengths)]
+            # On notebook, I checked it with forward LSTM and word
+            # tokenization. Further checks have to be done...
+            if lengths is not None:
+                token_losses = self.criterion(step_output.transpose(1, 2), step_y[:, : torch.max(lengths)])
+                masked_losses = token_losses * mask[i][:, : torch.max(lengths)]
                 line_losses = torch.sum(masked_losses, dim=1)
             else:
                 token_losses = self.criterion(step_output.transpose(1, 2), step_y)
@@ -65,13 +73,16 @@ class TieredTrainer(Trainer):
         return X, Y, L, M, C_V, C_H, C_C
 
     def train_step(self, batch):
-        """Defines a single training step. Feeds data through the model, computes the loss and makes an optimization step."""
+        """Defines a single training step.
+
+        Feeds data through the model, computes the loss and makes an
+        optimization step.
+        """
         self.model.train()
         self.optimizer.zero_grad()
 
         # Split the batch into input, ground truth, etc.
-        X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(
-            batch)
+        X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(batch)
 
         if self.scaler is not None:
             with torch.cuda.amp.autocast():
@@ -85,9 +96,7 @@ class TieredTrainer(Trainer):
                 loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
         else:
             # Apply the model to input to produce the output
-            output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(
-                X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L
-            )
+            output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L)
             self.data_handler.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
 
             # Compute the loss for the output
@@ -99,17 +108,17 @@ class TieredTrainer(Trainer):
         return loss, self.early_stopping.early_stop
 
     def eval_step(self, batch, store_eval_data=False):
-        """Defines a single evaluation step. Feeds data through the model and computes the loss."""
+        """Defines a single evaluation step.
+
+        Feeds data through the model and computes the loss.
+        """
         self.model.eval()
 
         # Split the batch into input, ground truth, etc.
-        X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(
-            batch)
+        X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(batch)
 
         # Apply the model to input to produce the output
-        output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(
-            X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L
-        )
+        output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L)
         self.data_handler.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
 
         # Compute the loss for the output
