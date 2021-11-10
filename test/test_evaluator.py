@@ -4,7 +4,7 @@ import os
 import pytest
 import utils
 
-from eval_model import eval_model
+from log_analyzer.eval_model import eval_model
 from log_analyzer.train_loop import init_from_config_classes, train_model
 
 

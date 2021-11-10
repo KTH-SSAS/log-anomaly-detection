@@ -58,6 +58,6 @@ def eval_model(model_trainer: Trainer):
     evaluator_metrics["eval/AP_(normalised)"] = AP_score
 
     # Log the evaluation results
-    if use_wandb:
+    if use_wandb and wandb.run is not None:
         for key in evaluator_metrics.keys():
             wandb.run.summary[key] = evaluator_metrics[key]
