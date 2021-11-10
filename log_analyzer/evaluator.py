@@ -430,10 +430,22 @@ class Evaluator:
         full_precision = full_recall = full_thresh = []
 
         if use_wandb:
-            # PR Curve is to be uploaded to wandb, so plot using a their plot.pr_curve function
-            probas = np.stack((self.data["losses"], 1 - self.data["losses"]), axis=1)
-            print(probas.shape)
-            wandb_plot = wandb.plot.pr_curve(self.data["red_flags"], probas)
+            # PR Curve is to be uploaded to wandb, so plot using a "fixed"
+            # version of their plot.pr_curve function
+            table = wandb.Table(
+                columns=["class", "recall", "precision"],
+                data=list(zip(["" for _ in recall], recall, precision)),
+            )
+            wandb_plot = wandb.plot_table(
+                "wandb/area-under-curve/v0",
+                table,
+                {"x": "recall", "y": "precision", "class": "class"},
+                {
+                    "title": "Precision v. Recall",
+                    "x-axis-title": "Recall",
+                    "y-axis-title": "Precision",
+                },
+            )
             return AP_score, wandb_plot
         else:
             # Plot using scikit-learn and matplotlib
