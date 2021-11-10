@@ -53,6 +53,12 @@ def eval_model(model_trainer: Trainer):
     if use_wandb:
         wandb.log({"ROC Curve (normalised)": roc_plot})
 
+    # get normalised pr curve
+    AP_score, pr_plot = model_trainer.evaluator.plot_pr_curve(use_wandb=use_wandb)
+    if use_wandb:
+        wandb.log({"PR Curve": pr_plot})
+    evaluator_metrics["eval/AP_(normalised)"] = AP_score
+
     # Log the evaluation results
     if use_wandb:
         for key in evaluator_metrics.keys():
