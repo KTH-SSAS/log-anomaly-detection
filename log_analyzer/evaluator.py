@@ -334,7 +334,7 @@ class Evaluator:
     ):
         """Plots the ROC (Receiver Operating Characteristic) curve, i.e. TP-FP
         tradeoff. Also returns the corresponding auc score.
-        
+
         Options for xaxis are:
         'FPR': False-positive rate. The default.
         'alerts': # of alerts per second (average) the FPR would be equivalent to.
@@ -404,13 +404,16 @@ class Evaluator:
             return auc_score, plt
 
     def plot_pr_curve(self, color="orange", title="Precision-Recall Curve", use_wandb=False):
-        """Plots the Precision-Recall curve, and returns the corresponding auc score."""
+        """Plots the Precision-Recall curve, and returns the corresponding auc
+        score."""
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
-        full_precision, full_recall, _ = metrics.precision_recall_curve(self.data["red_flags"], self.data["losses"], pos_label=1)
+        full_precision, full_recall, _ = metrics.precision_recall_curve(
+            self.data["red_flags"], self.data["losses"], pos_label=1
+        )
         # Get average precision score as a summary score for PR
         AP_score = metrics.average_precision_score(self.data["red_flags"], self.data["losses"])
-        
+
         # Scale precision, recall down to contain <10'000 values
         # E.g. if original length is 1'000'000, only take every 100th value
         step_size = (len(full_precision) // 10000) + 1

@@ -1,9 +1,8 @@
 import matplotlib.pyplot as plt
+
 import wandb
 from log_analyzer.application import Application
 from log_analyzer.trainer import Trainer
-
-import wandb
 
 
 def eval_model(model_trainer: Trainer):
@@ -17,7 +16,7 @@ def eval_model(model_trainer: Trainer):
 
     # get line losses plot
     model_trainer.evaluator.plot_line_loss_percentiles(
-        percentiles=[75,95,99], smoothing=300, ylim=(-1,-1), outliers=1, legend=False
+        percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False
     )
     if use_wandb:
         wandb.log({"Aggregate line losses": wandb.Image(plt)})
@@ -34,13 +33,12 @@ def eval_model(model_trainer: Trainer):
         wandb.log({"PR Curve": pr_plot})
     evaluator_metrics["eval/AP"] = AP_score
 
-
     # Normalise the data
     model_trainer.evaluator.normalize_losses()
 
     # get normalised line losses plot
     model_trainer.evaluator.plot_line_loss_percentiles(
-        percentiles=[75,95,99], smoothing=300, ylim=(-1,-1), outliers=1, legend=False
+        percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False
     )
     if use_wandb:
         wandb.log({"Aggregate line losses (normalised)": wandb.Image(plt)})
