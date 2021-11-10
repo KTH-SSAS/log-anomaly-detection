@@ -431,7 +431,9 @@ class Evaluator:
 
         if use_wandb:
             # PR Curve is to be uploaded to wandb, so plot using a their plot.pr_curve function
-            wandb_plot = wandb.plot.pr_curve(self.data["red_flags"], self.data["losses"])
+            probas = np.stack((self.data["losses"], 1 - self.data["losses"]), axis=1)
+            print(probas.shape)
+            wandb_plot = wandb.plot.pr_curve(self.data["red_flags"], probas)
             return AP_score, wandb_plot
         else:
             # Plot using scikit-learn and matplotlib
