@@ -257,7 +257,7 @@ class Evaluator:
         Smoothing indicates how many seconds are processed as one batch
         for percentile calculations (e.g. 60 means percentiles are
         computed for every minute). Outliers determines how many non-
-        redteam outliers are plotted onto the graph (per hour of data).
+        red team outliers are plotted onto the graph (per hour of data).
         """
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
@@ -312,10 +312,10 @@ class Evaluator:
                 color=colors[idx],
                 label=f"{percentiles[idx]}-{percentiles[idx + 1]} Percentile",
             )
-        # plot the non-redteam outliers
+        # plot the non-red-team outliers
         if outliers > 0:
             plt.plot(blue_seconds, blue_losses, "bo", label="Outlier normal events")
-        # plot the redteam events
+        # plot the red team events
         plt.plot(red_seconds, red_losses, "r+", label="Red team events")
         if ylim[0] >= 0 and ylim[1] > 0:
             plt.ylim(ylim)
@@ -407,7 +407,7 @@ class Evaluator:
         """Plots the Precision-Recall curve, and returns the corresponding auc score."""
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
-        full_precision, full_recall, full_thresh = metrics.precision_recall_curve(self.data["red_flags"], self.data["losses"], pos_label=1)
+        full_precision, full_recall, _ = metrics.precision_recall_curve(self.data["red_flags"], self.data["losses"], pos_label=1)
         # Get average precision score as a summary score for PR
         AP_score = metrics.average_precision_score(self.data["red_flags"], self.data["losses"])
         
@@ -416,18 +416,17 @@ class Evaluator:
         step_size = (len(full_precision) // 10000) + 1
         precision = full_precision[::step_size]
         recall = full_recall[::step_size]
-        thresh = full_thresh[::step_size]
-        # max_precision_index = np.argmax(full_precision[:-1])
-        # max_precision_recall = full_recall[max_precision_index]
-        # max_precision_thresh = full_thresh[max_precision_index]
-        # max_precision = full_precision[max_precision_index]
+
         # Ensure the last value in full_precision and full_recall is included
         if precision[-1] != full_precision[-1]:
             precision = np.append(precision, full_precision[-1])
             recall = np.append(recall, full_recall[-1])
-            thresh = np.append(thresh, full_thresh[-1])
         # Erase the full fp and tp lists
         full_precision = full_recall = full_thresh = []
+
+        # Round to 5 digits
+        precision = list(map(lambda x: round(x, 5), precision))
+        recall = list(map(lambda x: round(x, 5), recall))
 
         if use_wandb:
             # PR Curve is to be uploaded to wandb, so plot using a "fixed"
@@ -456,7 +455,7 @@ class Evaluator:
                 precision,
                 color=color,
                 lw=2,
-                label=f"Precision Recall Curve",
+                label=f"Intrusion events",
             )
             plt.xlabel(xlabel)
             plt.ylabel(ylabel)
