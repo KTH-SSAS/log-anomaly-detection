@@ -36,6 +36,7 @@ class TieredLSTMConfig(LSTMConfig):
         """Feature length of input to LSTM."""
         return self.embedding_dim + self.context_layers[-1]
 
+
 @dataclass
 class TransformerConfig(ModelConfig):
     """Configuration class for Transformer models."""
@@ -47,9 +48,11 @@ class TransformerConfig(ModelConfig):
     vocab_size: int
     dropout: float
 
+
 @dataclass
 class TieredTransformerConfig(TransformerConfig):
     """Configuration class for Tiered Transformer models."""
+
     context_model_dim: int
     context_layers: int
     context_feedforward_dim: int

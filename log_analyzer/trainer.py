@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 
 import torch
 import torch.nn as nn
+
 import log_analyzer.model.early_stopping as early_stopping
 from log_analyzer.application import Application
 from log_analyzer.config.model_config import LSTMConfig, TransformerConfig

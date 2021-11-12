@@ -1,10 +1,9 @@
+import pytest
 import torch
 from torch.utils.data import DataLoader
 
 from log_analyzer.config.trainer_config import DataConfig
 from log_analyzer.data.data_loader import IterableLogDataset, MapLogDataset, create_data_loader
-
-import pytest
 
 
 def batch_equal(v1: torch.Tensor, v2: torch.Tensor):

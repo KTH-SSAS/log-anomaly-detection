@@ -5,6 +5,7 @@
 	"attention_heads": 8,
 	"vocab_size": 28199,
 	"dropout": 0.1,
+	"sequence_length": null,
 
 	"context_model_dim": 512,
 	"context_layers": 6,
