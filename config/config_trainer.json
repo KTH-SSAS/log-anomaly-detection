@@ -1,18 +1,17 @@
 {
 	"train_files": [
-		"0.txt",
-		"1.txt"
+		"7.txt"
 	],
 	"test_files": [
-		"2.txt"
+		"8.txt"
 	],
-	"batch_size": 15,
-	"epochs": 3,
+	"batch_size": 64,
+	"epochs": 1,
 	"learning_rate": 0.001,
-	"early_stopping": true,
+	"early_stopping": false,
 	"early_stop_patience": 20,
 	"scheduler_gamma": 0.99,
-	"scheduler_step_size": 20,
+	"scheduler_step_size": 0,
 	"mixed_precision": false,
 	"shuffle_train_data": true
 }
