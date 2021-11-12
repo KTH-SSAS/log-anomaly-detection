@@ -400,6 +400,77 @@ class OnlineLMBatcher:
         pass
     def gen_datadict(self, batch, endx, endt, model_info):
         pass
+
+class TieredLSTMBatcher(OnlineLMBatcher):
+    def __init__(
+        self,
+        filepaths,
+        sentence_length,
+        context_size,
+        skipsos,
+        jagged,
+        bidir,
+        batch_size=100,
+        num_steps=5,
+        delimiter=" ",
+        skiprows=0,):
+        super().__init__(filepaths, sentence_length, skipsos, jagged, bidir, batch_size, num_steps, delimiter, skiprows)
+        self.context_size = context_size if type(context_size) is list else [context_size]
+
+
+    def init_saved_model(self, user): 
+        if self.cuda:
+            self.saved_lstm[user] = (
+                torch.zeros((self.context_size[0])).cuda(),
+                torch.zeros(
+                    (
+                        len(self.context_size),
+                        self.context_size[0],
+                    )
+                ).cuda(),
+                torch.zeros(
+                    (
+                        len(self.context_size),
+                        self.context_size[0],
+                    )
+                ).cuda(),
+            )
+
+        else:
+            self.saved_lstm[user] = (
+                torch.zeros((self.context_size[0])),
+                torch.zeros(
+                    (
+                        len(self.context_size),
+                        self.context_size[0],
+                    )
+                ),
+                torch.zeros(
+                    (
+                        len(self.context_size),
+                        self.context_size[0],
+                    )
+                ),
+            )
+
+    def gen_datadict(self, batch, endx, endt, model_info):
+        ctxt_vector= model_info[0]
+        h_state= model_info[1]
+        c_state= model_info[2]
+        datadict = {
+                    "line": batch[:, :, 0],
+                    "second": batch[:, :, 1],
+                    "day": batch[:, :, 2],
+                    "user": batch[:, :, 3],
+                    "red": batch[:, :, 4],
+                    "input": batch[:, :, 5 + self.jagged + self.skipsos : endx],
+                    "target": batch[:, :, 6 + self.jagged + self.skipsos : endt],
+                    "context_vector": ctxt_vector,
+                    "c_state_init": torch.transpose(h_state, 0, 1),
+                    "h_state_init": torch.transpose(c_state, 0, 1),
+                }  #
+        return datadict
+        
     def load_lines(self):
         output = []
         if self.cuda:
@@ -418,7 +489,7 @@ class OnlineLMBatcher:
             ctxt_vector = torch.cat((ctxt_vector, torch.unsqueeze(self.saved_lstm[user][0], dim=0)), dim=0)
             h_state = torch.cat((h_state, torch.unsqueeze(self.saved_lstm[user][1], dim=0)), dim=0)
             c_state = torch.cat((c_state, torch.unsqueeze(self.saved_lstm[user][2], dim=0)), dim=0)
-        return output, ctxt_vector, h_state, c_state
+        return output, (ctxt_vector, h_state, c_state)
 
     def update_state(self, ctxt_vectors, h_states, c_states):
         ctxt_vectors = ctxt_vectors.data
