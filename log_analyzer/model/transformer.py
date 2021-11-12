@@ -77,14 +77,14 @@ class TransformerLanguageModel(LogModel):
         super().__init__(config)
         self.config: TransformerConfig = config
         self.src_mask = None
-        if self.__class__.__name__ == 'Transformer':
+        if isinstance(self, Transformer):
             self.dropout = config.dropout
             self.model_dim = config.model_dim
             self.layers = config.layers
             self.attention_heads = config.attention_heads
             self.feedforward_dim = config.feedforward_dim
             self.vocab_size = config.vocab_size
-        elif self.__class__.__name__ == 'ContextTransformer':
+        elif isinstance(self, ContextTransformer):
             self.dropout = config.context_dropout
             self.model_dim = config.context_model_dim
             self.layers =  config.context_layers
@@ -105,7 +105,7 @@ class TransformerLanguageModel(LogModel):
         return mask
 
     def forward(self, src, has_mask):
-        if self.__class__.__name__ == 'ContextTransformer':
+        if isinstance(self, ContextTransformer):
             seq_len = src.shape[1]
         else:
             seq_len = src.shape[-1]
@@ -129,7 +129,7 @@ class Transformer(TransformerLanguageModel):
         super().__init__(config)
         self.bidirectional = False # TODO: Change this when we make a bidirectional model.
         self.word_embedding = nn.Embedding(self.vocab_size, self.model_dim)
-        if config.__class__.__name__ == 'TieredTransformerConfig':
+        if isinstance(config, TieredTransformerConfig):
             self.reduce_dimension = nn.Linear(self.config.input_dim, self.model_dim)
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
