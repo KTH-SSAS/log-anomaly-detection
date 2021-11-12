@@ -189,15 +189,16 @@ def load_data_tiered(
     test_loader = create_tiered_data_loader(filepaths_eval)
     return train_loader, test_loader
 
-def load_data_tiered_trans(data_folder, train_files, test_files, batch_size, bidir, skipsos, jagged, sentence_length, num_steps, context_model_dim, context_input_dimension):
+def load_data_tiered_trans(data_folder, train_files, test_files, batch_size, bidir, skipsos, jagged, sentence_length, num_steps, context_model_dim, context_input_dimension, shift_window):
     def create_data_loader(filepath):
-        data_handler = TieredOnlineLMBatcher(filepath,
+        data_handler = TieredTransformerBatcher(filepath,
                                        sentence_length,
                                        context_model_dim,
                                        skipsos,
                                        jagged,
                                        bidir,
                                        context_input_dimension,
+                                       shift_window=shift_window,
                                        batch_size=batch_size,
                                        num_steps=num_steps,
                                        delimiter=" ")
