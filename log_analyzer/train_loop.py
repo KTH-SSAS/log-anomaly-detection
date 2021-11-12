@@ -12,7 +12,7 @@ import wandb
 from log_analyzer.application import Application
 from log_analyzer.config.model_config import LSTMConfig, ModelConfig, TieredLSTMConfig, TransformerConfig, TieredTransformerConfig
 from log_analyzer.config.trainer_config import DataConfig, TrainerConfig
-from log_analyzer.tiered_trainer import TieredTrainer, TieredTransformerTrainer
+from log_analyzer.tiered_trainer import TieredTrainer, TieredLSTMTrainer, TieredTransformerTrainer
 from log_analyzer.trainer import LSTMTrainer, Trainer, TransformerTrainer
 
 try:
