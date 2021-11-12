@@ -153,55 +153,8 @@ class TieredLSTMTrainer(TieredTrainer):
         self.optimizer_step(loss)
 
         return loss, self.early_stopping.early_stop
-
-    def eval_step(self, batch, store_eval_data=False):
-        """Defines a single evaluation step.
-
-        Feeds data through the model and computes the loss.
-        """
-        self.model.eval()
-
-        # Split the batch into input, ground truth, etc.
-        X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(batch)
-
-        # Apply the model to input to produce the output
-        output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(
-            X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L
-        )
-        self.test_loader.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
-
-        # Compute the loss for the output
-        loss, line_losses, targets = self.compute_loss(output, Y, lengths=L, mask=M)
-
-        # Save the results if desired
-        if store_eval_data:
-            preds = torch.argmax(output, dim=-1)
-            self.evaluator.add_evaluation_data(
-                torch.flatten(targets, end_dim=1),
-                torch.flatten(preds, end_dim=1),
-                torch.flatten(batch["user"], end_dim=1),
-                torch.flatten(line_losses, end_dim=1),
-                torch.flatten(batch["second"], end_dim=1),
-                torch.flatten(batch["red"], end_dim=1),
-            )
-
-        return loss, output
-
-class TieredTrainerLSTM(TieredTrainer):
-
-    @property
-    def model(self):
-        if self.lstm is None:
-            raise RuntimeError("Model not intialized!")
-        return self.lstm
-
-    def __init__(self, config: TrainerConfig, lstm_config: TieredLSTMConfig, bidirectional, checkpoint_dir, data_handler):
-
-        self.lstm = Tiered_LSTM(lstm_config, bidirectional)
-        super().__init__(config, lstm_config, bidirectional, checkpoint_dir, data_handler)
-
-
-class TieredTransformerTrainer(Trainer):
+        
+class TieredTransformerTrainer(TieredTrainer):
     """Trainer class for Transformer model"""
 
     @property
@@ -212,10 +165,8 @@ class TieredTransformerTrainer(Trainer):
 
     def __init__(self, config: TrainerConfig, transformer_config: TransformerConfig, bidirectional, checkpoint_dir, train_loader, test_loader):
         # Create a model
-        self.train_loader = train_loader
-        self.test_loader = test_loader
         self.transformer = TieredTransformer(transformer_config)
-        super().__init__(config, checkpoint_dir)
+        super().__init__(config, transformer_config, bidirectional, checkpoint_dir, train_loader, test_loader)
 
     def split_batch(self, batch):
         """Splits a batch into variables containing relevant data."""
