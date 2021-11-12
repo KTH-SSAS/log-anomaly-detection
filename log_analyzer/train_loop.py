@@ -160,7 +160,8 @@ def init_from_config_classes(
                                                                 trainer_config.batch_size, bidirectional, skip_sos, jagged,
                                                                 max_input_length, num_steps=3,
                                                                 context_model_dim=model_config.context_model_dim,
-                                                                context_input_dimension= model_config.input_dim)
+                                                                context_input_dimension= model_config.input_dim,
+                                                                shift_window= model_config.shift_window)
         lm_trainer = TieredTransformerTrainer(
             trainer_config, model_config, bidirectional, log_dir, train_loader, test_loader)
 
