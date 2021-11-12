@@ -170,7 +170,7 @@ def load_data_tiered(
     context_layers,
 ):
     def create_tiered_data_loader(filepath):
-        data_handler = OnlineLMBatcher(
+        data_handler = TieredLSTMBatcher(
             filepath,
             sentence_length,
             context_layers,
