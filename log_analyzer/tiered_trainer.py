@@ -145,10 +145,10 @@ class TieredLSTMTrainer(TieredTrainer):
                 X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L
             )
             self.train_loader.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
-
+            
             # Compute the loss for the output
             loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
-
+       
         # Take an optimization step based on the loss
         self.optimizer_step(loss)
 
