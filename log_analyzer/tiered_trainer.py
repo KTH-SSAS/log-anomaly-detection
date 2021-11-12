@@ -104,6 +104,18 @@ class TieredLSTMTrainer(TieredTrainer):
             C_C = C_C.cuda()
 
         return X, Y, L, M, C_V, C_H, C_C
+        
+    def eval_model(self, batch):
+        
+        # Split the batch into input, ground truth, etc.
+        X, Y, L, M, ctxt_vector, ctxt_hidden, ctxt_cell = self.split_batch(batch)
+
+        # Apply the model to input to produce the output
+        output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(
+            X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L
+        )
+        self.test_loader.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
+        return output, Y, L, M
 
     def train_step(self, batch):
         """Defines a single training step.
