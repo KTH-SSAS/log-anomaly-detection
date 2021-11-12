@@ -76,6 +76,19 @@ class TieredTrainer(Trainer):
     def eval_model(batch):
         pass
     
+class TieredLSTMTrainer(TieredTrainer):
+
+    @property
+    def model(self):
+        if self.lstm is None:
+            raise RuntimeError("Model not intialized!")
+        return self.lstm
+    
+    def __init__(self, config: TrainerConfig, lstm_config: TieredLSTMConfig, bidirectional, checkpoint_dir, train_loader, test_loader):
+
+        self.lstm = Tiered_LSTM(lstm_config, bidirectional)
+        super().__init__(config, lstm_config, bidirectional, checkpoint_dir, train_loader, test_loader)
+
     def split_batch(self, batch):
         """Splits a batch into variables containing relevant data."""
 
