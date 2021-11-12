@@ -44,7 +44,38 @@ class TieredTrainer(Trainer):
             loss += step_loss
         loss /= len(Y)
         return loss, line_losses_list, targets
-        
+
+    def eval_step(self, batch, store_eval_data=False):
+        """Defines a single evaluation step.
+
+        Feeds data through the model and computes the loss.
+        """
+        self.model.eval()
+
+        output, Y, L, M = self.eval_model(batch)
+
+        # Compute the loss for the output
+        loss, line_losses, targets = self.compute_loss(output, Y, lengths=L, mask=M)
+
+        # Save the results if desired
+        if store_eval_data:
+            preds = torch.argmax(output, dim=-1)
+            self.evaluator.add_evaluation_data(
+                torch.flatten(targets, end_dim=1),
+                torch.flatten(preds, end_dim=1),
+                torch.flatten(batch["user"], end_dim=1),
+                torch.flatten(line_losses, end_dim=1),
+                torch.flatten(batch["second"], end_dim=1),
+                torch.flatten(batch["red"], end_dim=1),
+            )
+
+        return loss, output
+    def run_model(batch):
+        pass
+
+    def eval_model(batch):
+        pass
+    
     def split_batch(self, batch):
         """Splits a batch into variables containing relevant data."""
 
