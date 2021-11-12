@@ -278,7 +278,6 @@ class OnlineLMBatcher:
         self,
         filepaths,
         sentence_length,
-        context_size,
         skipsos,
         jagged,
         bidir,
@@ -288,7 +287,6 @@ class OnlineLMBatcher:
         skiprows=0,
     ):
         self.sentence_length = sentence_length
-        self.context_size = context_size if type(context_size) is list else [context_size]
         self.jagged = jagged
         self.skipsos = skipsos
         self.bidir = bidir
@@ -311,7 +309,7 @@ class OnlineLMBatcher:
         self.saved_lstm = {}
         self.skiprows = skiprows
         self.cuda = Application.instance().using_cuda
-
+ 
     def __iter__(self):
         for datafile in self.filepaths:
             self.flush = False
@@ -342,49 +340,18 @@ class OnlineLMBatcher:
 
                                 if self.user_logs.get(user) is None:
                                     self.user_logs[user] = []
-                                    if self.cuda:
-                                        self.saved_lstm[user] = (
-                                            torch.zeros((self.context_size[0])).cuda(),
-                                            torch.zeros(
-                                                (
-                                                    len(self.context_size),
-                                                    self.context_size[0],
-                                                )
-                                            ).cuda(),
-                                            torch.zeros(
-                                                (
-                                                    len(self.context_size),
-                                                    self.context_size[0],
-                                                )
-                                            ).cuda(),
-                                        )
-                                    else:
-                                        self.saved_lstm[user] = (
-                                            torch.zeros((self.context_size[0])),
-                                            torch.zeros(
-                                                (
-                                                    len(self.context_size),
-                                                    self.context_size[0],
-                                                )
-                                            ),
-                                            torch.zeros(
-                                                (
-                                                    len(self.context_size),
-                                                    self.context_size[0],
-                                                )
-                                            ),
-                                        )
+                                    self.init_saved_model(user)
                                 self.user_logs[user].append(rowtext)
                                 if user not in self.users_ge_num_steps and len(self.user_logs[user]) >= self.num_steps:
                                     self.users_ge_num_steps.append(user)
 
                         # Before the data loader read the last line of the log.
                         if len(self.users_ge_num_steps) >= self.mb_size and self.flush == False:
-                            output, ctxt_vector, h_state, c_state = self.load_lines()
+                            output, model_info = self.load_lines()
 
                         # When the data loader read the last line of the log.
                         elif len(self.users_ge_num_steps) > 0 and self.flush:
-                            output, ctxt_vector, h_state, c_state = self.load_lines()
+                            output, model_info = self.load_lines()
 
                         # Activate the staggler mode.
                         elif len(self.users_ge_num_steps) == 0 and self.flush:
@@ -401,18 +368,8 @@ class OnlineLMBatcher:
                     batch = torch.transpose(output, 0, 1)
                     endx = batch.shape[2] - int(not self.bidir)
                     endt = batch.shape[2] - int(self.bidir)
-                    datadict = {
-                        "line": batch[:, :, 0],
-                        "second": batch[:, :, 1],
-                        "day": batch[:, :, 2],
-                        "user": batch[:, :, 3],
-                        "red": batch[:, :, 4],
-                        "input": batch[:, :, 5 + self.jagged + self.skipsos : endx],
-                        "target": batch[:, :, 6 + self.jagged + self.skipsos : endt],
-                        "context_vector": ctxt_vector,
-                        "c_state_init": torch.transpose(h_state, 0, 1),
-                        "h_state_init": torch.transpose(c_state, 0, 1),
-                    }  # state_triple['h_state_init']}
+                    datadict = self.gen_datadict(batch, endx, endt, model_info)                    
+
                     if self.jagged:
                         if self.cuda:
                             datadict["length"] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos)).cuda()
@@ -437,6 +394,12 @@ class OnlineLMBatcher:
                                 )
                     yield datadict
 
+    def init_saved_model(self, user): 
+        pass
+    def load_lines(self):
+        pass
+    def gen_datadict(self, batch, endx, endt, model_info):
+        pass
     def load_lines(self):
         output = []
         if self.cuda:
