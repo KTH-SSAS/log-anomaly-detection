@@ -139,7 +139,7 @@ def init_from_config_classes(
                                                                 trainer_config.batch_size, bidirectional, skip_sos, jagged,
                                                                 max_input_length, num_steps=3,
                                                                 context_layers=model_config.context_layers)
-        lm_trainer = TieredTrainer(
+        lm_trainer = TieredLSTMTrainer(
             trainer_config, model_config, bidirectional, log_dir, train_loader, test_loader)
     elif model_type == LSTM:
         train_loader, test_loader = data_utils.load_data(data_folder, train_days, test_days,
