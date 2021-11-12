@@ -84,7 +84,7 @@ class TieredTrainer(Trainer):
         """
         self.model.eval()
 
-        output, Y, L, M = self.eval_model(batch)
+        output, Y, L, M = self.eval_model(batch, self.test_loader)
 
         # Compute the loss for the output
         loss, line_losses, targets = self.compute_loss(output, Y, lengths=L, mask=M)
