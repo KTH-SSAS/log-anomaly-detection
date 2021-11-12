@@ -44,6 +44,38 @@ class TieredTrainer(Trainer):
             loss += step_loss
         loss /= len(Y)
         return loss, line_losses_list, targets
+    
+    
+    def train_step(self, batch):
+        """Defines a single training step.
+
+        Feeds data through the model, computes the loss and makes an
+        optimization step.
+        """
+        self.model.train()
+        self.optimizer.zero_grad()
+
+        # Split the batch into input, ground truth, etc.
+        X, Y, L, M, model_info = self.split_batch(batch)
+
+        if self.scaler is not None:
+            with torch.cuda.amp.autocast():
+                # Apply the model to input to produce the output
+                output = self.run_model(X, L, model_info, self.train_loader)
+
+                # Compute the loss for the output
+                loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
+        else:
+            # Apply the model to input to produce the output
+            output = self.run_model(X, L, model_info, self.train_loader)
+            
+            # Compute the loss for the output
+            loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
+       
+        # Take an optimization step based on the loss
+        self.optimizer_step(loss)
+
+        return loss, self.early_stopping.early_stop
 
     def eval_step(self, batch, store_eval_data=False):
         """Defines a single evaluation step.
