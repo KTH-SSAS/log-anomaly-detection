@@ -183,6 +183,18 @@ class TieredTransformerTrainer(TieredTrainer):
             
         return X, Y, L, M, C_V, C_H, H_L
 
+    def eval_model(self, batch):
+        
+        # Split the batch into input, ground truth, etc.
+        X, Y, L, M, ctxt_vector, history, history_length = self.split_batch(batch)
+
+        # Apply the model to input to produce the output
+        output, ctxt_vector, history = self.model(
+                    X, ctxt_vector, history, lengths=L)
+        self.test_loader.update_state(ctxt_vector, history)
+
+        return output, Y, L, M
+
     def train_step(self, batch):
         """Defines a single training step. Feeds data through the model, computes the loss and makes an optimization step."""
         self.model.train()
