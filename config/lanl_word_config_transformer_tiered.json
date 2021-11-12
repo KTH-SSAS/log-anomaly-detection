@@ -10,5 +10,6 @@
 	"context_layers": 6,
 	"context_feedforward_dim": 2048,
 	"context_attention_heads": 8,
-	"context_dropout": 0.1
+	"context_dropout": 0.1,
+	"shift_window": 500
 }
