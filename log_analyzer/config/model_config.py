@@ -52,13 +52,14 @@ class TransformerConfig(Config):
 class TieredTransformerConfig(TransformerConfig):
     """Configuration class for Tiered Transformer models"""
 
-    def __init__(self, context_model_dim, context_layers, context_feedforward_dim, context_attention_heads, context_dropout, *args, **kwargs) -> None:
+    def __init__(self, context_model_dim, context_layers, context_feedforward_dim, context_attention_heads, context_dropout, shift_window, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.context_model_dim = context_model_dim
         self.context_layers =  context_layers
         self.context_feedforward_dim = context_feedforward_dim
         self.context_attention_heads = context_attention_heads
         self.context_dropout = context_dropout
+        self.shift_window = shift_window
 
     @property
     def input_dim(self):
