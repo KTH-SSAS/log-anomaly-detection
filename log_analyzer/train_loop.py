@@ -133,6 +133,7 @@ def init_from_config_classes(
     # Settings for model
     lm_trainer: Trainer
     if model_type == TIERED_LSTM and isinstance(model_config, TieredLSTMConfig):
+        val_loader = None
         train_loader, test_loader = data_utils.load_data_tiered(
             data_folder,
             train_days,
@@ -147,7 +148,7 @@ def init_from_config_classes(
         )
         lm_trainer = TieredTrainer(trainer_config, model_config, bidirectional, log_dir, train_loader)
     elif model_type == LSTM and isinstance(model_config, LSTMConfig):
-        train_loader, test_loader = data_utils.load_data(
+        train_loader, val_loader, test_loader = data_utils.load_data(
             data_folder,
             train_days,
             test_days,
@@ -156,11 +157,12 @@ def init_from_config_classes(
             skip_sos,
             jagged,
             data_config.sentence_length,
+            trainer_config.train_val_split,
             shuffle_train_data,
         )
         lm_trainer = LSTMTrainer(trainer_config, model_config, bidirectional, log_dir)
     elif model_type == TRANSFORMER and isinstance(model_config, TransformerConfig):
-        train_loader, test_loader = data_utils.load_data(
+        train_loader, val_loader, test_loader = data_utils.load_data(
             data_folder,
             train_days,
             test_days,
@@ -169,6 +171,7 @@ def init_from_config_classes(
             skip_sos,
             jagged,
             data_config.sentence_length,
+            trainer_config.train_val_split,
             shuffle_train_data,
         )
         lm_trainer = TransformerTrainer(trainer_config, model_config, log_dir)
@@ -181,10 +184,10 @@ def init_from_config_classes(
     Application.artifact_name = f"{model_type}-{data_config.tokenization}"
     Application.artifact_name += "-bidir" if bidirectional else ""
 
-    return lm_trainer, train_loader, test_loader
+    return lm_trainer, train_loader, val_loader, test_loader
 
 
-def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=True):
+def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, store_eval_data=True):
     """Perform 1 epoch of training on lm_trainer."""
 
     logger = logging.getLogger(application.TRAINER_LOGGER)
@@ -197,7 +200,18 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
     if Application.instance().wandb_initialized:
         wandb.watch(lm_trainer.model)
 
+    # True if val_loader is not None, False if val_loader is None
+    run_validation = val_loader is not None
+    if run_validation:
+        # Number of times to run validation per epoch (including after each full epoch)
+        validation_frequency = 4
+        # Number of iterations between each validation run
+        validation_period = (len(train_loader) // validation_frequency) + 1
+        # Number of validation runs performed
+
     train_losses = []
+
+    val_run = 0
     for iteration, batch in enumerate(tqdm(train_loader)):
         if isinstance(lm_trainer, TieredTrainer):
             if train_loader.flush is False:
@@ -219,6 +233,24 @@ def train_model(lm_trainer: Trainer, train_loader, test_loader, store_eval_data=
             )
         train_losses.append(loss.item())
         writer.add_scalar(f'Loss/train_day_{batch["day"][0]}', loss, iteration)
+        #TODO: move the code below (not if statement) into a function?
+        if run_validation and (iteration+1) % validation_period == 0:
+            val_losses = []
+            for val_iteration, val_batch in enumerate(tqdm(val_loader)):
+                with torch.no_grad():
+                    loss, *_ = lm_trainer.eval_step(val_batch, False)
+                    val_losses.append(loss.item())
+                if Application.instance().wandb_initialized:
+                    wandb.log(
+                        {
+                            "valid/loss": loss,
+                            "valid/iteration": val_iteration,
+                            "valid/day": val_batch["day"][0],
+                            "valid/run_number": val_run,
+                        }
+                    )
+            val_run += 1
+
         if done:
             logger.info("Early stopping.")
             break

@@ -15,8 +15,8 @@ def test_evaluator_lstm(tmpdir):
     args = utils.set_args(bidir, model_type, token_level)
     args["base_logdir"] = os.path.join(tmpdir, "runs")
 
-    trainer, train_loader, test_loader = init_from_config_classes(**args)
-    train_losses, test_losses = train_model(trainer, train_loader, test_loader, store_eval_data=True)
+    trainer, train_loader, val_loader, test_loader = init_from_config_classes(**args)
+    train_losses, test_losses = train_model(trainer, train_loader, val_loader, test_loader, store_eval_data=True)
 
     # Numerical metrics
     metrics = trainer.evaluator.get_metrics()
@@ -58,8 +58,8 @@ def test_evaluator_tiered(tmpdir):
     args = utils.set_args(bidir, model_type, token_level)
     args["base_logdir"] = os.path.join(tmpdir, "runs")
 
-    trainer, train_loader, test_loader = init_from_config_classes(**args)
+    trainer, train_loader, val_loader, test_loader = init_from_config_classes(**args)
     # Only unique thing in the tiered version of the evaluator is the data
     # storing code
-    train_losses, test_losses = train_model(trainer, train_loader, test_loader, store_eval_data=True)
+    train_losses, test_losses = train_model(trainer, train_loader, val_loader, test_loader, store_eval_data=True)
     assert True

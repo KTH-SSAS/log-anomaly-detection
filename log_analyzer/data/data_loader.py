@@ -132,6 +132,9 @@ class LogDataset:
 
 
 class MapLogDataset(LogDataset, Dataset):
+    """Provides data via __getitem__, allowing arbitrary data entries to be accessed
+    via index."""
+
     def __init__(self, filepaths, bidirectional, skipsos, jagged, delimiter=" ") -> None:
         super().__init__(filepaths, bidirectional, skipsos, jagged, delimiter)
 
@@ -150,6 +153,8 @@ class MapLogDataset(LogDataset, Dataset):
 
 
 class IterableLogDataset(LogDataset, IterableDataset):
+    """Provides data via __iter__, allowing data to be accessed in order only."""
+
     def __init__(self, filepaths, bidirectional, skipsos, jagged, delimiter=" ") -> None:
         super().__init__(filepaths, bidirectional, skipsos, jagged, delimiter)
 
@@ -190,15 +195,36 @@ def load_data_tiered(
     return train_loader, test_loader
 
 
-def create_data_loader(filepath, batch_size, bidir, skipsos, jagged, max_len, shuffle=False):
-    if shuffle:
+def create_data_loaders(filepath, batch_size, bidir, skipsos, jagged, max_len, dataset_split=None, shuffle=False):
+    """Creates and returns 2 data loaders. If dataset_split is not provided the second
+    data loader is instead set to None."""
+    if shuffle or dataset_split is not None:
         dataset = MapLogDataset(filepath, bidir, skipsos, jagged, max_len)
     else:
         dataset = IterableLogDataset(filepath, bidir, skipsos, jagged, max_len)
 
+    # Split the dataset according to the split list
+    if dataset_split is not None:
+        # Ensure the list has 2 values and sums to 1
+        if sum(dataset_split) != 1:
+            raise ValueError("Sum of list of splits is not 1.")
+        if len(dataset_split) != 2:
+            raise ValueError("Split list does not contain exactly 2 values.")
+        # Convert splits into lengths as proportion of dataset length
+        dataset_split = [int(split_val * len(dataset)) for split_val in dataset_split]
+        datasets = torch.utils.data.random_split(dataset, dataset_split)
+    else:
+        # Return just a single dataset
+        datasets = [dataset, None]
+
     collate = partial(collate_fn, jagged=jagged)
-    data_handler = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate)
-    return data_handler
+    data_handlers = []
+    for dataset in datasets:
+        if dataset is None:
+            data_handlers.append(None)
+        else:
+            data_handlers.append(DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate))
+    return data_handlers
 
 
 def load_data(
@@ -210,23 +236,20 @@ def load_data(
     skipsos,
     jagged,
     sentence_length,
+    train_val_split=[1, 0],
     shuffle_train_data=True,
 ):
 
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
-    train_loader = create_data_loader(
-        filepaths_train,
-        batch_size,
-        bidir,
-        skipsos,
-        jagged,
-        sentence_length,
-        shuffle_train_data,
+    train_loader, val_loader = create_data_loaders(
+        filepaths_train, batch_size, bidir, skipsos, jagged, sentence_length, train_val_split, shuffle_train_data,
     )
-    test_loader = create_data_loader(filepaths_eval, batch_size, bidir, skipsos, jagged, sentence_length)
+    test_loader, _ = create_data_loaders(
+        filepaths_eval, batch_size, bidir, skipsos, jagged, sentence_length, dataset_split=None, shuffle=False
+    )
 
-    return train_loader, test_loader
+    return train_loader, val_loader, test_loader
 
 
 def get_mask(lens, max_len=None):
@@ -327,34 +350,14 @@ class OnlineLMBatcher:
                                     if self.cuda:
                                         self.saved_lstm[user] = (
                                             torch.zeros((self.context_size[0])).cuda(),
-                                            torch.zeros(
-                                                (
-                                                    len(self.context_size),
-                                                    self.context_size[0],
-                                                )
-                                            ).cuda(),
-                                            torch.zeros(
-                                                (
-                                                    len(self.context_size),
-                                                    self.context_size[0],
-                                                )
-                                            ).cuda(),
+                                            torch.zeros((len(self.context_size), self.context_size[0],)).cuda(),
+                                            torch.zeros((len(self.context_size), self.context_size[0],)).cuda(),
                                         )
                                     else:
                                         self.saved_lstm[user] = (
                                             torch.zeros((self.context_size[0])),
-                                            torch.zeros(
-                                                (
-                                                    len(self.context_size),
-                                                    self.context_size[0],
-                                                )
-                                            ),
-                                            torch.zeros(
-                                                (
-                                                    len(self.context_size),
-                                                    self.context_size[0],
-                                                )
-                                            ),
+                                            torch.zeros((len(self.context_size), self.context_size[0],)),
+                                            torch.zeros((len(self.context_size), self.context_size[0],)),
                                         )
                                 self.user_logs[user].append(rowtext)
                                 if user not in self.users_ge_num_steps and len(self.user_logs[user]) >= self.num_steps:

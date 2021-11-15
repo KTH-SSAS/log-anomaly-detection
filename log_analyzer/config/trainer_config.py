@@ -18,6 +18,7 @@ class TrainerConfig(Config):
         shuffle_train_data,
         batch_size,
         epochs,
+        train_val_split,
         learning_rate,
         early_stopping,
         early_stop_patience,
@@ -32,6 +33,7 @@ class TrainerConfig(Config):
         self.test_files = test_files
         self.shuffle_train_data = shuffle_train_data
         self.epochs = epochs
+        self.train_val_split = train_val_split
 
         # Optimization
         self.batch_size = batch_size
