@@ -2,12 +2,17 @@
 import math
 
 import torch
-import torch.nn as nn
-from torch import Tensor
+from torch import Tensor, nn
 
 from log_analyzer.config.model_config import TransformerConfig
 from log_analyzer.model.lstm import LogModel
 from log_analyzer.model.model_util import initialize_weights
+
+
+def _generate_square_subsequent_mask(sz):
+    mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
+    mask = mask.float().masked_fill(mask == 0, float("-inf")).masked_fill(mask == 1, float(0.0))
+    return mask
 
 
 # Positional Encoding class taken from PyTorch word_language_model example code:
@@ -30,7 +35,7 @@ class PositionalEncoding(nn.Module):
     """
 
     def __init__(self, d_model, dropout=0.1, max_len=5000):
-        super(PositionalEncoding, self).__init__()
+        super().__init__()
         self.dropout = nn.Dropout(p=dropout)
 
         pe = torch.zeros(max_len, d_model)
@@ -58,8 +63,8 @@ class PositionalEncoding(nn.Module):
 
 
 class NoPositionalEncoding(nn.Module):
-    def __init__(self, d_model=None, dropout=0.1, max_len=None):
-        super(NoPositionalEncoding, self).__init__()
+    def __init__(self, dropout=0.1):
+        super().__init__()
         self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x):
@@ -95,11 +100,6 @@ class Transformer(LogModel):
 
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
-    def _generate_square_subsequent_mask(self, sz):
-        mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
-        mask = mask.float().masked_fill(mask == 0, float("-inf")).masked_fill(mask == 1, float(0.0))
-        return mask
-
     def forward(self, src: torch.Tensor, lengths=None, mask=None, has_mask=True):
         # batch size, sequence length, embedded dimension
         # lengths is currently ignored, added for compatibility with LSTM-training code
@@ -107,7 +107,7 @@ class Transformer(LogModel):
         if has_mask:
             device = src.device
             if self.src_mask is None or self.src_mask.shape[-1] != src.shape[-1]:
-                mask = self._generate_square_subsequent_mask(src.shape[-1]).to(device)
+                mask = _generate_square_subsequent_mask(src.shape[-1]).to(device)
                 self.src_mask = mask
         else:
             self.src_mask = None
