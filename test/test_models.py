@@ -24,7 +24,7 @@ def test_lstm(tmpdir, model_type, bidir, tokenization, cuda):
 
 # TODO make the char test not fail
 @pytest.mark.parametrize(
-    "tokenization", ["word", pytest.param("char", marks=pytest.mark.skip(reason="Not implemented"))]
+    "tokenization", ["word", "char"]
 )
 def test_transformer(tmpdir, tokenization):
 

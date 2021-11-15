@@ -53,12 +53,8 @@ class Trainer(ABC):
         """Computes the loss for the given model output and ground truth."""
         targets = Y
         if lengths is not None:
-            if self.model.bidirectional:
-                token_losses = self.criterion(output.transpose(1, 2), targets)
-                masked_losses = token_losses * mask
-            else:
-                token_losses = self.criterion(output.transpose(1, 2), targets)
-                masked_losses = token_losses * mask
+            token_losses = self.criterion(output.transpose(1, 2), targets)
+            masked_losses = token_losses * mask
             line_losses = torch.sum(masked_losses, dim=1)
         else:
             token_losses = self.criterion(output.transpose(1, 2), Y)
