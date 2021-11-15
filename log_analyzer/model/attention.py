@@ -2,11 +2,11 @@
 
 import matplotlib.pyplot as plt
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 from torch.functional import Tensor
 
-import log_analyzer.application as application
+from log_analyzer import application
 
 
 def generate_mask(seq_len, hidden_dim, use_cuda=False):
@@ -40,7 +40,6 @@ class SelfAttention(nn.Module):
         self.use_cuda = application.Application.instance().using_cuda
         self.w_a = nn.Parameter(torch.Tensor(hidden_dim, attention_dim))
         torch.nn.init.xavier_normal_(self.w_a)
-        # TODO add the other types
         self.attention_type = attention_type
         # Depending on the type of attention, the query vector has different
         # dimensions
@@ -67,14 +66,17 @@ class SelfAttention(nn.Module):
             self.softmax_mask = None
 
     def forward(self, x: torch.Tensor, attention_mask: torch.Tensor = None):
-        """Calculate attention weights for input sequence."""
+        """Calculate attention weights for input sequence.
+
+        For fixed attention, the hidden states are replicated and masked
+        in order to get an attention matrix of size LxL
+        """
 
         use_cuda = self.use_cuda
 
         seq_len = x.shape[1]
-        if (
-            self.attention_type == "fixed"
-        ):  # For fixed attention, the hidden states are replicated and masked in order to get an attention matrix of size LxL
+        if self.attention_type == "fixed":
+
             mask = (
                 generate_mask(seq_len, hidden_dim=x.shape[-1], use_cuda=use_cuda)
                 if self.input_mask is None
@@ -88,7 +90,7 @@ class SelfAttention(nn.Module):
 
         key = torch.tanh(torch.matmul(values, self.w_a))
 
-        if self.attention_type == "fixed" or self.attention_type == "syntax":
+        if self.attention_type in ("fixed", "syntax"):
             q = self.query
         else:
             q = torch.matmul(values, self.query)
