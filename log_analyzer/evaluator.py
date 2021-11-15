@@ -328,7 +328,6 @@ class Evaluator:
     def plot_roc_curve(
         self,
         color="orange",
-        xaxis="FPR",
         title="ROC",
         auc_in_title=True,
         use_wandb=False,
@@ -381,15 +380,6 @@ class Evaluator:
             red_flag_count = sum(self.data["red_flags"])
             non_red_flag_count = len(self.data["red_flags"]) - red_flag_count
             xlabel = "False Positive Rate"
-            if xaxis.lower() == "alerts":
-                # Multiply the fp_rate by the number of events in the eval set to convert
-                # fp_rate into fp's per second
-                fp_rate *= red_flag_count
-                xlabel += " - Alerts per second"
-            elif xaxis.lower() == "alerts-fpr":
-                total_alerts = fp_rate * non_red_flag_count + tp_rate * red_flag_count
-                fp_rate = tp_rate * red_flag_count / total_alerts
-                xlabel += " - Precision"
 
             plt.plot(
                 fp_rate,

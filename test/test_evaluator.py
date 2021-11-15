@@ -40,9 +40,8 @@ def test_evaluator_lstm(tmpdir):
                 )
 
     # ROC curve plot
-    for xaxis in ["FPR", "alerts", "alerts-FPR"]:
-        auc_score, _ = trainer.evaluator.plot_roc_curve(xaxis=xaxis)
-        assert auc_score > 0 and auc_score < 1
+    auc_score, _ = trainer.evaluator.plot_roc_curve()
+    assert auc_score > 0 and auc_score < 1
 
     # Data normalisation
     assert not trainer.evaluator.data_is_normalized
