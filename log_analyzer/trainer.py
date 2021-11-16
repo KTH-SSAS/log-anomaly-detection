@@ -8,7 +8,7 @@ from log_analyzer.application import Application
 from log_analyzer.config.model_config import LSTMConfig, TransformerConfig
 from log_analyzer.config.trainer_config import TrainerConfig
 from log_analyzer.evaluator import Evaluator
-from log_analyzer.model.lstm import Bid_LSTM, Fwd_LSTM, LogModel
+from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel
 from log_analyzer.model.transformer import Transformer
 
 # TODO name this something more descriptive, it might be used as a wrapper
@@ -55,12 +55,8 @@ class Trainer(ABC):
         """Computes the loss for the given model output and ground truth."""
         targets = Y
         if lengths is not None:
-            if self.model.bidirectional:
-                token_losses = self.criterion(output.transpose(1, 2), targets)
-                masked_losses = token_losses * mask
-            else:
-                token_losses = self.criterion(output.transpose(1, 2), targets)
-                masked_losses = token_losses * mask
+            token_losses = self.criterion(output.transpose(1, 2), targets)
+            masked_losses = token_losses * mask
             line_losses = torch.sum(masked_losses, dim=1)
         else:
             token_losses = self.criterion(output.transpose(1, 2), Y)
@@ -185,7 +181,7 @@ class LSTMTrainer(Trainer):
         checkpoint_dir,
     ):
 
-        model = Bid_LSTM if bidirectional else Fwd_LSTM
+        model = BidLSTM if bidirectional else FwdLSTM
         # Create a model
         self.lstm = model(lstm_config)
 

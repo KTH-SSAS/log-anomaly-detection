@@ -2,8 +2,8 @@ import torch
 
 from log_analyzer.config.model_config import TieredLSTMConfig, TransformerConfig
 from log_analyzer.config.trainer_config import TrainerConfig
-from log_analyzer.model.lstm import Tiered_LSTM
 from log_analyzer.model.transformer import TieredTransformer
+from log_analyzer.model.lstm import TieredLSTM
 from log_analyzer.trainer import Trainer
 
 

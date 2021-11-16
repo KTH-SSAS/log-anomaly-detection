@@ -1,13 +1,13 @@
 {
 	"layers": [
-		10
+		128
 	],
 	"context_layers": [
-		10
+		128
 	],
 	"attention_type": null,
 	"attention_dim": 0,
-	"embedding_dim": 20,
-	"vocab_size": 96,
+	"embedding_dim": 128,
+	"vocab_size": 28199,
 	"sequence_length": null
 }

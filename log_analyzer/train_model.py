@@ -1,6 +1,13 @@
+import logging
+import os
 from argparse import ArgumentParser
 
-from log_analyzer.train_model import main
+import torch
+
+import wandb
+from log_analyzer.application import Application
+from log_analyzer.eval_model import eval_model
+from log_analyzer.train_loop import init_from_args, train_model
 
 """
 Entrypoint script for training
@@ -19,11 +26,44 @@ data/data_examples/raw_day_split,
 --bidir
 """
 
+
+def main(args):
+
+    #  Start a W&B run
+
+    os.environ["WANDB_MODE"] = "online" if args.wandb_sync else "offline"
+
+    wandb.init(project="logml", entity="log-data-ml", config=args)
+    wandb_initalized = True
+
+    if args.use_cuda and not torch.cuda.is_available():
+        print("CUDA not available. Ignoring the --cuda option.")
+        cuda = False
+    else:
+        cuda = args.use_cuda
+
+    Application(cuda=cuda, wandb=wandb_initalized)
+
+    if args.verbose:
+        log_level = "DEBUG"
+    else:
+        log_level = "INFO"
+
+    logging.basicConfig(level=log_level)
+
+    # Create the trainer+model
+    trainer, train_loader, test_loader = init_from_args(args)
+    # Train the model
+    train_model(trainer, train_loader, test_loader, store_eval_data=args.eval_model)
+
+    # Perform standard evaluation on the model
+    if args.eval_model and Application.instance().wandb_initialized:
+        eval_model(trainer)
+
+
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument(
-        "--model-type", choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer"], required=True
-    )
+    parser.add_argument("--model-type", choices=["lstm", "tiered-lstm", "transformer"], required=True)
     parser.add_argument("--model-config", type=str, help="Model configuration file.", required=True)
     parser.add_argument("--data-config", type=str, help="Data description file.", required=True)
     parser.add_argument("--data-folder", type=str, help="Path to data files.", required=True)
