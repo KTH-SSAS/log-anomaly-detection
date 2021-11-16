@@ -133,7 +133,7 @@ class TieredLSTMTrainer(TieredTrainer):
         test_loader,
     ):
 
-        self.lstm = Tiered_LSTM(lstm_config, bidirectional)
+        self.lstm = TieredLSTM(lstm_config, bidirectional)
         super().__init__(config, lstm_config, bidirectional, checkpoint_dir, train_loader, test_loader)
 
     def split_batch(self, batch):
