@@ -140,6 +140,7 @@ def init_from_config_classes(
             model_config.sequence_length = max_input_length
 
     # Settings for model
+    lm_trainer: Trainer
     if model_type == TIERED_LSTM and isinstance(model_config, TieredLSTMConfig):
         train_loader, test_loader = data_utils.load_data_tiered(
             data_folder,
@@ -180,8 +181,7 @@ def init_from_config_classes(
             shuffle_train_data,
         )
         lm_trainer = TransformerTrainer(trainer_config, model_config, log_dir)
-    elif model_type == TIERED_TRANSFORMER:
-        model_config: TieredTransformerConfig = model_config
+    elif model_type == TIERED_TRANSFORMER and isinstance(model_config, TieredTransformerConfig):
         train_loader, test_loader = data_utils.load_data_tiered_trans(
             data_folder,
             train_days,
@@ -192,7 +192,7 @@ def init_from_config_classes(
             jagged,
             max_input_length,
             num_steps=3,
-            context_model_dim=model_config.context_model_dim,
+            context_model_dim=model_config.context_config.model_dim,
             context_input_dimension=model_config.input_dim,
             shift_window=model_config.shift_window,
         )

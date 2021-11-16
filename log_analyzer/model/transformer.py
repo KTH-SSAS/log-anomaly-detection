@@ -83,19 +83,13 @@ class TransformerLanguageModel(LogModel):
         super().__init__(config)
         self.config: TransformerConfig = config
         self.src_mask = None
-        if isinstance(self, Transformer):
-            self.dropout = config.dropout
-            self.model_dim = config.model_dim
-            self.layers = config.layers
-            self.attention_heads = config.attention_heads
-            self.feedforward_dim = config.feedforward_dim
-            self.vocab_size = config.vocab_size
-        elif isinstance(self, ContextTransformer):
-            self.dropout = config.context_dropout
-            self.model_dim = config.context_model_dim
-            self.layers = config.context_layers
-            self.attention_heads = config.context_attention_heads
-            self.feedforward_dim = config.context_feedforward_dim
+
+        self.dropout = config.dropout
+        self.model_dim = config.model_dim
+        self.layers = config.layers
+        self.attention_heads = config.attention_heads
+        self.feedforward_dim = config.feedforward_dim
+        self.vocab_size = config.vocab_size
 
         self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout)
         encoder_layers = nn.TransformerEncoderLayer(
@@ -130,7 +124,7 @@ class Transformer(TransformerLanguageModel):
         self.bidirectional = False  # TODO: Change this when we make a bidirectional model.
         self.word_embedding = nn.Embedding(self.vocab_size, self.model_dim)
         if isinstance(config, TieredTransformerConfig):
-            self.reduce_dimension = nn.Linear(self.config.input_dim, self.model_dim)
+            self.reduce_dimension = nn.Linear(config.input_dim, self.model_dim)
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
     def forward(self, src, ctx_vector=None, lengths=None, mask=None, has_mask=True):
@@ -168,10 +162,10 @@ class ContextTransformer(TransformerLanguageModel):
     """Container module with an encoder, a recurrent or transformer module, and
     a decoder."""
 
-    def __init__(self, config: TransformerConfig):
+    def __init__(self, config: TieredTransformerConfig):
         self.name = "Context_Transformer"
-        super().__init__(config)
-        self.reduce_dimension = nn.Linear(2 * config.model_dim, config.context_model_dim)
+        super().__init__(config.context_config)
+        self.reduce_dimension = nn.Linear(2 * config.model_dim, config.context_config.model_dim)
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
     def forward(self, ctx_history, lengths=None, mask=None, has_mask=True):
@@ -179,7 +173,7 @@ class ContextTransformer(TransformerLanguageModel):
         self.src_mask = super().forward(ctx_history, has_mask)
         ctx_input = self.reduce_dimension(ctx_history)  # ctx_input (batch size, sequence length, 2 * model dimension)
         ctx_embeddings = ctx_input * math.sqrt(
-            self.config.context_model_dim * 2
+            self.config.model_dim * 2
         )  # ctx_embeddings (batch size, sequence length, model dimension)
         tf_input = self.pos_encoder(ctx_embeddings)  # tf_input (batch size, sequence length, model dimension)
         context_output = self.transformer_encoder(tf_input, self.src_mask)[
@@ -190,15 +184,15 @@ class ContextTransformer(TransformerLanguageModel):
 
 
 class TieredTransformer(LogModel):
-    def __init__(self, config: TransformerConfig):
+    def __init__(self, config: TieredTransformerConfig):
         super().__init__(config)
         self.name = "Tiered_Transformer"
-        self.config = config
+        self.config: TieredTransformerConfig = config
         self.src_mask = None
         self.log_transformer = Transformer(config)
         self.context_transformer = ContextTransformer(config)
 
-    def forward(self, src, ctxt_vector, ctx_history, lengths=None, mask=None, has_mask=True):
+    def forward(self, src: Tensor, ctxt_vector, ctx_history, lengths=None, mask=None, has_mask=True):
         # src (num of series, batch size, sequence length, embedded dimension)
         # lengths is currently ignored, added for compatibility with LSTM-training code
         # TODO: compatibility with character level encoding
@@ -210,7 +204,7 @@ class TieredTransformer(LogModel):
             else:
                 tag_output = torch.empty_like(src, dtype=torch.float)
         else:
-            tag_output = torch.zeros((src.shape[0], src.shape[1], torch.max(lengths)), dtype=torch.float)
+            tag_output = torch.zeros((src.shape[0], src.shape[1], int(torch.max(lengths))), dtype=torch.float)
 
         tag_output = tag_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
 
@@ -219,7 +213,7 @@ class TieredTransformer(LogModel):
             if ctxt_vector is None:
                 ################ First loop without any history ##############################
                 device = src.device
-                ctxt_vector = torch.zeros(batch_size, self.config.context_model_dim).to(device)
+                ctxt_vector = torch.zeros(batch_size, self.config.context_config.model_dim).to(device)
 
             ################ Low level transformer ############################################
             logits, tf_hidden = self.log_transformer(
