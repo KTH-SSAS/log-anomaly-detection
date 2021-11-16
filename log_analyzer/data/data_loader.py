@@ -195,7 +195,7 @@ def load_data_tiered(
     return train_loader, test_loader
 
 
-def create_data_loaders(filepath, batch_size, bidir, skipsos, jagged, max_len, dataset_split=None, shuffle=False):
+def create_data_loaders(filepath, batch_size, bidir, skipsos, jagged, max_len, shuffle=False, dataset_split=None):
     """Creates and returns 2 data loaders. If dataset_split is not provided the second
     data loader is instead set to None."""
     if shuffle or dataset_split is not None:
@@ -243,10 +243,10 @@ def load_data(
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
     train_loader, val_loader = create_data_loaders(
-        filepaths_train, batch_size, bidir, skipsos, jagged, sentence_length, train_val_split, shuffle_train_data,
+        filepaths_train, batch_size, bidir, skipsos, jagged, sentence_length, shuffle_train_data, train_val_split
     )
     test_loader, _ = create_data_loaders(
-        filepaths_eval, batch_size, bidir, skipsos, jagged, sentence_length, dataset_split=None, shuffle=False
+        filepaths_eval, batch_size, bidir, skipsos, jagged, sentence_length, shuffle=False, dataset_split=None
     )
 
     return train_loader, val_loader, test_loader
