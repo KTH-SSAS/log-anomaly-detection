@@ -1,6 +1,6 @@
 import json
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 
 @dataclass
@@ -13,7 +13,13 @@ class Config:
     def save_config(self, filename):
         """save configuration as json file."""
         with open(filename, "w") as f:
-            json.dump(self.__dict__, f, indent="\t")
+            dictionary = self.__dict__
+
+            for key, item in dictionary.items():
+                if isinstance(item, Config):
+                    dictionary[key] = asdict(item)
+
+            json.dump(dictionary, f, indent="\t")
 
     def load_config(self, filename):
         """load configuration from json file."""
