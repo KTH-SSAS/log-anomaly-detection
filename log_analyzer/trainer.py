@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
+from typing import Optional
 
 import torch
-from torch.cuda.amp.grad_scaler import GradScaler
 import torch.nn as nn
+from torch.cuda.amp.grad_scaler import GradScaler
 
 import log_analyzer.model.early_stopping as early_stopping
 from log_analyzer.application import Application
@@ -11,7 +12,7 @@ from log_analyzer.config.trainer_config import TrainerConfig
 from log_analyzer.evaluator import Evaluator
 from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel
 from log_analyzer.model.transformer import Transformer
-from typing import Optional
+
 # TODO name this something more descriptive, it might be used as a wrapper
 # around both transformer/LSTM
 
