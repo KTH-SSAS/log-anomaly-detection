@@ -2,7 +2,7 @@ import torch
 
 from log_analyzer.config.model_config import TieredLSTMConfig
 from log_analyzer.config.trainer_config import TrainerConfig
-from log_analyzer.model.lstm import Tiered_LSTM
+from log_analyzer.model.lstm import TieredLSTM
 from log_analyzer.trainer import Trainer
 
 
@@ -24,7 +24,7 @@ class TieredTrainer(Trainer):
         data_handler,
     ):
 
-        self.lstm = Tiered_LSTM(lstm_config, bidirectional)
+        self.lstm = TieredLSTM(lstm_config, bidirectional)
         self.data_handler = data_handler
         super().__init__(config, checkpoint_dir)
 

@@ -101,7 +101,7 @@ class LSTMLanguageModel(LogModel):
         return lstm_out, hx
 
 
-class Fwd_LSTM(LSTMLanguageModel):
+class FwdLSTM(LSTMLanguageModel):
     def __init__(self, config: LSTMConfig):
         self.name = "LSTM"
         super().__init__(config)
@@ -124,7 +124,7 @@ class Fwd_LSTM(LSTMLanguageModel):
         return False
 
 
-class Bid_LSTM(LSTMLanguageModel):
+class BidLSTM(LSTMLanguageModel):
     def __init__(self, config: LSTMConfig):
         self.name = "LSTM-Bid"
         super().__init__(config)
@@ -162,7 +162,7 @@ class Bid_LSTM(LSTMLanguageModel):
         return True
 
 
-class Context_LSTM(nn.Module):
+class ContextLSTM(nn.Module):
     def __init__(self, ctxt_lv_layers, input_dim):
         super().__init__()
         # Parameter setting
@@ -188,16 +188,16 @@ class Context_LSTM(nn.Module):
         return output, context_hx, context_cx
 
 
-class Tiered_LSTM(LogModel):
+class TieredLSTM(LogModel):
     def __init__(self, config: TieredLSTMConfig, bidirectional):
 
         super().__init__(config)
         # Parameter setting
         self.model: Type[LSTMLanguageModel]
         if bidirectional:
-            self.model = Bid_LSTM
+            self.model = BidLSTM
         else:
-            self.model = Fwd_LSTM
+            self.model = FwdLSTM
 
         low_lv_layers = config.layers
 
@@ -212,7 +212,7 @@ class Tiered_LSTM(LogModel):
             input_features = low_lv_layers[-1] * 4
         else:
             input_features = low_lv_layers[-1] * 2
-        self.ctxt_lv_lstm = Context_LSTM(config.context_layers, input_features)
+        self.ctxt_lv_lstm = ContextLSTM(config.context_layers, input_features)
 
         # Weight initialization
         initialize_weights(self)
@@ -265,7 +265,8 @@ class Tiered_LSTM(LogModel):
 
 
 # if __name__ == "__main__":
-# I tried to make this code self-explanatory, but if there is any difficulty to understand ti or possible improvements, please tell me.
+# I tried to make this code self-explanatory,
+# but if there is any difficulty to understand ti or possible improvements, please tell me.
 # test_layers = [10, 10]  # each layer has to have the same hidden units.
 # test_vocab_size = 96
 # test_embedding_dim = 30

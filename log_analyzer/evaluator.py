@@ -257,7 +257,7 @@ class Evaluator:
         Smoothing indicates how many seconds are processed as one batch
         for percentile calculations (e.g. 60 means percentiles are
         computed for every minute). Outliers determines how many non-
-        redteam outliers are plotted onto the graph (per hour of data).
+        red team outliers are plotted onto the graph (per hour of data).
         """
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
@@ -312,10 +312,10 @@ class Evaluator:
                 color=colors[idx],
                 label=f"{percentiles[idx]}-{percentiles[idx + 1]} Percentile",
             )
-        # plot the non-redteam outliers
+        # plot the non-red-team outliers
         if outliers > 0:
             plt.plot(blue_seconds, blue_losses, "bo", label="Outlier normal events")
-        # plot the redteam events
+        # plot the red team events
         plt.plot(red_seconds, red_losses, "r+", label="Red team events")
         if ylim[0] >= 0 and ylim[1] > 0:
             plt.ylim(ylim)
@@ -329,11 +329,10 @@ class Evaluator:
         self,
         color="orange",
         title="ROC",
-        auc_in_title=True,
         use_wandb=False,
     ):
         """Plots the ROC (Receiver Operating Characteristic) curve, i.e. TP-FP
-        tradeoff Also returns the corresponding auc score.
+        tradeoff. Also returns the corresponding auc score.
 
         Options for xaxis are:
         'FPR': False-positive rate. The default.
@@ -355,8 +354,6 @@ class Evaluator:
             tp_rate = np.append(tp_rate, full_tp_rate[-1])
         # Erase the full fp and tp lists
         full_fp_rate = full_tp_rate = []
-        if auc_in_title:
-            title += f", AUC={auc_score:.3f}"
         if use_wandb:
             # ROC Curve is to be uploaded to wandb, so plot using a "fixed"
             # version of their plot.roc_curve function
@@ -393,3 +390,66 @@ class Evaluator:
             plt.title(title)
             plt.legend()
             return auc_score, plt
+
+    def plot_pr_curve(self, color="orange", title="Precision-Recall Curve", use_wandb=False):
+        """Plots the Precision-Recall curve, and returns the corresponding auc
+        score."""
+        if not self.data_is_prepared:
+            self.prepare_evaluation_data()
+        full_precision, full_recall, _ = metrics.precision_recall_curve(
+            self.data["red_flags"], self.data["losses"], pos_label=1
+        )
+        # Get average precision score as a summary score for PR
+        AP_score = metrics.average_precision_score(self.data["red_flags"], self.data["losses"])
+
+        # Scale precision, recall down to contain <10'000 values
+        # E.g. if original length is 1'000'000, only take every 100th value
+        step_size = (len(full_precision) // 10000) + 1
+        precision = full_precision[::step_size]
+        recall = full_recall[::step_size]
+
+        # Ensure the last value in full_precision and full_recall is included
+        if precision[-1] != full_precision[-1]:
+            precision = np.append(precision, full_precision[-1])
+            recall = np.append(recall, full_recall[-1])
+        # Erase the full fp and tp lists
+        full_precision = full_recall = full_thresh = []
+
+        # Round to 5 digits
+        precision = list(map(lambda x: round(x, 5), precision))
+        recall = list(map(lambda x: round(x, 5), recall))
+
+        if use_wandb:
+            # PR Curve is to be uploaded to wandb, so plot using a "fixed"
+            # version of their plot.pr_curve function
+            table = wandb.Table(
+                columns=["class", "recall", "precision"],
+                data=list(zip(["" for _ in recall], recall, precision)),
+            )
+            wandb_plot = wandb.plot_table(
+                "wandb/area-under-curve/v0",
+                table,
+                {"x": "recall", "y": "precision", "class": "class"},
+                {
+                    "title": "Precision v. Recall",
+                    "x-axis-title": "Recall",
+                    "y-axis-title": "Precision",
+                },
+            )
+            return AP_score, wandb_plot
+        else:
+            # Plot using scikit-learn and matplotlib
+            xlabel = "Recall"
+            ylabel = "Precision"
+            plt.plot(
+                recall,
+                precision,
+                color=color,
+                lw=2,
+                label=f"Intrusion events",
+            )
+            plt.xlabel(xlabel)
+            plt.ylabel(ylabel)
+            plt.title(title)
+            plt.legend()
+            return AP_score, plt

@@ -4,6 +4,7 @@ import os
 import pytest
 import utils
 
+from log_analyzer.eval_model import eval_model
 from log_analyzer.train_loop import init_from_config_classes, train_model
 
 
@@ -43,6 +44,10 @@ def test_evaluator_lstm(tmpdir):
     auc_score, _ = trainer.evaluator.plot_roc_curve()
     assert auc_score > 0 and auc_score < 1
 
+    # PR curve plot
+    ap_score, _ = trainer.evaluator.plot_pr_curve()
+    assert ap_score > 0 and ap_score < 1
+
     # Data normalisation
     assert not trainer.evaluator.data_is_normalized
     trainer.evaluator.normalize_losses()
@@ -58,7 +63,7 @@ def test_evaluator_tiered(tmpdir):
     args["base_logdir"] = os.path.join(tmpdir, "runs")
 
     trainer, train_loader, val_loader, test_loader = init_from_config_classes(**args)
-    # Only unique thing in the tiered version of the evaluator is the data
-    # storing code
+    # Only unique thing in the tiered version of the evaluator is the data-storing code
     train_losses, test_losses = train_model(trainer, train_loader, val_loader, test_loader, store_eval_data=True)
+    eval_model(trainer)
     assert True

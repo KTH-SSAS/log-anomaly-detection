@@ -1,10 +1,9 @@
+import pytest
 import torch
 from torch.utils.data import DataLoader
 
 from log_analyzer.config.trainer_config import DataConfig
 from log_analyzer.data.data_loader import IterableLogDataset, MapLogDataset, create_data_loaders
-
-import pytest
 
 
 def batch_equal(v1: torch.Tensor, v2: torch.Tensor):
@@ -18,7 +17,7 @@ def test_data_loader_char(shuffle, bidirectional):
     from log_analyzer.train_loop import calculate_max_input_length
 
     filepath = "data/test_data/char_day_split/0.txt"
-    data_config = DataConfig.init_from_file("config/lanl_char_config_data.json")
+    data_config = DataConfig.init_from_file("config/lanl_config_data_char.json")
     batch_size = 10
     skip_sos = False
     jagged = True
@@ -42,7 +41,7 @@ def test_data_loader_word(shuffle, bidirectional):
     from log_analyzer.train_loop import calculate_max_input_length
 
     filepath = "data/test_data/word_day_split/0.txt"
-    data_config = DataConfig.init_from_file("config/lanl_word_config_data.json")
+    data_config = DataConfig.init_from_file("config/lanl_config_data_word.json")
     batch_size = 10
     skip_sos = False
     jagged = False
