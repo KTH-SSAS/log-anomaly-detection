@@ -1,6 +1,6 @@
 # LSTM LM model
 
-from typing import Type
+from typing import Optional, Type
 
 import torch
 import torch.nn as nn
@@ -42,6 +42,7 @@ class LSTMLanguageModel(LogModel):
         if self.bidirectional:  # If LSMTM is bidirectional, its output hidden states will be twice as large
             fc_input_dim *= 2
         # If LSTM is using attention, its hidden states will be even wider.
+        seq_len: Optional[int]
         if config.attention_type is not None:
             if config.sequence_length is not None:
                 seq_len = config.sequence_length

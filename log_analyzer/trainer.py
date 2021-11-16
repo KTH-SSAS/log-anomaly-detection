@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 
 import torch
+from torch.cuda.amp.grad_scaler import GradScaler
 import torch.nn as nn
 
 import log_analyzer.model.early_stopping as early_stopping
@@ -10,7 +11,7 @@ from log_analyzer.config.trainer_config import TrainerConfig
 from log_analyzer.evaluator import Evaluator
 from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel
 from log_analyzer.model.transformer import Transformer
-
+from typing import Optional
 # TODO name this something more descriptive, it might be used as a wrapper
 # around both transformer/LSTM
 
@@ -43,6 +44,7 @@ class Trainer(ABC):
             gamma=config.scheduler_gamma,
         )
         self.use_scheduler = bool(config.scheduler_step_size)
+        self.scaler: Optional[GradScaler]
         if config.mixed_precision:
             self.scaler = torch.cuda.amp.GradScaler()
         else:
@@ -68,7 +70,7 @@ class Trainer(ABC):
 
     def optimizer_step(self, loss: torch.Tensor):
         """Performs one step of optimization on the given loss."""
-        if self.config.mixed_precision:
+        if self.config.mixed_precision and isinstance(self.scaler, GradScaler):
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
             self.scaler.update()

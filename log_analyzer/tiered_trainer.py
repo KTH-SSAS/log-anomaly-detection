@@ -1,9 +1,9 @@
 import torch
 
-from log_analyzer.config.model_config import TieredLSTMConfig, TransformerConfig
+from log_analyzer.config.model_config import ModelConfig, TieredLSTMConfig, TieredTransformerConfig
 from log_analyzer.config.trainer_config import TrainerConfig
-from log_analyzer.model.transformer import TieredTransformer
 from log_analyzer.model.lstm import TieredLSTM
+from log_analyzer.model.transformer import TieredTransformer
 from log_analyzer.trainer import Trainer
 
 
@@ -13,7 +13,7 @@ class TieredTrainer(Trainer):
     def __init__(
         self,
         config: TrainerConfig,
-        lstm_config: TieredLSTMConfig,
+        model_config: ModelConfig,
         bidirectional,
         checkpoint_dir,
         train_loader,
@@ -185,7 +185,7 @@ class TieredTransformerTrainer(TieredTrainer):
     def __init__(
         self,
         config: TrainerConfig,
-        transformer_config: TransformerConfig,
+        transformer_config: TieredTransformerConfig,
         bidirectional,
         checkpoint_dir,
         train_loader,
