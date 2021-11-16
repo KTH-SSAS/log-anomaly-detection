@@ -388,8 +388,6 @@ class Evaluator:
                 lw=2,
                 label=f"ROC curve (area = {auc_score:.2f})",
             )
-            if xaxis.lower() == "fpr":
-                plt.plot([0, 1], [0, 1], lw=2, linestyle="--")
             plt.xlabel(xlabel)
             plt.ylabel("True Positive Rate")
             plt.title(title)
