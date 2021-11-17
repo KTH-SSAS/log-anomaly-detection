@@ -3,9 +3,9 @@ import os
 import socket
 from datetime import datetime
 
+import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-import numpy as np
 
 import log_analyzer.application as application
 import log_analyzer.data.data_loader as data_utils
@@ -187,6 +187,7 @@ def init_from_config_classes(
 
     return lm_trainer, train_loader, val_loader, test_loader
 
+
 def validation_run(lm_trainer: Trainer, val_loader, iteration=0, val_run=0):
     val_losses = []
     for val_batch in tqdm(val_loader):
@@ -204,6 +205,7 @@ def validation_run(lm_trainer: Trainer, val_loader, iteration=0, val_run=0):
             }
         )
     # return val_losses
+
 
 def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, store_eval_data=True):
     """Perform 1 epoch of training on lm_trainer."""

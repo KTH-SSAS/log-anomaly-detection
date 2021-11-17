@@ -132,8 +132,8 @@ class LogDataset:
 
 
 class MapLogDataset(LogDataset, Dataset):
-    """Provides data via __getitem__, allowing arbitrary data entries to be accessed
-    via index."""
+    """Provides data via __getitem__, allowing arbitrary data entries to be
+    accessed via index."""
 
     def __init__(self, filepaths, bidirectional, skipsos, jagged, delimiter=" ") -> None:
         super().__init__(filepaths, bidirectional, skipsos, jagged, delimiter)
@@ -153,7 +153,8 @@ class MapLogDataset(LogDataset, Dataset):
 
 
 class IterableLogDataset(LogDataset, IterableDataset):
-    """Provides data via __iter__, allowing data to be accessed in order only."""
+    """Provides data via __iter__, allowing data to be accessed in order
+    only."""
 
     def __init__(self, filepaths, bidirectional, skipsos, jagged, delimiter=" ") -> None:
         super().__init__(filepaths, bidirectional, skipsos, jagged, delimiter)
@@ -196,8 +197,11 @@ def load_data_tiered(
 
 
 def create_data_loaders(filepath, batch_size, bidir, skipsos, jagged, max_len, shuffle=False, dataset_split=None):
-    """Creates and returns 2 data loaders. If dataset_split is not provided the second
-    data loader is instead set to None."""
+    """Creates and returns 2 data loaders.
+
+    If dataset_split is not provided the second data loader is instead
+    set to None.
+    """
     if shuffle or dataset_split is not None:
         dataset = MapLogDataset(filepath, bidir, skipsos, jagged, max_len)
     else:
@@ -354,14 +358,34 @@ class OnlineLMBatcher:
                                     if self.cuda:
                                         self.saved_lstm[user] = (
                                             torch.zeros((self.context_size[0])).cuda(),
-                                            torch.zeros((len(self.context_size), self.context_size[0],)).cuda(),
-                                            torch.zeros((len(self.context_size), self.context_size[0],)).cuda(),
+                                            torch.zeros(
+                                                (
+                                                    len(self.context_size),
+                                                    self.context_size[0],
+                                                )
+                                            ).cuda(),
+                                            torch.zeros(
+                                                (
+                                                    len(self.context_size),
+                                                    self.context_size[0],
+                                                )
+                                            ).cuda(),
                                         )
                                     else:
                                         self.saved_lstm[user] = (
                                             torch.zeros((self.context_size[0])),
-                                            torch.zeros((len(self.context_size), self.context_size[0],)),
-                                            torch.zeros((len(self.context_size), self.context_size[0],)),
+                                            torch.zeros(
+                                                (
+                                                    len(self.context_size),
+                                                    self.context_size[0],
+                                                )
+                                            ),
+                                            torch.zeros(
+                                                (
+                                                    len(self.context_size),
+                                                    self.context_size[0],
+                                                )
+                                            ),
                                         )
                                 self.user_logs[user].append(rowtext)
                                 if user not in self.users_ge_num_steps and len(self.user_logs[user]) >= self.num_steps:

@@ -15,7 +15,7 @@ def set_args(bidir, model_type, token_level):
     trainer_config.train_files = ["0.txt", "1.txt"]
     trainer_config.test_files = ["2.txt"]
     args["trainer_config"] = trainer_config
-    
+
     model_config_file = f"config/lanl_config_{model_type}_{token_level}.json"
 
     args["model_config"] = get_model_config(model_config_file, model_type)

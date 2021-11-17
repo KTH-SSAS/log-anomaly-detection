@@ -22,7 +22,9 @@ def test_data_loader_char(shuffle, bidirectional):
     skip_sos = False
     jagged = True
     input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skip_sos)
-    data_handler, _ = create_data_loaders(filepath, batch_size, bidirectional, skip_sos, jagged, input_length, shuffle=shuffle)
+    data_handler, _ = create_data_loaders(
+        filepath, batch_size, bidirectional, skip_sos, jagged, input_length, shuffle=shuffle
+    )
     for batch in data_handler:
         x: torch.Tensor = batch["input"]
         x_length = batch["length"]
