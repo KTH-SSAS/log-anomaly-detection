@@ -3,7 +3,6 @@ import os
 import socket
 from datetime import datetime
 
-import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
@@ -188,22 +187,25 @@ def init_from_config_classes(
     return lm_trainer, train_loader, val_loader, test_loader
 
 
-def validation_run(lm_trainer: Trainer, val_loader, iteration=0, val_run=0):
+def validation_run(lm_trainer: Trainer, val_loader, train_iteration=0, val_run=0):
     val_losses = []
-    for val_batch in tqdm(val_loader):
+    for val_iteration, val_batch in enumerate(tqdm(val_loader)):
         with torch.no_grad():
             loss, *_ = lm_trainer.eval_step(val_batch, False)
             val_losses.append(loss.item())
-    # Compute the average val loss
-    mean_val_loss = np.mean(val_losses)
-    if Application.instance().wandb_initialized:
-        wandb.log(
-            {
-                "valid/loss": mean_val_loss,
-                "valid/iteration": iteration,
-                "valid/run_number": val_run,
-            }
-        )
+        # Log the current validation loss and val_iteration to enable detailed view of
+        # validation loss.
+        # Also log  the current train iteration and validation run_number to enable
+        # overview analysis of each validation run
+        if Application.instance().wandb_initialized:
+            wandb.log(
+                {
+                    "valid/loss": loss,
+                    "valid/run_number": val_run,
+                    "valid/iteration": val_iteration,
+                    "train/iteration": train_iteration,
+                }
+            )
     # return val_losses
 
 
