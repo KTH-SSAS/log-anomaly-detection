@@ -186,6 +186,22 @@ def init_from_config_classes(
 
     return lm_trainer, train_loader, val_loader, test_loader
 
+def validation_run(lm_trainer: Trainer, val_loader, val_run=0):
+    # val_losses = []
+    for val_iteration, val_batch in enumerate(tqdm(val_loader)):
+        with torch.no_grad():
+            loss, *_ = lm_trainer.eval_step(val_batch, False)
+            # val_losses.append(loss.item())
+        if Application.instance().wandb_initialized:
+            wandb.log(
+                {
+                    "valid/loss": loss,
+                    "valid/iteration": val_iteration,
+                    "valid/day": val_batch["day"][0],
+                    "valid/run_number": val_run,
+                }
+            )
+    return # val_losses
 
 def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, store_eval_data=True):
     """Perform 1 epoch of training on lm_trainer."""
@@ -204,7 +220,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
     run_validation = val_loader is not None
     if run_validation:
         # Number of times to run validation per epoch (including after each full epoch)
-        validation_frequency = 4
+        validation_frequency = 10
         # Number of iterations between each validation run
         validation_period = (len(train_loader) // validation_frequency) + 1
         # Number of validation runs performed
@@ -233,22 +249,8 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
             )
         train_losses.append(loss.item())
         writer.add_scalar(f'Loss/train_day_{batch["day"][0]}', loss, iteration)
-        #TODO: move the code below (not if statement) into a function?
         if run_validation and (iteration+1) % validation_period == 0:
-            val_losses = []
-            for val_iteration, val_batch in enumerate(tqdm(val_loader)):
-                with torch.no_grad():
-                    loss, *_ = lm_trainer.eval_step(val_batch, False)
-                    val_losses.append(loss.item())
-                if Application.instance().wandb_initialized:
-                    wandb.log(
-                        {
-                            "valid/loss": loss,
-                            "valid/iteration": val_iteration,
-                            "valid/day": val_batch["day"][0],
-                            "valid/run_number": val_run,
-                        }
-                    )
+            validation_run(lm_trainer, val_loader, val_run)
             val_run += 1
 
         if done:
@@ -257,6 +259,10 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
 
     if lm_trainer.config.early_stopping:
         lm_trainer.early_stopping.save_checkpoint()
+
+    if run_validation:
+        validation_run(lm_trainer, val_loader, val_run)
+        val_run += 1
 
     test_losses = []
     for iteration, batch in enumerate(tqdm(test_loader)):
