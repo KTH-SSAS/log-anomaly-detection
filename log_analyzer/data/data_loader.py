@@ -212,6 +212,10 @@ def create_data_loaders(filepath, batch_size, bidir, skipsos, jagged, max_len, s
             raise ValueError("Split list does not contain exactly 2 values.")
         # Convert splits into lengths as proportion of dataset length
         dataset_split = [int(split_val * len(dataset)) for split_val in dataset_split]
+        # Ensure sum of dataset_split is the same as dataset length
+        size_diff = len(dataset) - sum(dataset_split)
+        dataset_split[0] += size_diff
+
         datasets = torch.utils.data.random_split(dataset, dataset_split)
     else:
         # Return just a single dataset
