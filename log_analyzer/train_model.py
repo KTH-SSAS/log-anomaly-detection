@@ -52,9 +52,9 @@ def main(args):
     logging.basicConfig(level=log_level)
 
     # Create the trainer+model
-    trainer, train_loader, test_loader = init_from_args(args)
+    trainer, train_loader, val_loader, test_loader = init_from_args(args)
     # Train the model
-    train_model(trainer, train_loader, test_loader, store_eval_data=args.eval_model)
+    train_model(trainer, train_loader, val_loader, test_loader, store_eval_data=args.eval_model)
 
     # Perform standard evaluation on the model
     if args.eval_model and Application.instance().wandb_initialized:
