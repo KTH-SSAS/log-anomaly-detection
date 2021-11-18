@@ -165,7 +165,7 @@ class Evaluator:
         1. Trimming any remaining allocated entries for the evaluation data lists
         2. Sorting the data (by second) if it is not sorted
         """
-        for key in self.data.keys():
+        for key in self.data:
             self.data[key] = self.data[key][: self.index[key]]
         # Check if the data is sorted
         if not np.all(np.diff(self.data["seconds"]) >= 0):
