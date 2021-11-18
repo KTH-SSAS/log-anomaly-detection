@@ -3,13 +3,13 @@ import os
 import socket
 from datetime import datetime
 
+import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 import log_analyzer.application as application
 import log_analyzer.data.data_loader as data_utils
 import wandb
-import numpy as np
 from log_analyzer.application import Application
 from log_analyzer.config.model_config import LSTMConfig, ModelConfig, TieredLSTMConfig, TransformerConfig
 from log_analyzer.config.trainer_config import DataConfig, TrainerConfig
@@ -244,7 +244,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
         # Count iteration continuously up through each epoch
         for epoch_iteration, batch in enumerate(tqdm(train_loader, desc="Training")):
             # epoch_iteration = iterations in this epoch (used to determine when to run validation)
-            iteration += 1 # Total iterations in training (cumulative)
+            iteration += 1  # Total iterations in training (cumulative)
             if isinstance(lm_trainer, TieredTrainer):
                 if train_loader.flush is False:
                     loss, done = lm_trainer.train_step(batch)
@@ -282,7 +282,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
         if run_validation:
             validation_run(lm_trainer, val_loader, iteration, val_run)
             val_run += 1
-        
+
         if done:
             break
 

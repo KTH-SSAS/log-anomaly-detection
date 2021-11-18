@@ -48,7 +48,7 @@ class Trainer(ABC):
 
         # Create evaluator
         self.evaluator = Evaluator()
-    
+
     def early_stopping(self, val_loss):
         """Performs early stopping check after validation, if enabled."""
         if self.config.early_stopping:
