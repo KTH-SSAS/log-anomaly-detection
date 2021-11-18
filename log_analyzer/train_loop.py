@@ -9,6 +9,7 @@ from tqdm import tqdm
 import log_analyzer.application as application
 import log_analyzer.data.data_loader as data_utils
 import wandb
+import numpy as np
 from log_analyzer.application import Application
 from log_analyzer.config.model_config import LSTMConfig, ModelConfig, TieredLSTMConfig, TransformerConfig
 from log_analyzer.config.trainer_config import DataConfig, TrainerConfig
@@ -189,7 +190,7 @@ def init_from_config_classes(
 
 def validation_run(lm_trainer: Trainer, val_loader, train_iteration=0, val_run=0):
     val_losses = []
-    for val_iteration, val_batch in enumerate(tqdm(val_loader)):
+    for val_iteration, val_batch in enumerate(tqdm(val_loader, desc=f"Valid:{val_run:2d}")):
         with torch.no_grad():
             loss, *_ = lm_trainer.eval_step(val_batch, False)
             val_losses.append(loss.item())
@@ -212,13 +213,14 @@ def validation_run(lm_trainer: Trainer, val_loader, train_iteration=0, val_run=0
 
 
 def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, store_eval_data=True):
-    """Perform 1 epoch of training on lm_trainer."""
+    """Perform training on lm_trainer."""
 
     logger = logging.getLogger(application.TRAINER_LOGGER)
 
     outfile = None
     done = False
     log_dir = lm_trainer.checkpoint_dir
+    epochs = lm_trainer.config.epochs
     writer = SummaryWriter(os.path.join(log_dir, "metrics"))
 
     if Application.instance().wandb_initialized:
@@ -236,46 +238,56 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
     train_losses = []
 
     val_run = 0
-    for iteration, batch in enumerate(tqdm(train_loader)):
-        if isinstance(lm_trainer, TieredTrainer):
-            if train_loader.flush is False:
-                loss, done = lm_trainer.train_step(batch)
+    iteration = 0
+    for epoch in tqdm(range(epochs), desc="Epoch   "):
+        # Shuffle train data order for each epoch?
+        # Count iteration continuously up through each epoch
+        for epoch_iteration, batch in enumerate(tqdm(train_loader, desc="Training")):
+            # epoch_iteration = iterations in this epoch (used to determine when to run validation)
+            iteration += 1 # Total iterations in training (cumulative)
+            if isinstance(lm_trainer, TieredTrainer):
+                if train_loader.flush is False:
+                    loss, done = lm_trainer.train_step(batch)
+                else:
+                    logger.info(f"Due to flush, skipping the rest of the current file.")
+                    train_loader.skip_file = True
+                    continue
             else:
-                logger.info(f"Due to flush, skipping the rest of the current file.")
-                train_loader.skip_file = True
-                continue
-        else:
-            loss, done = lm_trainer.train_step(batch)
-        if Application.instance().wandb_initialized:
-            wandb.log(
-                {
-                    "train/loss": loss,
-                    "train/iteration": iteration,
-                    "train/day": batch["day"][0],
-                    "train/lr": lm_trainer.scheduler.get_last_lr()[0],
-                }
-            )
-        train_losses.append(loss.item())
-        writer.add_scalar(f'Loss/train_day_{batch["day"][0]}', loss, iteration)
+                loss, done = lm_trainer.train_step(batch)
+            if Application.instance().wandb_initialized:
+                wandb.log(
+                    {
+                        "train/loss": loss,
+                        "train/iteration": iteration,
+                        "train/day": batch["day"][0],
+                        "train/lr": lm_trainer.scheduler.get_last_lr()[0],
+                        "train/epoch": epoch,
+                    }
+                )
+            train_losses.append(loss.item())
+            writer.add_scalar(f'Loss/train_day_{batch["day"][0]}', loss, iteration)
 
-        # Do validation when iteration % validation_period is 0, except when iteration is 0
-        if run_validation and iteration > 0 and (iteration % validation_period == 0):
+            # Do validation when iteration % validation_period is 0, except when iteration is 0
+            if run_validation and epoch_iteration > 0 and (epoch_iteration % validation_period == 0):
+                validation_run(lm_trainer, val_loader, iteration, val_run)
+                val_run += 1
+
+            if done:
+                logger.info("Early stopping.")
+                break
+
+        if lm_trainer.config.early_stopping:
+            lm_trainer._EarlyStopping.save_checkpoint()
+
+        if run_validation:
             validation_run(lm_trainer, val_loader, iteration, val_run)
             val_run += 1
-
+        
         if done:
-            logger.info("Early stopping.")
             break
 
-    if lm_trainer.config.early_stopping:
-        lm_trainer.early_stopping.save_checkpoint()
-
-    if run_validation:
-        validation_run(lm_trainer, val_loader, iteration, val_run)
-        val_run += 1
-
     test_losses = []
-    for iteration, batch in enumerate(tqdm(test_loader)):
+    for iteration, batch in enumerate(tqdm(test_loader, desc="Test")):
         with torch.no_grad():
             loss, *_ = lm_trainer.eval_step(batch, store_eval_data)
             test_losses.append(loss.item())
