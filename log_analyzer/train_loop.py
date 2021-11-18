@@ -206,6 +206,8 @@ def validation_run(lm_trainer: Trainer, val_loader, train_iteration=0, val_run=0
                     "train/iteration": train_iteration,
                 }
             )
+    mean_val_loss = np.mean(val_losses)
+    lm_trainer.early_stopping(mean_val_loss)
     # return val_losses
 
 

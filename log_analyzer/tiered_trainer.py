@@ -105,7 +105,7 @@ class TieredTrainer(Trainer):
         # Take an optimization step based on the loss
         self.optimizer_step(loss)
 
-        return loss, self.early_stopping.early_stop
+        return loss, self._EarlyStopping.early_stop
 
     def eval_step(self, batch, store_eval_data=False):
         """Defines a single evaluation step.
