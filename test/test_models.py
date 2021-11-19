@@ -24,9 +24,10 @@ def test_lstm(tmpdir, model_type, bidir, tokenization, cuda):
 
 # TODO make the char test not fail
 @pytest.mark.parametrize("tokenization", ["word", "char"])
-def test_transformer(tmpdir, tokenization):
+@pytest.mark.parametrize("model_type", ["transformer", "tiered-transformer"])
+def test_transformer(tmpdir, model_type, tokenization):
 
-    args = utils.set_args(False, "transformer", tokenization)
+    args = utils.set_args(False, model_type, tokenization)
     args["base_logdir"] = os.path.join(tmpdir, "runs")
 
     utils.run_test(args)
