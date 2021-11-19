@@ -176,7 +176,7 @@ def load_data_tiered(
     context_layers,
 ):
     def create_tiered_data_loader(filepath):
-        data_handler = OnlineLMBatcher(
+        data_handler = TieredLSTMBatcher(
             filepath,
             sentence_length,
             context_layers,
@@ -193,6 +193,43 @@ def load_data_tiered(
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
     train_loader = create_tiered_data_loader(filepaths_train)
     test_loader = create_tiered_data_loader(filepaths_eval)
+    return train_loader, test_loader
+
+
+def load_data_tiered_trans(
+    data_folder,
+    train_files,
+    test_files,
+    batch_size,
+    bidir,
+    skipsos,
+    jagged,
+    sentence_length,
+    num_steps,
+    context_model_dim,
+    context_input_dimension,
+    shift_window,
+):
+    def create_data_loader(filepath):
+        data_handler = TieredTransformerBatcher(
+            filepath,
+            sentence_length,
+            context_model_dim,
+            skipsos,
+            jagged,
+            bidir,
+            context_input_dimension,
+            shift_window=shift_window,
+            batch_size=batch_size,
+            num_steps=num_steps,
+            delimiter=" ",
+        )
+        return data_handler
+
+    filepaths_train = [path.join(data_folder, f) for f in train_files]
+    filepaths_eval = [path.join(data_folder, f) for f in test_files]
+    train_loader = create_data_loader(filepaths_train)
+    test_loader = create_data_loader(filepaths_eval)
     return train_loader, test_loader
 
 
@@ -291,7 +328,6 @@ class OnlineLMBatcher:
         self,
         filepaths,
         sentence_length,
-        context_size,
         skipsos,
         jagged,
         bidir,
@@ -301,7 +337,6 @@ class OnlineLMBatcher:
         skiprows=0,
     ):
         self.sentence_length = sentence_length
-        self.context_size = context_size
         self.jagged = jagged
         self.skipsos = skipsos
         self.bidir = bidir
@@ -355,49 +390,18 @@ class OnlineLMBatcher:
 
                                 if self.user_logs.get(user) is None:
                                     self.user_logs[user] = []
-                                    if self.cuda:
-                                        self.saved_lstm[user] = (
-                                            torch.zeros((self.context_size[0])).cuda(),
-                                            torch.zeros(
-                                                (
-                                                    len(self.context_size),
-                                                    self.context_size[0],
-                                                )
-                                            ).cuda(),
-                                            torch.zeros(
-                                                (
-                                                    len(self.context_size),
-                                                    self.context_size[0],
-                                                )
-                                            ).cuda(),
-                                        )
-                                    else:
-                                        self.saved_lstm[user] = (
-                                            torch.zeros((self.context_size[0])),
-                                            torch.zeros(
-                                                (
-                                                    len(self.context_size),
-                                                    self.context_size[0],
-                                                )
-                                            ),
-                                            torch.zeros(
-                                                (
-                                                    len(self.context_size),
-                                                    self.context_size[0],
-                                                )
-                                            ),
-                                        )
+                                    self.init_saved_model(user)
                                 self.user_logs[user].append(rowtext)
                                 if user not in self.users_ge_num_steps and len(self.user_logs[user]) >= self.num_steps:
                                     self.users_ge_num_steps.append(user)
 
                         # Before the data loader read the last line of the log.
                         if len(self.users_ge_num_steps) >= self.mb_size and self.flush == False:
-                            output, ctxt_vector, h_state, c_state = self.load_lines()
+                            output, model_info = self.load_lines()
 
                         # When the data loader read the last line of the log.
                         elif len(self.users_ge_num_steps) > 0 and self.flush:
-                            output, ctxt_vector, h_state, c_state = self.load_lines()
+                            output, model_info = self.load_lines()
 
                         # Activate the staggler mode.
                         elif len(self.users_ge_num_steps) == 0 and self.flush:
@@ -414,18 +418,8 @@ class OnlineLMBatcher:
                     batch = torch.transpose(output, 0, 1)
                     endx = batch.shape[2] - int(not self.bidir)
                     endt = batch.shape[2] - int(self.bidir)
-                    datadict = {
-                        "line": batch[:, :, 0],
-                        "second": batch[:, :, 1],
-                        "day": batch[:, :, 2],
-                        "user": batch[:, :, 3],
-                        "red": batch[:, :, 4],
-                        "input": batch[:, :, 5 + self.jagged + self.skipsos : endx],
-                        "target": batch[:, :, 6 + self.jagged + self.skipsos : endt],
-                        "context_vector": ctxt_vector,
-                        "c_state_init": torch.transpose(h_state, 0, 1),
-                        "h_state_init": torch.transpose(c_state, 0, 1),
-                    }  # state_triple['h_state_init']}
+                    datadict = self.gen_datadict(batch, endx, endt, model_info)
+
                     if self.jagged:
                         if self.cuda:
                             datadict["length"] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos)).cuda()
@@ -450,6 +444,86 @@ class OnlineLMBatcher:
                                 )
                     yield datadict
 
+    def init_saved_model(self, user):
+        pass
+
+    def load_lines(self):
+        pass
+
+    def gen_datadict(self, batch, endx, endt, model_info):
+        pass
+
+
+class TieredLSTMBatcher(OnlineLMBatcher):
+    def __init__(
+        self,
+        filepaths,
+        sentence_length,
+        context_size,
+        skipsos,
+        jagged,
+        bidir,
+        batch_size=100,
+        num_steps=5,
+        delimiter=" ",
+        skiprows=0,
+    ):
+        super().__init__(filepaths, sentence_length, skipsos, jagged, bidir, batch_size, num_steps, delimiter, skiprows)
+        self.context_size = context_size if type(context_size) is list else [context_size]
+
+    def init_saved_model(self, user):
+        if self.cuda:
+            self.saved_lstm[user] = (
+                torch.zeros((self.context_size[0])).cuda(),
+                torch.zeros(
+                    (
+                        len(self.context_size),
+                        self.context_size[0],
+                    )
+                ).cuda(),
+                torch.zeros(
+                    (
+                        len(self.context_size),
+                        self.context_size[0],
+                    )
+                ).cuda(),
+            )
+
+        else:
+            self.saved_lstm[user] = (
+                torch.zeros((self.context_size[0])),
+                torch.zeros(
+                    (
+                        len(self.context_size),
+                        self.context_size[0],
+                    )
+                ),
+                torch.zeros(
+                    (
+                        len(self.context_size),
+                        self.context_size[0],
+                    )
+                ),
+            )
+
+    def gen_datadict(self, batch, endx, endt, model_info):
+        ctxt_vector = model_info[0]
+        h_state = model_info[1]
+        c_state = model_info[2]
+        datadict = {
+            "line": batch[:, :, 0],
+            "second": batch[:, :, 1],
+            "day": batch[:, :, 2],
+            "user": batch[:, :, 3],
+            "red": batch[:, :, 4],
+            "input": batch[:, :, 5 + self.jagged + self.skipsos : endx],
+            "target": batch[:, :, 6 + self.jagged + self.skipsos : endt],
+            "context_vector": ctxt_vector,
+            "c_state_init": torch.transpose(h_state, 0, 1),
+            "h_state_init": torch.transpose(c_state, 0, 1),
+        }  #
+        return datadict
+
     def load_lines(self):
         output = []
         if self.cuda:
@@ -468,7 +542,7 @@ class OnlineLMBatcher:
             ctxt_vector = torch.cat((ctxt_vector, torch.unsqueeze(self.saved_lstm[user][0], dim=0)), dim=0)
             h_state = torch.cat((h_state, torch.unsqueeze(self.saved_lstm[user][1], dim=0)), dim=0)
             c_state = torch.cat((c_state, torch.unsqueeze(self.saved_lstm[user][2], dim=0)), dim=0)
-        return output, ctxt_vector, h_state, c_state
+        return output, (ctxt_vector, h_state, c_state)
 
     def update_state(self, ctxt_vectors, h_states, c_states):
         ctxt_vectors = ctxt_vectors.data
@@ -478,3 +552,114 @@ class OnlineLMBatcher:
             self.users_ge_num_steps[: self.mb_size], ctxt_vectors, h_states, c_states
         ):
             self.saved_lstm[usr] = (ctxt_v, h_state, c_state)
+
+
+class TieredTransformerBatcher(OnlineLMBatcher):
+    def __init__(
+        self,
+        filepaths,
+        sentence_length,
+        context_model_dim,
+        skipsos,
+        jagged,
+        bidir,
+        context_input_dimension,
+        shift_window=500,
+        batch_size=100,
+        num_steps=5,
+        delimiter=" ",
+        skiprows=0,
+    ):
+        super().__init__(
+            filepaths,
+            sentence_length,
+            skipsos,
+            jagged,
+            bidir,
+            batch_size=100,
+            num_steps=5,
+            delimiter=" ",
+            skiprows=0,
+        )
+        # the list of users whose saved log lines are greater than or equal to the self.num_steps
+        self.saved_ctxt = {}
+        self.context_model_dim = context_model_dim
+        self.context_input_dimension = context_input_dimension
+        self.shift_window = shift_window
+
+    def init_saved_model(self, user):
+        if self.cuda:
+            self.saved_ctxt[user] = [torch.zeros(self.context_model_dim).cuda(), torch.tensor([]).cuda(), 0]
+
+        else:
+            self.saved_ctxt[user] = [torch.zeros(self.context_model_dim), torch.tensor([]), 0]
+
+    def gen_datadict(self, batch, endx, endt, model_info):
+        ctxt_vector = model_info[0]
+        history = model_info[1]
+        history_length = model_info[2]
+        datadict = {
+            "line": batch[:, :, 0],
+            "second": batch[:, :, 1],
+            "day": batch[:, :, 2],
+            "user": batch[:, :, 3],
+            "red": batch[:, :, 4],
+            "input": batch[:, :, 5 + self.jagged + self.skipsos : endx],
+            "target": batch[:, :, 6 + self.jagged + self.skipsos : endt],
+            "context_vector": ctxt_vector,
+            "history": history,
+            "history_length": history_length,
+        }
+        return datadict
+
+    def load_lines(self):
+        output = []
+        hist_lst = []
+        hist_lengths = []
+        hist_dimension = 0
+        if self.cuda:
+            ctxt_vector = torch.tensor([]).cuda()
+            history = torch.tensor([]).cuda()
+        else:
+            ctxt_vector = torch.tensor([])
+            history = torch.tensor([])
+        self.current_batch_usr = self.users_ge_num_steps[: self.mb_size]
+        for user in self.current_batch_usr:
+            output.append(self.user_logs[user][0 : self.num_steps])
+            self.user_logs[user] = self.user_logs[user][self.num_steps :]
+            if len(self.user_logs[user]) < self.num_steps:
+                self.users_ge_num_steps.remove(user)
+            ctxt_vector = torch.cat((ctxt_vector, torch.unsqueeze(self.saved_ctxt[user][0], dim=0)), dim=0)
+            hist_lst.append(torch.unsqueeze(self.saved_ctxt[user][1], dim=0))
+            hist_lengths.append(self.saved_ctxt[user][2])
+            hist_dimension = max(self.saved_ctxt[user][1].shape[-1], hist_dimension)
+
+        max_length = max(hist_lengths)
+        for idx, hist in enumerate(hist_lst):
+            if hist_lengths[idx] == max_length:
+                hist_lst[idx] = hist
+            elif hist_lengths[idx] == 0:
+                if self.cuda:
+                    hist_lst[idx] = torch.zeros(1, max_length, hist_dimension).cuda()
+                else:
+                    hist_lst[idx] = torch.zeros(1, max_length, hist_dimension)
+            else:
+                if self.cuda:
+                    hist_lst[idx] = torch.cat(
+                        (hist, torch.zeros(1, max_length - hist_lengths[idx], hist_dimension)), dim=1
+                    ).cuda()
+                else:
+                    hist_lst[idx] = torch.cat(
+                        (hist, torch.zeros(1, max_length - hist_lengths[idx], hist_dimension)), dim=1
+                    )
+        history = torch.cat((hist_lst), dim=0)
+
+        return output, (ctxt_vector, history, hist_lengths)
+
+    def update_state(self, ctxt_vectors, ctxt_history):
+        ctxt_vectors = ctxt_vectors.data
+        ctxt_history = ctxt_history.data
+        remove_usr = []
+        for usr, ctxt_v, history in zip(self.current_batch_usr, ctxt_vectors, ctxt_history):
+            self.saved_ctxt[usr] = [ctxt_v, history[: self.shift_window], history.shape[0]]
+            remove_usr.append(usr)

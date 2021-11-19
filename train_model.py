@@ -21,7 +21,9 @@ data/data_examples/raw_day_split,
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--model-type", choices=["lstm", "tiered-lstm", "transformer"], required=True)
+    parser.add_argument(
+        "--model-type", choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer"], required=True
+    )
     parser.add_argument("--model-config", type=str, help="Model configuration file.", required=True)
     parser.add_argument("--data-config", type=str, help="Data description file.", required=True)
     parser.add_argument("--data-folder", type=str, help="Path to data files.", required=True)

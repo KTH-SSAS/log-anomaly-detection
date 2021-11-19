@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
+from typing import Optional
 
 import torch
 import torch.nn as nn
+from torch.cuda.amp.grad_scaler import GradScaler
 
 import log_analyzer.model.early_stopping as early_stopping
 from log_analyzer.application import Application
@@ -43,8 +45,11 @@ class Trainer(ABC):
             gamma=config.scheduler_gamma,
         )
         self.use_scheduler = bool(config.scheduler_step_size)
+        self.scaler: Optional[GradScaler]
         if config.mixed_precision:
             self.scaler = torch.cuda.amp.GradScaler()
+        else:
+            self.scaler = None
 
         # Create evaluator
         self.evaluator = Evaluator()
@@ -71,7 +76,7 @@ class Trainer(ABC):
 
     def optimizer_step(self, loss: torch.Tensor):
         """Performs one step of optimization on the given loss."""
-        if self.config.mixed_precision:
+        if self.config.mixed_precision and isinstance(self.scaler, GradScaler):
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
             self.scaler.update()
