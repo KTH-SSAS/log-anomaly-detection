@@ -191,6 +191,7 @@ def init_from_config_classes(
 def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, store_eval_data=True):
     """Perform training on lm_trainer."""
     LOGGING_FREQUENCY = 10  # How often to log results. Set to 1 to log everything.
+    VALIDATION_FREQUENCY = 10 # Number of times to do validation per epoch. Set to 1 to only validate after each epoch.
     logger = logging.getLogger(application.TRAINER_LOGGER)
 
     def validation_run(train_iteration=0, val_run=0):
@@ -230,11 +231,8 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
     # True if val_loader is not None, False if val_loader is None
     run_validation = val_loader is not None
     if run_validation:
-        # Number of times to run validation per epoch (including after each full epoch)
-        validation_frequency = 10
         # Number of iterations between each validation run
-        validation_period = (len(train_loader) // validation_frequency) + 1
-        # Number of validation runs performed
+        validation_period = (len(train_loader) // VALIDATION_FREQUENCY) + 1
 
     train_losses = []
 
