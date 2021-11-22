@@ -186,6 +186,7 @@ def init_from_config_classes(
         )
         lm_trainer = TransformerTrainer(trainer_config, model_config, log_dir)
     elif model_type == TIERED_TRANSFORMER and isinstance(model_config, TieredTransformerConfig):
+        val_loader = None
         train_loader, test_loader = data_utils.load_data_tiered_trans(
             data_folder,
             train_days,
@@ -218,7 +219,7 @@ def init_from_config_classes(
 def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, store_eval_data=True):
     """Perform training on lm_trainer."""
     LOGGING_FREQUENCY = 10  # How often to log results. Set to 1 to log everything.
-    VALIDATION_FREQUENCY = 10 # Number of times to do validation per epoch. Set to 1 to only validate after each epoch.
+    VALIDATION_FREQUENCY = 10  # Number of times to do validation per epoch. Set to 1 to only validate after each epoch.
     logger = logging.getLogger(application.TRAINER_LOGGER)
 
     def validation_run(train_iteration=0, val_run=0):
@@ -303,15 +304,16 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
                 logger.info("Early stopping.")
                 break
 
-        if lm_trainer.config.early_stopping:
-            lm_trainer._EarlyStopping.save_checkpoint()
-
         if run_validation:
             validation_run(iteration, val_run)
             val_run += 1
 
         if done:
             break
+
+    if lm_trainer.config.early_stopping:
+        # Save the best performing model version to file
+        lm_trainer._EarlyStopping.save_checkpoint()
 
     test_losses = []
     for iteration, batch in enumerate(tqdm(test_loader, desc="Test")):
@@ -345,6 +347,26 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
 
     model_save_path = os.path.join(log_dir, "model.pt")
     torch.save(lm_trainer.model, model_save_path)
+
+    if run_validation and lm_trainer.config.early_stopping:
+        # Load the best performing model from validation and test it too
+        lm_trainer.model.load_state_dict(torch.load(lm_trainer._EarlyStopping.path))
+        test_losses = []
+        for iteration, batch in enumerate(tqdm(test_loader, desc="Test")):
+            with torch.no_grad():
+                loss, *_ = lm_trainer.eval_step(batch, store_eval_data)
+                test_losses.append(loss.item())
+
+            # Don't log every result (unless LOGGING_FREQUENCY is 1)
+            if iteration % LOGGING_FREQUENCY == 0:
+                if Application.instance().wandb_initialized:
+                    wandb.log(
+                        {
+                            "eval/best_val_loss": loss,
+                            "eval/iteration": iteration,
+                            "eval/day": batch["day"][0],
+                        }
+                    )
 
     if Application.instance().wandb_initialized:
         # Save the model weights as a versioned artifact

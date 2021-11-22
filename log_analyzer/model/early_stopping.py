@@ -32,7 +32,7 @@ class EarlyStopping:
 
     def __call__(self, val_loss, model):
         if val_loss < self.val_loss_min - self.delta:
-            self.save_state_dict(val_loss, model)
+            self.store_state_dict(val_loss, model)
             self.counter = 0
         else:
             self.counter += 1
@@ -45,7 +45,7 @@ class EarlyStopping:
             if self.counter >= self.patience:
                 self.early_stop = True
 
-    def save_state_dict(self, val_loss, model):
+    def store_state_dict(self, val_loss, model):
         """Stores the model dict of the best performing model so far."""
         self.model_state_dict = model.state_dict()
 
@@ -53,7 +53,9 @@ class EarlyStopping:
         self.val_loss_min = val_loss
 
     def save_checkpoint(self):
-        """Saves model when validation loss decrease."""
+        """Saves model to file.
 
+        Must be called externally.
+        """
         self.logger.info("Best Loss: %.6f, Saving model ...", self.val_loss_min)
         torch.save(self.model_state_dict, self.path)
