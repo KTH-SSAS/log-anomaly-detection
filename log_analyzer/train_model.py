@@ -26,6 +26,7 @@ data/data_examples/raw_day_split,
 --bidir
 """
 
+
 def prepare_args():
     parser = ArgumentParser()
     parser.add_argument("--model-type", choices=["lstm", "tiered-lstm", "transformer"], required=True)
@@ -50,6 +51,7 @@ def prepare_args():
     parser.add_argument("--use-cuda", action="store_true", help="Use CUDA acceleration for training.")
     args = parser.parse_args()
     return args
+
 
 def main():
 
