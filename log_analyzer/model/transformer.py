@@ -144,6 +144,10 @@ class Transformer(TransformerLanguageModel):
         if ctx_vector is not None:
             cat_word_embeddings = torch.Tensor([])
             trans_word_embeddings = word_embeddings.transpose(0, 1)
+            if self.cuda:
+                cat_word_embeddings = cat_word_embeddings.cuda()
+                trans_word_embeddings = trans_word_embeddings.cuda()
+                ctx_vector = ctx_vector.cuda()
             # Output: trans_word_embeddings: (sequence length x batch x embedded dimension)
             for trans_word_embedding in trans_word_embeddings:
                 # trans_word_embedding (batch x embedding)
