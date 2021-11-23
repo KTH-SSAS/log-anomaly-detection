@@ -637,7 +637,10 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         max_length = max(hist_lengths)
         for idx, hist in enumerate(hist_lst):
             if hist_lengths[idx] == max_length:
-                hist_lst[idx] = hist
+                if self.cuda:
+                    hist_lst[idx] = hist.cuda()
+                else:
+                    hist_lst[idx] = hist
             elif hist_lengths[idx] == 0:
                 if self.cuda:
                     hist_lst[idx] = torch.zeros(1, max_length, hist_dimension).cuda()
@@ -646,11 +649,11 @@ class TieredTransformerBatcher(OnlineLMBatcher):
             else:
                 if self.cuda:
                     hist_lst[idx] = torch.cat(
-                        (hist, torch.zeros(1, max_length - hist_lengths[idx], hist_dimension)), dim=1
+                        (torch.zeros(1, max_length - hist_lengths[idx], hist_dimension).cuda(), hist.cuda()), dim=1
                     ).cuda()
                 else:
                     hist_lst[idx] = torch.cat(
-                        (hist, torch.zeros(1, max_length - hist_lengths[idx], hist_dimension)), dim=1
+                        (torch.zeros(1, max_length - hist_lengths[idx], hist_dimension), hist), dim=1
                     )
         history = torch.cat((hist_lst), dim=0)
 
