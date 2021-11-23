@@ -195,6 +195,7 @@ class TieredTransformer(LogModel):
         self.src_mask = None
         self.log_transformer = Transformer(config)
         self.context_transformer = ContextTransformer(config)
+        self.shift_window = config.shift_window
 
     def forward(self, src: Tensor, ctxt_vector, ctx_history, lengths=None, mask=None, has_mask=True):
         # src (num of series, batch size, sequence length, embedded dimension)
@@ -242,7 +243,7 @@ class TieredTransformer(LogModel):
             else:
                 ctx_history = torch.cat((unsqz_ctx_input, ctx_history), dim=1)
             # ctx_history: concatination to generate a sequence of low level outputs (batch size, history length, 2 * model dimension)
-
+            ctx_history = ctx_history[:,-self.shift_window:,:]
             ################ Context level transformer with history #######################
             ctxt_vector = self.context_transformer(ctx_history)
 
