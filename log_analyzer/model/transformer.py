@@ -60,7 +60,10 @@ class PositionalEncoding(nn.Module):
             >>> output = pos_encoder(x)
         """
         seq_len = x.shape[1]
-        x = x + self.pe[:, :seq_len, :]
+        if self.cuda:
+            x = x + self.pe[:, :seq_len, :].cuda()
+        else:
+            x = x + self.pe[:, :seq_len, :]
         return self.dropout(x)
 
 
