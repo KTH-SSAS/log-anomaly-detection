@@ -629,7 +629,11 @@ class TieredTransformerBatcher(OnlineLMBatcher):
             self.user_logs[user] = self.user_logs[user][self.num_steps :]
             if len(self.user_logs[user]) < self.num_steps:
                 self.users_ge_num_steps.remove(user)
-            ctxt_vector = torch.cat((ctxt_vector, torch.unsqueeze(self.saved_ctxt[user][0], dim=0)), dim=0)
+            if self.cuda:
+                ctxt_vector = torch.cat((ctxt_vector, torch.unsqueeze(self.saved_ctxt[user][0].cuda(), dim=0)), dim=0)
+            else:
+                ctxt_vector = torch.cat((ctxt_vector, torch.unsqueeze(self.saved_ctxt[user][0], dim=0)), dim=0)
+
             hist_lst.append(torch.unsqueeze(self.saved_ctxt[user][1], dim=0))
             hist_lengths.append(self.saved_ctxt[user][2])
             hist_dimension = max(self.saved_ctxt[user][1].shape[-1], hist_dimension)
