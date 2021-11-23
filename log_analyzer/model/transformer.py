@@ -130,6 +130,8 @@ class Transformer(TransformerLanguageModel):
         self.word_embedding = nn.Embedding(self.vocab_size, self.model_dim)
         if isinstance(config, TieredTransformerConfig):
             self.reduce_dimension = nn.Linear(config.input_dim, self.model_dim)
+            if self.cuda:
+                self.reduce_dimension = self.reduce_dimension.cuda()
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
     def forward(self, src, ctx_vector=None, lengths=None, mask=None, has_mask=True):
