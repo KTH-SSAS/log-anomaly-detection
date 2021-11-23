@@ -661,5 +661,5 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         ctxt_history = ctxt_history.data
         remove_usr = []
         for usr, ctxt_v, history in zip(self.current_batch_usr, ctxt_vectors, ctxt_history):
-            self.saved_ctxt[usr] = [ctxt_v, history[: self.shift_window], history.shape[0]]
+            self.saved_ctxt[usr] = [ctxt_v.cpu(), history[: self.shift_window].cpu(), history[: self.shift_window].shape[0]]
             remove_usr.append(usr)
