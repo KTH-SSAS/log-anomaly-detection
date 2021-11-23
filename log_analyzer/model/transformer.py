@@ -60,10 +60,7 @@ class PositionalEncoding(nn.Module):
             >>> output = pos_encoder(x)
         """
         seq_len = x.shape[1]
-        if self.cuda:
-            x = x + self.pe[:, :seq_len, :].cuda()
-        else:
-            x = x + self.pe[:, :seq_len, :]
+        x = x + self.pe[:, :seq_len, :].to(x.device)
         return self.dropout(x)
 
 
@@ -142,12 +139,8 @@ class Transformer(TransformerLanguageModel):
         self.src_mask = super().forward(src, has_mask)
         word_embeddings = self.word_embedding(src) * math.sqrt(self.config.model_dim)
         if ctx_vector is not None:
-            cat_word_embeddings = torch.Tensor([])
-            trans_word_embeddings = word_embeddings.transpose(0, 1)
-            if self.cuda:
-                cat_word_embeddings = cat_word_embeddings.cuda()
-                trans_word_embeddings = trans_word_embeddings.cuda()
-                ctx_vector = ctx_vector.cuda()
+            cat_word_embeddings = torch.Tensor([]).to(src.device)
+            trans_word_embeddings = word_embeddings.transpose(0, 1).to(src.device)
             # Output: trans_word_embeddings: (sequence length x batch x embedded dimension)
             for trans_word_embedding in trans_word_embeddings:
                 # trans_word_embedding (batch x embedding)
