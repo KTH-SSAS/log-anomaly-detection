@@ -37,7 +37,7 @@ class Trainer(ABC):
 
         # Create settings for training.
         self.criterion = nn.CrossEntropyLoss(reduction="none", ignore_index=0)
-        self.early_stopping = early_stopping.EarlyStopping(patience=config.early_stop_patience, path=checkpoint_dir)
+        self._EarlyStopping = early_stopping.EarlyStopping(patience=config.early_stop_patience, path=checkpoint_dir)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=config.learning_rate)
         self.scheduler = torch.optim.lr_scheduler.StepLR(
             self.optimizer,
@@ -53,6 +53,11 @@ class Trainer(ABC):
 
         # Create evaluator
         self.evaluator = Evaluator()
+
+    def early_stopping(self, val_loss):
+        """Performs early stopping check after validation, if enabled."""
+        if self.config.early_stopping:
+            self._EarlyStopping(val_loss, self.model)
 
     def compute_loss(self, output: torch.Tensor, Y, lengths, mask: torch.Tensor):
         """Computes the loss for the given model output and ground truth."""
@@ -80,8 +85,6 @@ class Trainer(ABC):
             self.optimizer.step()
         if self.use_scheduler:
             self.scheduler.step()
-        if self.config.early_stopping:
-            self.early_stopping(loss, self.model)
 
     def split_batch(self, batch: dict):
         """Splits a batch into variables containing relevant data."""
@@ -130,7 +133,7 @@ class Trainer(ABC):
         # Take an optimization step based on the loss
         self.optimizer_step(loss)
 
-        return loss, self.early_stopping.early_stop
+        return loss, self._EarlyStopping.early_stop
 
     def eval_step(self, batch, store_eval_data=False):
         """Defines a single evaluation step.

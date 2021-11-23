@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from log_analyzer.config.trainer_config import DataConfig
-from log_analyzer.data.data_loader import IterableLogDataset, MapLogDataset, create_data_loader
+from log_analyzer.data.data_loader import IterableLogDataset, MapLogDataset, create_data_loaders
 
 
 def batch_equal(v1: torch.Tensor, v2: torch.Tensor):
@@ -22,7 +22,9 @@ def test_data_loader_char(shuffle, bidirectional):
     skip_sos = False
     jagged = True
     input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skip_sos)
-    data_handler = create_data_loader(filepath, batch_size, bidirectional, skip_sos, jagged, input_length, shuffle)
+    data_handler, _ = create_data_loaders(
+        filepath, batch_size, bidirectional, skip_sos, jagged, input_length, shuffle=shuffle
+    )
     for batch in data_handler:
         x: torch.Tensor = batch["input"]
         x_length = batch["length"]
@@ -46,7 +48,7 @@ def test_data_loader_word(shuffle, bidirectional):
     skip_sos = False
     jagged = False
     input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skip_sos)
-    data_handler = create_data_loader(
+    data_handler, _ = create_data_loaders(
         filepath, batch_size, bidirectional, skip_sos, jagged, data_config.sentence_length, shuffle
     )
     for batch in data_handler:

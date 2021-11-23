@@ -59,5 +59,5 @@ def eval_model(model_trainer: Trainer):
 
     # Log the evaluation results
     if use_wandb and wandb.run is not None:
-        for key in evaluator_metrics.keys():
+        for key in evaluator_metrics:
             wandb.run.summary[key] = evaluator_metrics[key]

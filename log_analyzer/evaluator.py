@@ -165,7 +165,7 @@ class Evaluator:
         1. Trimming any remaining allocated entries for the evaluation data lists
         2. Sorting the data (by second) if it is not sorted
         """
-        for key in self.data.keys():
+        for key in self.data:
             self.data[key] = self.data[key][: self.index[key]]
         # Check if the data is sorted
         if not np.all(np.diff(self.data["seconds"]) >= 0):
@@ -328,7 +328,6 @@ class Evaluator:
     def plot_roc_curve(
         self,
         color="orange",
-        xaxis="FPR",
         title="ROC",
         use_wandb=False,
     ):
@@ -378,15 +377,6 @@ class Evaluator:
             red_flag_count = sum(self.data["red_flags"])
             non_red_flag_count = len(self.data["red_flags"]) - red_flag_count
             xlabel = "False Positive Rate"
-            if xaxis.lower() == "alerts":
-                # Multiply the fp_rate by the number of events in the eval set to convert
-                # fp_rate into fp's per second
-                fp_rate *= red_flag_count
-                xlabel += " - Alerts per second"
-            elif xaxis.lower() == "alerts-fpr":
-                total_alerts = fp_rate * non_red_flag_count + tp_rate * red_flag_count
-                fp_rate = tp_rate * red_flag_count / total_alerts
-                xlabel += " - Precision"
 
             plt.plot(
                 fp_rate,
@@ -395,8 +385,6 @@ class Evaluator:
                 lw=2,
                 label=f"ROC curve (area = {auc_score:.2f})",
             )
-            if xaxis.lower() == "fpr":
-                plt.plot([0, 1], [0, 1], lw=2, linestyle="--")
             plt.xlabel(xlabel)
             plt.ylabel("True Positive Rate")
             plt.title(title)

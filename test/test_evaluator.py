@@ -16,8 +16,8 @@ def test_evaluator_lstm(tmpdir):
     args = utils.set_args(bidir, model_type, token_level)
     args["base_logdir"] = os.path.join(tmpdir, "runs")
 
-    trainer, train_loader, test_loader = init_from_config_classes(**args)
-    train_losses, test_losses = train_model(trainer, train_loader, test_loader, store_eval_data=True)
+    trainer, train_loader, val_loader, test_loader = init_from_config_classes(**args)
+    train_losses, test_losses = train_model(trainer, train_loader, val_loader, test_loader, store_eval_data=True)
 
     # Numerical metrics
     metrics = trainer.evaluator.get_metrics()
@@ -41,9 +41,8 @@ def test_evaluator_lstm(tmpdir):
                 )
 
     # ROC curve plot
-    for xaxis in ["FPR", "alerts", "alerts-FPR"]:
-        auc_score, _ = trainer.evaluator.plot_roc_curve(xaxis=xaxis)
-        assert auc_score > 0 and auc_score < 1
+    auc_score, _ = trainer.evaluator.plot_roc_curve()
+    assert auc_score > 0 and auc_score < 1
 
     # PR curve plot
     ap_score, _ = trainer.evaluator.plot_pr_curve()
@@ -63,8 +62,8 @@ def test_evaluator_tiered(tmpdir):
     args = utils.set_args(bidir, model_type, token_level)
     args["base_logdir"] = os.path.join(tmpdir, "runs")
 
-    trainer, train_loader, test_loader = init_from_config_classes(**args)
+    trainer, train_loader, val_loader, test_loader = init_from_config_classes(**args)
     # Only unique thing in the tiered version of the evaluator is the data-storing code
-    train_losses, test_losses = train_model(trainer, train_loader, test_loader, store_eval_data=True)
+    train_losses, test_losses = train_model(trainer, train_loader, val_loader, test_loader, store_eval_data=True)
     eval_model(trainer)
     assert True
