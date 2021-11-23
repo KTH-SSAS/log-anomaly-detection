@@ -7,6 +7,7 @@ from torch import Tensor, nn
 from log_analyzer.config.model_config import TieredTransformerConfig, TransformerConfig
 from log_analyzer.model.lstm import LogModel
 from log_analyzer.model.model_util import initialize_weights
+from log_analyzer.application import Application
 
 
 def _generate_square_subsequent_mask(sz):
