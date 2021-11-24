@@ -216,6 +216,13 @@ def init_from_config_classes(
     return lm_trainer, train_loader, val_loader, test_loader
 
 
+def wandb_log(iteration, frequency, data: dict):
+    # Don't log every result (unless LOGGING_FREQUENCY is 1)
+    if iteration % frequency == 0:
+        if Application.instance().wandb_initialized:
+            wandb.log(data)
+
+
 def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, store_eval_data=True):
     """Perform training on lm_trainer."""
     LOGGING_FREQUENCY = 10  # How often to log results. Set to 1 to log everything.
@@ -229,29 +236,26 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
             with torch.no_grad():
                 loss, *_ = lm_trainer.eval_step(val_batch, False)
                 val_losses.append(loss.item())
-            # Don't log every result (unless LOGGING_FREQUENCY is 1)
-            if val_iteration % LOGGING_FREQUENCY == 0:
-                # Log the current validation loss and val_iteration to enable detailed view of
-                # validation loss.
-                # Also log  the current train iteration and validation run_number to enable
-                # overview analysis of each validation run
-                if Application.instance().wandb_initialized:
-                    wandb.log(
-                        {
-                            "valid/loss": loss,
-                            "valid/run_number": val_run,
-                            "valid/iteration": val_iteration,
-                            "train/iteration": train_iteration,
-                        }
-                    )
+            # Log the current validation loss and val_iteration to enable detailed view of
+            # validation loss.
+            # Also log  the current train iteration and validation run_number to enable
+            # overview analysis of each validation run
+            wandb_log(
+                val_iteration,
+                LOGGING_FREQUENCY,
+                {
+                    "valid/loss": loss,
+                    "valid/run_number": val_run,
+                    "valid/iteration": val_iteration,
+                    "train/iteration": train_iteration,
+                },
+            )
         mean_val_loss = np.mean(val_losses)
         lm_trainer.early_stopping(mean_val_loss)
 
-    outfile = None
     done = False
     log_dir = lm_trainer.checkpoint_dir
     epochs = lm_trainer.config.epochs
-    writer = SummaryWriter(os.path.join(log_dir, "metrics"))
 
     if Application.instance().wandb_initialized:
         wandb.watch(lm_trainer.model)
@@ -282,20 +286,17 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
             else:
                 loss, done = lm_trainer.train_step(batch)
             train_losses.append(loss.item())
-            # Don't log every result (unless LOGGING_FREQUENCY is 1)
-            if epoch_iteration % LOGGING_FREQUENCY == 0:
-                if Application.instance().wandb_initialized:
-                    wandb.log(
-                        {
-                            "train/loss": loss,
-                            "train/iteration": iteration,
-                            "train/day": batch["day"][0],
-                            "train/lr": lm_trainer.scheduler.get_last_lr()[0],
-                            "train/epoch": epoch,
-                        }
-                    )
-                writer.add_scalar(f'Loss/train_day_{batch["day"][0]}', loss, iteration)
-
+            wandb_log(
+                epoch_iteration,
+                LOGGING_FREQUENCY,
+                {
+                    "train/loss": loss,
+                    "train/iteration": iteration,
+                    "train/day": batch["day"][0],
+                    "train/lr": lm_trainer.scheduler.get_last_lr()[0],
+                    "train/epoch": epoch,
+                }
+            )
             if run_validation and epoch_iteration > 0 and (epoch_iteration % validation_period == 0):
                 validation_run(iteration, val_run)
                 val_run += 1
@@ -320,30 +321,15 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
         with torch.no_grad():
             loss, *_ = lm_trainer.eval_step(batch, store_eval_data)
             test_losses.append(loss.item())
-
-        # Don't log every result (unless LOGGING_FREQUENCY is 1)
-        if iteration % LOGGING_FREQUENCY == 0:
-            writer.add_scalar(f'Loss/test_day_{batch["day"][0]}', loss, iteration)
-            if Application.instance().wandb_initialized:
-                wandb.log(
-                    {
-                        "eval/loss": loss,
-                        "eval/iteration": iteration,
-                        "eval/day": batch["day"][0],
-                    }
-                )
-            if outfile is not None:
-                for line, sec, day, usr, red, loss in zip(
-                    batch["line"].flatten().tolist(),
-                    batch["second"].flatten().tolist(),
-                    batch["day"].flatten().tolist(),
-                    batch["user"].flatten().tolist(),
-                    batch["red"].flatten().tolist(),
-                    loss.flatten().tolist(),
-                ):
-                    outfile.write("%s %s %s %s %s %s %r\n" % (iteration, line, sec, day, usr, red, loss))
-
-    writer.close()
+            wandb_log(
+                iteration,
+                LOGGING_FREQUENCY,
+                {
+                    "eval/loss": loss,
+                    "eval/iteration": iteration,
+                    "eval/day": batch["day"][0],
+                }
+            )
 
     model_save_path = os.path.join(log_dir, "model.pt")
     torch.save(lm_trainer.model, model_save_path)
@@ -356,17 +342,13 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
             with torch.no_grad():
                 loss, *_ = lm_trainer.eval_step(batch, store_eval_data)
                 test_losses.append(loss.item())
-
-            # Don't log every result (unless LOGGING_FREQUENCY is 1)
-            if iteration % LOGGING_FREQUENCY == 0:
-                if Application.instance().wandb_initialized:
-                    wandb.log(
-                        {
-                            "eval/best_val_loss": loss,
-                            "eval/iteration": iteration,
-                            "eval/day": batch["day"][0],
-                        }
-                    )
+                wandb_log(iteration, LOGGING_FREQUENCY,
+                    {
+                        "eval/best_val_loss": loss,
+                        "eval/iteration": iteration,
+                        "eval/day": batch["day"][0],
+                    }
+                )
 
     if Application.instance().wandb_initialized:
         # Save the model weights as a versioned artifact
