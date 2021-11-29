@@ -24,34 +24,6 @@ class TieredTrainer(Trainer):
         self.test_loader = test_loader
         super().__init__(config, checkpoint_dir)
 
-    def compute_loss(self, output, Y, lengths, mask):
-        """Computes the loss for the given model output and ground truth."""
-        loss = 0
-        line_losses_list = torch.empty(output.shape[:-2], dtype=torch.float)
-        if self.cuda:
-            line_losses_list = line_losses_list.cuda()
-        if lengths is not None:
-            targets = Y[:, :, : torch.max(lengths)]
-        else:
-            targets = Y
-        # output (num_steps x batch x length x embedding dimension)  Y
-        # (num_steps x batch x length)
-        for i, (step_output, step_y) in enumerate(zip(output, Y)):
-            # On notebook, I checked it with forward LSTM and word
-            # tokenization. Further checks have to be done...
-            if lengths is not None:
-                token_losses = self.criterion(step_output.transpose(1, 2), step_y[:, : torch.max(lengths)])
-                masked_losses = token_losses * mask[i][:, : torch.max(lengths)]
-                line_losses = torch.sum(masked_losses, dim=1)
-            else:
-                token_losses = self.criterion(step_output.transpose(1, 2), step_y)
-                line_losses = torch.mean(token_losses, dim=1)
-            line_losses_list[i] = line_losses
-            step_loss = torch.mean(line_losses, dim=0)
-            loss += step_loss
-        loss /= len(Y)
-        return loss, line_losses_list, targets
-
     def train_step(self, X, Y, L, M, model_info):
         """Defines a single training step.
 
@@ -67,13 +39,13 @@ class TieredTrainer(Trainer):
                 output = self.run_model(X, L, model_info, self.train_loader)
 
                 # Compute the loss for the output
-                loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
+                loss, *_ = self.model.compute_loss(output, Y, lengths=L, mask=M)
         else:
             # Apply the model to input to produce the output
             output = self.run_model(X, L, model_info, self.train_loader)
 
             # Compute the loss for the output
-            loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
+            loss, *_ = self.model.compute_loss(output, Y, lengths=L, mask=M)
 
         # Take an optimization step based on the loss
         self.optimizer_step(loss)
@@ -90,7 +62,7 @@ class TieredTrainer(Trainer):
         output = self.eval_model(X, L, model_info, self.test_loader)
 
         # Compute the loss for the output
-        loss, line_losses, targets = self.compute_loss(output, Y, lengths=L, mask=M)
+        loss, line_losses, targets = self.model.compute_loss(output, Y, lengths=L, mask=M)
 
         # Save the results if desired
         if store_eval_data:

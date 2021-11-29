@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 import torch
-import torch.nn as nn
 from torch.cuda.amp.grad_scaler import GradScaler
 
 import log_analyzer.model.early_stopping as early_stopping
@@ -36,7 +35,6 @@ class Trainer(ABC):
             self.model.cuda()
 
         # Create settings for training.
-        self.criterion = nn.CrossEntropyLoss(reduction="none", ignore_index=0)
         self._EarlyStopping = early_stopping.EarlyStopping(patience=config.early_stop_patience, path=checkpoint_dir)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=config.learning_rate)
         self.scheduler = torch.optim.lr_scheduler.StepLR(
@@ -58,21 +56,6 @@ class Trainer(ABC):
         """Performs early stopping check after validation, if enabled."""
         if self.config.early_stopping:
             self._EarlyStopping(val_loss, self.model)
-
-    def compute_loss(self, output: torch.Tensor, Y, lengths, mask: torch.Tensor):
-        """Computes the loss for the given model output and ground truth."""
-        targets = Y
-        if lengths is not None:
-            token_losses = self.criterion(output.transpose(1, 2), targets)
-            masked_losses = token_losses * mask
-            line_losses = torch.sum(masked_losses, dim=1)
-        else:
-            token_losses = self.criterion(output.transpose(1, 2), Y)
-            line_losses = torch.mean(token_losses, dim=1)
-        loss = torch.mean(line_losses, dim=0)
-
-        # Return the loss, as well as extra details like loss per line
-        return loss, line_losses, targets
 
     def optimizer_step(self, loss: torch.Tensor):
         """Performs one step of optimization on the given loss."""
@@ -102,13 +85,13 @@ class Trainer(ABC):
                 output, *_ = self.model(X, lengths=L, mask=M)
 
                 # Compute the loss for the output
-                loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
+                loss, *_ = self.model.compute_loss(output, Y, lengths=L, mask=M)
         else:
             # Apply the model to input to produce the output
             output, *_ = self.model(X, lengths=L, mask=M)
 
             # Compute the loss for the output
-            loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
+            loss, *_ = self.model.compute_loss(output, Y, lengths=L, mask=M)
 
         # Take an optimization step based on the loss
         self.optimizer_step(loss)
@@ -127,7 +110,7 @@ class Trainer(ABC):
         output, *_ = self.model(X, lengths=L, mask=M)
 
         # Compute the loss for the output
-        loss, line_losses, targets = self.compute_loss(output, Y, lengths=L, mask=M)
+        loss, line_losses, targets = self.model.compute_loss(output, Y, lengths=L, mask=M)
 
         # Save the results if desired
         if store_eval_data:

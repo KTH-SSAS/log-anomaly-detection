@@ -15,9 +15,63 @@ from log_analyzer.model.model_util import initialize_weights
 
 
 class LogModel(nn.Module):
+    """Superclass for all log-data language models."""
+
     def __init__(self, config: Config):
         super().__init__()
         self.config: Config = config
+        self.criterion = nn.CrossEntropyLoss(reduction="none", ignore_index=0)
+
+    def compute_loss(self, output: torch.Tensor, Y, lengths, mask: torch.Tensor):
+        """Computes the loss for the given model output and ground truth."""
+        targets = Y
+        if lengths is not None:
+            token_losses = self.criterion(output.transpose(1, 2), targets)
+            masked_losses = token_losses * mask
+            line_losses = torch.sum(masked_losses, dim=1)
+        else:
+            token_losses = self.criterion(output.transpose(1, 2), Y)
+            line_losses = torch.mean(token_losses, dim=1)
+        loss = torch.mean(line_losses, dim=0)
+
+        # Return the loss, as well as extra details like loss per line
+        return loss, line_losses, targets
+
+
+class TieredLogModel(LogModel):
+    """Superclass for tiered log-data language models."""
+
+    def __init__(self, config: Config):
+        super().__init__(config)
+
+    def compute_loss(self, output: Tensor, Y: Tensor, lengths, mask):
+        """Computes the loss for the given model output and ground truth."""
+        loss = torch.tensor(0.0)
+        line_losses_list = torch.empty(output.shape[:-2], dtype=torch.float)
+        if Application.instance().using_cuda:
+            line_losses_list = line_losses_list.cuda()
+        if lengths is not None:
+            max_length = int(torch.max(lengths))
+            targets = Y[:, :, :max_length]
+        else:
+            targets = Y
+        # output (num_steps x batch x length x embedding dimension)  Y
+        # (num_steps x batch x length)
+        for i, (step_output, step_y) in enumerate(zip(output, Y)):
+            # On notebook, I checked it with forward LSTM and word
+            # tokenization. Further checks have to be done...
+            if lengths is not None:
+                token_losses = self.criterion(step_output.transpose(1, 2), step_y[:, :max_length])
+                masked_losses = token_losses * mask[i][:, :max_length]
+                line_losses = torch.sum(masked_losses, dim=1)
+            else:
+                token_losses = self.criterion(step_output.transpose(1, 2), step_y)
+                line_losses = torch.mean(token_losses, dim=1)
+            line_losses_list[i] = line_losses
+            step_loss = torch.mean(line_losses, dim=0)
+            loss += step_loss
+        loss /= len(Y)
+        return loss, line_losses_list, targets
 
 
 class LSTMLanguageModel(LogModel):
@@ -189,7 +243,7 @@ class ContextLSTM(nn.Module):
         return output, context_hx, context_cx
 
 
-class TieredLSTM(LogModel):
+class TieredLSTM(TieredLogModel):
     def __init__(self, config: TieredLSTMConfig, bidirectional):
 
         super().__init__(config)

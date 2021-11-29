@@ -5,7 +5,7 @@ import torch
 from torch import Tensor, nn
 
 from log_analyzer.config.model_config import TieredTransformerConfig, TransformerConfig
-from log_analyzer.model.lstm import LogModel
+from log_analyzer.model.lstm import LogModel, TieredLogModel
 from log_analyzer.model.model_util import initialize_weights
 
 
@@ -183,7 +183,7 @@ class ContextTransformer(TransformerLanguageModel):
         return context_output
 
 
-class TieredTransformer(LogModel):
+class TieredTransformer(TieredLogModel):
     def __init__(self, config: TieredTransformerConfig):
         super().__init__(config)
         self.name = "Tiered_Transformer"
