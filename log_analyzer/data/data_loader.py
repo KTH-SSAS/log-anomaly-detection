@@ -20,30 +20,25 @@ DEFAULT_HEADERS = [
 ]
 
 
-def char_tokens_to_text(tokens):
-    characters = [chr(t + 30) for t in tokens]
-    string = "".join(characters)
-    return characters, string
+def get_mask(lens, max_len=None):
+    """For masking output of lm_rnn for jagged sequences for correct gradient
+    update. Sequence length of 0 will output nan for that row of mask so don't
+    do this.
 
-
-def translate_line(string, pad_len):
+    :param lens: Numpy vector of sequence lengths
+    :param num_tokens: (int) Number of predicted tokens in sentence.
+    :return: A numpy array mask MB X num_tokens
+             For each row there are: lens[i] values of 1/lens[i]
+                                     followed by num_tokens - lens[i] zeros
     """
 
-    :param string:
-    :param pad_len:
-    :return:
-    """
-    return "0 " + " ".join([str(ord(c) - 30) for c in string]) + " 1 " + " ".join(["0"] * pad_len) + "\n"
+    num_tokens = lens if max_len is None else max_len
 
+    mask_template = torch.arange(num_tokens, dtype=torch.float)
+    if Application.instance().using_cuda:
+        mask_template = mask_template.cuda()
 
-def parse_multiple_files(filepaths, jag, bidir, skipsos, raw_lines=False):
-    for datafile in filepaths:
-        with open(datafile, "r") as f:
-            for line in f:
-                if raw_lines:
-                    yield line
-                else:
-                    yield parse_line(line, jag, bidir, skipsos)
+    return (mask_template < lens) / lens
 
 
 def parse_line(line, jag, bidir, skipsos, delimiter=" "):
@@ -94,27 +89,14 @@ def parse_line(line, jag, bidir, skipsos, delimiter=" "):
     return datadict
 
 
-# Pads the input fields to the length of the longest sequence in the batch
-def collate_fn(data, jagged=False):
-    batch = {}
-
-    for key in data[0]:
-        batch[key] = []
-
-    for sample in data:
-        for key in sample:
-            batch[key].append(sample[key])
-
-    if jagged:
-        fields_to_pad = ["input", "target", "mask"]
-        for key in fields_to_pad:
-            batch[key] = pad_sequence(batch[key], batch_first=True, padding_value=0)
-
-    for key in batch:
-        if isinstance(batch[key], list):
-            batch[key] = torch.stack(batch[key])
-
-    return batch
+def parse_multiple_files(filepaths, jag, bidir, skipsos, raw_lines=False):
+    for datafile in filepaths:
+        with open(datafile, "r") as f:
+            for line in f:
+                if raw_lines:
+                    yield line
+                else:
+                    yield parse_line(line, jag, bidir, skipsos)
 
 
 class LogDataset:
@@ -161,6 +143,63 @@ class IterableLogDataset(LogDataset, IterableDataset):
 
     def __iter__(self):
         return parse_multiple_files(self.filepaths, self.jag, self.bidir, self.skipsos)
+
+
+class LogDataLoader(DataLoader):
+    """Wrapper class around torch's DataLoader, used for non-tiered data
+    loading.
+
+    Provides a function to split the batch provided by the data loader.
+    """
+
+    def __init__(self, dataset, batch_size, shuffle, collate_fn):
+        super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
+        self.cuda = Application.instance().using_cuda
+
+    def split_batch(self, batch: dict):
+        """Splits a batch into variables containing relevant data."""
+        print(batch)
+        split_parts = []
+        X = batch["input"]
+        Y = batch["target"]
+
+        # Optional fields
+        L = batch.get("length")
+        M = batch.get("mask")
+
+        if self.cuda:
+            X = X.cuda()
+            Y = Y.cuda()
+            if M is not None:
+                M = M.cuda()
+
+        split_parts.extend((X, Y, L, M))
+
+        # Grab any extra parts as necessary - for future integration with the tiered models
+        if "h_state_init" in batch:
+            # Tiered LSTM
+            C_V = batch["context_vector"]
+            C_H = batch["c_state_init"]
+            C_C = batch["h_state_init"]
+
+            if self.cuda:
+                C_V = C_V.cuda()
+                C_H = C_H.cuda()
+                C_C = C_C.cuda()
+
+            split_parts.append((C_V, C_H, C_C))
+        elif "history_length" in batch:
+            # Tiered Transformer
+            C_V = batch["context_vector"]
+            C_H = batch["history"]
+            H_L = batch["history_length"]
+
+            if self.cuda:
+                C_V = C_V.cuda()
+                C_H = C_H.cuda()
+
+            split_parts.append((C_V, C_H, H_L))
+        return split_parts
 
 
 def load_data_tiered(
@@ -239,6 +278,30 @@ def create_data_loaders(filepath, batch_size, bidir, skipsos, jagged, max_len, s
     If dataset_split is not provided the second data loader is instead
     set to None.
     """
+
+    def collate_fn(data, jagged=False):
+        """Pads the input fields to the length of the longest sequence in the
+        batch."""
+        batch = {}
+
+        for key in data[0]:
+            batch[key] = []
+
+        for sample in data:
+            for key in sample:
+                batch[key].append(sample[key])
+
+        if jagged:
+            fields_to_pad = ["input", "target", "mask"]
+            for key in fields_to_pad:
+                batch[key] = pad_sequence(batch[key], batch_first=True, padding_value=0)
+
+        for key in batch:
+            if isinstance(batch[key], list):
+                batch[key] = torch.stack(batch[key])
+
+        return batch
+
     if shuffle or dataset_split is not None:
         dataset = MapLogDataset(filepath, bidir, skipsos, jagged, max_len)
     else:
@@ -268,7 +331,7 @@ def create_data_loaders(filepath, batch_size, bidir, skipsos, jagged, max_len, s
         if dataset is None:
             data_handlers.append(None)
         else:
-            data_handlers.append(DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate))
+            data_handlers.append(LogDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate))
     return data_handlers
 
 
@@ -284,7 +347,6 @@ def load_data(
     train_val_split=[1, 0],
     shuffle_train_data=True,
 ):
-
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
     train_loader, val_loader = create_data_loaders(
@@ -297,29 +359,8 @@ def load_data(
     return train_loader, val_loader, test_loader
 
 
-def get_mask(lens, max_len=None):
-    """For masking output of lm_rnn for jagged sequences for correct gradient
-    update. Sequence length of 0 will output nan for that row of mask so don't
-    do this.
-
-    :param lens: Numpy vector of sequence lengths
-    :param num_tokens: (int) Number of predicted tokens in sentence.
-    :return: A numpy array mask MB X num_tokens
-             For each row there are: lens[i] values of 1/lens[i]
-                                     followed by num_tokens - lens[i] zeros
-    """
-
-    num_tokens = lens if max_len is None else max_len
-
-    mask_template = torch.arange(num_tokens, dtype=torch.float)
-    if Application.instance().using_cuda:
-        mask_template = mask_template.cuda()
-
-    return (mask_template < lens) / lens
-
-
 class OnlineLMBatcher:
-    """For use with tiered_lm.py.
+    """For use with tiered language models.
 
     Batcher keeps track of user states in upper tier RNN.
     """
@@ -471,6 +512,33 @@ class TieredLSTMBatcher(OnlineLMBatcher):
         super().__init__(filepaths, sentence_length, skipsos, jagged, bidir, batch_size, num_steps, delimiter, skiprows)
         self.context_size = context_size if type(context_size) is list else [context_size]
 
+    def split_batch(self, batch):
+        """Splits a batch into variables containing relevant data."""
+
+        X = batch["input"]
+        Y = batch["target"]
+
+        # Optional fields
+        L = batch.get("length")
+        M = batch.get("mask")
+
+        if self.cuda:
+            X = X.cuda()
+            Y = Y.cuda()
+            if M is not None:
+                M = M.cuda()
+
+        C_V = batch["context_vector"]
+        C_H = batch["c_state_init"]
+        C_C = batch["h_state_init"]
+
+        if self.cuda:
+            C_V = C_V.cuda()
+            C_H = C_H.cuda()
+            C_C = C_C.cuda()
+
+        return X, Y, L, M, (C_V, C_H, C_C)
+
     def init_saved_model(self, user):
         if self.cuda:
             self.saved_lstm[user] = (
@@ -576,16 +644,42 @@ class TieredTransformerBatcher(OnlineLMBatcher):
             skipsos,
             jagged,
             bidir,
-            batch_size=100,
-            num_steps=5,
-            delimiter=" ",
-            skiprows=0,
+            batch_size,
+            num_steps,
+            delimiter,
+            skiprows,
         )
         # the list of users whose saved log lines are greater than or equal to the self.num_steps
         self.saved_ctxt = {}
         self.context_model_dim = context_model_dim
         self.context_input_dimension = context_input_dimension
         self.shift_window = shift_window
+
+    def split_batch(self, batch):
+        """Splits a batch into variables containing relevant data."""
+
+        X = batch["input"]
+        Y = batch["target"]
+
+        # Optional fields
+        L = batch.get("length")
+        M = batch.get("mask")
+
+        if self.cuda:
+            X = X.cuda()
+            Y = Y.cuda()
+            if M is not None:
+                M = M.cuda()
+
+        C_V = batch["context_vector"]
+        C_H = batch["history"]
+        H_L = batch["history_length"]
+
+        if self.cuda:
+            C_V = C_V.cuda()
+            C_H = C_H.cuda()
+
+        return X, Y, L, M, (C_V, C_H, H_L)
 
     def init_saved_model(self, user):
         if self.cuda:
@@ -663,3 +757,17 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         for usr, ctxt_v, history in zip(self.current_batch_usr, ctxt_vectors, ctxt_history):
             self.saved_ctxt[usr] = [ctxt_v, history[: self.shift_window], history.shape[0]]
             remove_usr.append(usr)
+
+
+# def char_tokens_to_text(tokens):
+#     characters = [chr(t + 30) for t in tokens]
+#     string = "".join(characters)
+#     return characters, string
+
+# def translate_line(string, pad_len):
+#     """
+#     :param string:
+#     :param pad_len:
+#     :return:
+#     """
+#     return "0 " + " ".join([str(ord(c) - 30) for c in string]) + " 1 " + " ".join(["0"] * pad_len) + "\n"

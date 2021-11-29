@@ -52,7 +52,7 @@ class TieredTrainer(Trainer):
         loss /= len(Y)
         return loss, line_losses_list, targets
 
-    def train_step(self, batch):
+    def train_step(self, X, Y, L, M, model_info):
         """Defines a single training step.
 
         Feeds data through the model, computes the loss and makes an
@@ -60,9 +60,6 @@ class TieredTrainer(Trainer):
         """
         self.model.train()
         self.optimizer.zero_grad()
-
-        # Split the batch into input, ground truth, etc.
-        X, Y, L, M, model_info = self.split_batch(batch)
 
         if self.scaler is not None:
             with torch.cuda.amp.autocast():
@@ -83,14 +80,14 @@ class TieredTrainer(Trainer):
 
         return loss, self._EarlyStopping.early_stop
 
-    def eval_step(self, batch, store_eval_data=False):
+    def eval_step(self, X, Y, L, M, model_info, store_eval_data=False, batch=None):
         """Defines a single evaluation step.
 
         Feeds data through the model and computes the loss.
         """
         self.model.eval()
 
-        output, Y, L, M = self.eval_model(batch, self.test_loader)
+        output = self.eval_model(X, L, model_info, self.test_loader)
 
         # Compute the loss for the output
         loss, line_losses, targets = self.compute_loss(output, Y, lengths=L, mask=M)
@@ -136,22 +133,6 @@ class TieredLSTMTrainer(TieredTrainer):
         self.lstm = TieredLSTM(lstm_config, bidirectional)
         super().__init__(config, lstm_config, bidirectional, checkpoint_dir, train_loader, test_loader)
 
-    def split_batch(self, batch):
-        """Splits a batch into variables containing relevant data."""
-
-        X, Y, L, M = super().split_batch(batch)
-
-        C_V = batch["context_vector"]
-        C_H = batch["c_state_init"]
-        C_C = batch["h_state_init"]
-
-        if self.cuda:
-            C_V = C_V.cuda()
-            C_H = C_H.cuda()
-            C_C = C_C.cuda()
-
-        return X, Y, L, M, (C_V, C_H, C_C)
-
     def run_model(self, X, L, model_info, data_loader):
         ctxt_vector = model_info[0]
         ctxt_hidden = model_info[1]
@@ -162,15 +143,10 @@ class TieredLSTMTrainer(TieredTrainer):
 
         return output
 
-    def eval_model(self, batch, data_loader):
-
-        # Split the batch into input, ground truth, etc.
-        X, Y, L, M, model_info = self.split_batch(batch)
-
+    def eval_model(self, X, L, model_info, data_loader):
         # Apply the model to input to produce the output
         output = self.run_model(X, L, model_info, data_loader)
-
-        return output, Y, L, M
+        return output
 
 
 class TieredTransformerTrainer(TieredTrainer):
@@ -195,21 +171,6 @@ class TieredTransformerTrainer(TieredTrainer):
         self.transformer = TieredTransformer(transformer_config)
         super().__init__(config, transformer_config, bidirectional, checkpoint_dir, train_loader, test_loader)
 
-    def split_batch(self, batch):
-        """Splits a batch into variables containing relevant data."""
-
-        X, Y, L, M = super().split_batch(batch)
-
-        C_V = batch["context_vector"]
-        C_H = batch["history"]
-        H_L = batch["history_length"]
-
-        if self.cuda:
-            C_V = C_V.cuda()
-            C_H = C_H.cuda()
-
-        return X, Y, L, M, (C_V, C_H, H_L)
-
     def run_model(self, X, L, model_info, data_loader):
         ctxt_vector = model_info[0]
         history = model_info[1]
@@ -220,11 +181,6 @@ class TieredTransformerTrainer(TieredTrainer):
 
         return output
 
-    def eval_model(self, batch, data_loader):
-
-        # Split the batch into input, ground truth, etc.
-        X, Y, L, M, model_info = self.split_batch(batch)
-
+    def eval_model(self, X, L, model_info, data_loader):
         output = self.run_model(X, L, model_info, data_loader)
-
-        return output, Y, L, M
+        return output

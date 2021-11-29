@@ -226,8 +226,9 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
         """Performs one phase of validation on lm_trainer."""
         val_losses = []
         for val_iteration, val_batch in enumerate(tqdm(val_loader, desc=f"Valid:{val_run:2d}")):
+            split_batch = val_loader.split_batch(val_batch)
             with torch.no_grad():
-                loss, *_ = lm_trainer.eval_step(val_batch, False)
+                loss, *_ = lm_trainer.eval_step(*split_batch, store_eval_data=False)
                 val_losses.append(loss.item())
             # Don't log every result (unless LOGGING_FREQUENCY is 1)
             if val_iteration % LOGGING_FREQUENCY == 0:
@@ -272,15 +273,17 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
         for epoch_iteration, batch in enumerate(tqdm(train_loader, desc="Training")):
             # epoch_iteration = iterations in this epoch (used to determine when to run validation)
             iteration += 1  # Total iterations in training (cumulative)
+            # Split the batch
+            split_batch = train_loader.split_batch(batch)
             if isinstance(lm_trainer, TieredTrainer) or isinstance(lm_trainer, TieredTransformerTrainer):
                 if train_loader.flush is False:
-                    loss, done = lm_trainer.train_step(batch)
+                    loss, done = lm_trainer.train_step(*split_batch)
                 else:
                     logger.info(f"Due to flush, skipping the rest of the current file.")
                     train_loader.skip_file = True
                     continue
             else:
-                loss, done = lm_trainer.train_step(batch)
+                loss, done = lm_trainer.train_step(*split_batch)
             train_losses.append(loss.item())
             # Don't log every result (unless LOGGING_FREQUENCY is 1)
             if epoch_iteration % LOGGING_FREQUENCY == 0:
@@ -317,8 +320,9 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
 
     test_losses = []
     for iteration, batch in enumerate(tqdm(test_loader, desc="Test")):
+        split_batch = test_loader.split_batch(batch)
         with torch.no_grad():
-            loss, *_ = lm_trainer.eval_step(batch, store_eval_data)
+            loss, *_ = lm_trainer.eval_step(*split_batch, store_eval_data=store_eval_data, batch=batch)
             test_losses.append(loss.item())
 
         # Don't log every result (unless LOGGING_FREQUENCY is 1)
@@ -353,8 +357,9 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
         lm_trainer.model.load_state_dict(torch.load(lm_trainer._EarlyStopping.path))
         test_losses = []
         for iteration, batch in enumerate(tqdm(test_loader, desc="Test")):
+            split_batch = test_loader.split_batch(batch)
             with torch.no_grad():
-                loss, *_ = lm_trainer.eval_step(batch, store_eval_data)
+                loss, *_ = lm_trainer.eval_step(*split_batch, store_eval_data=store_eval_data, batch=batch)
                 test_losses.append(loss.item())
 
             # Don't log every result (unless LOGGING_FREQUENCY is 1)

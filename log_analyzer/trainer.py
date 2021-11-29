@@ -86,24 +86,7 @@ class Trainer(ABC):
         if self.use_scheduler:
             self.scheduler.step()
 
-    def split_batch(self, batch: dict):
-        """Splits a batch into variables containing relevant data."""
-        X = batch["input"]
-        Y = batch["target"]
-
-        # Optional fields
-        L = batch.get("length")
-        M = batch.get("mask")
-
-        if self.cuda:
-            X = X.cuda()
-            Y = Y.cuda()
-            if M is not None:
-                M = M.cuda()
-
-        return X, Y, L, M
-
-    def train_step(self, batch):
+    def train_step(self, X, Y, L=None, M=None):
         """Defines a single training step.
 
         Feeds data through the model, computes the loss and makes an
@@ -112,9 +95,6 @@ class Trainer(ABC):
 
         self.model.train()
         self.optimizer.zero_grad()
-
-        # Split the batch into input, ground truth, etc.
-        X, Y, L, M = self.split_batch(batch)
 
         if self.config.mixed_precision:
             with torch.cuda.amp.autocast():
@@ -135,16 +115,13 @@ class Trainer(ABC):
 
         return loss, self._EarlyStopping.early_stop
 
-    def eval_step(self, batch, store_eval_data=False):
+    def eval_step(self, X, Y, L=None, M=None, store_eval_data=False, batch=None):
         """Defines a single evaluation step.
 
         Feeds data through the model and computes the loss.
         """
         # TODO add more metrics, like perplexity.
         self.model.eval()
-
-        # Split the batch into input, ground truth, etc.
-        X, Y, L, M = self.split_batch(batch)
 
         # Apply the model to input to produce the output
         output, *_ = self.model(X, lengths=L, mask=M)
