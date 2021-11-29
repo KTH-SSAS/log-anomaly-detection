@@ -158,8 +158,6 @@ class LogDataLoader(DataLoader):
 
     def split_batch(self, batch: dict):
         """Splits a batch into variables containing relevant data."""
-        print(batch)
-        split_parts = []
         X = batch["input"]
         Y = batch["target"]
 
@@ -173,7 +171,7 @@ class LogDataLoader(DataLoader):
             if M is not None:
                 M = M.cuda()
 
-        split_parts.extend((X, Y, L, M))
+        split_parts = [X, Y, L, M]
 
         # Grab any extra parts as necessary - for future integration with the tiered models
         if "h_state_init" in batch:
@@ -512,7 +510,7 @@ class TieredLSTMBatcher(OnlineLMBatcher):
         super().__init__(filepaths, sentence_length, skipsos, jagged, bidir, batch_size, num_steps, delimiter, skiprows)
         self.context_size = context_size if type(context_size) is list else [context_size]
 
-    def split_batch(self, batch):
+    def split_batch(self, batch: dict):
         """Splits a batch into variables containing relevant data."""
 
         X = batch["input"]
@@ -655,7 +653,7 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         self.context_input_dimension = context_input_dimension
         self.shift_window = shift_window
 
-    def split_batch(self, batch):
+    def split_batch(self, batch: dict):
         """Splits a batch into variables containing relevant data."""
 
         X = batch["input"]
