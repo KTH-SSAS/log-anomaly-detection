@@ -69,12 +69,22 @@ class Trainer(ABC):
         if self.use_scheduler:
             self.scheduler.step()
 
-    def train_step(self, X, Y, L=None, M=None):
+    def train_step(self, split_batch):
         """Defines a single training step.
 
         Feeds data through the model, computes the loss and makes an
         optimization step.
+
+        split_batch: should contain X, Y, L, M
+            X: input
+            Y: target
+            L: sequence lengths
+            M: sequence masks
         """
+        X = split_batch["X"]
+        Y = split_batch["Y"]
+        L = split_batch["L"]
+        M = split_batch["M"]
 
         self.model.train()
         self.optimizer.zero_grad()
@@ -98,12 +108,26 @@ class Trainer(ABC):
 
         return loss, self._EarlyStopping.early_stop
 
-    def eval_step(self, X, Y, L=None, M=None, store_eval_data=False, batch=None):
+    def eval_step(self, split_batch, store_eval_data=False):
         """Defines a single evaluation step.
 
         Feeds data through the model and computes the loss.
+
+        split_batch: should contain X, Y, L, M
+            X: input
+            Y: target
+            L: sequence lengths
+            M: sequence masks
         """
-        # TODO add more metrics, like perplexity.
+        X = split_batch["X"]
+        Y = split_batch["Y"]
+        L = split_batch["L"]
+        M = split_batch["M"]
+
+        users = split_batch["user"]
+        seconds = split_batch["second"]
+        red_flags = split_batch["red_flag"]
+
         self.model.eval()
 
         # Apply the model to input to produce the output
@@ -118,10 +142,10 @@ class Trainer(ABC):
             self.evaluator.add_evaluation_data(
                 targets,
                 preds,
-                batch["user"],
+                users,
                 line_losses,
-                batch["second"],
-                batch["red"],
+                seconds,
+                red_flags,
             )
             self.evaluator.test_loss += loss
             self.evaluator.test_count += 1

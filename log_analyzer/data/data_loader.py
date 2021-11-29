@@ -171,9 +171,19 @@ class LogDataLoader(DataLoader):
             if M is not None:
                 M = M.cuda()
 
-        split_parts = [X, Y, L, M]
+        split_batch = {
+            "X": X,
+            "Y": Y,
+            "L": L,
+            "M": M,
+        }
 
-        # Grab any extra parts as necessary - for future integration with the tiered models
+        # Grab evaluation data
+        split_batch["user"] = batch["user"]
+        split_batch["second"] = batch["second"]
+        split_batch["red_flag"] = batch["red"]
+
+        # Grab any extra parts (model_info) as necessary - for future integration with the tiered models
         if "h_state_init" in batch:
             # Tiered LSTM
             C_V = batch["context_vector"]
@@ -185,7 +195,7 @@ class LogDataLoader(DataLoader):
                 C_H = C_H.cuda()
                 C_C = C_C.cuda()
 
-            split_parts.append((C_V, C_H, C_C))
+            split_batch["model_info"] = (C_V, C_H, C_C)
         elif "history_length" in batch:
             # Tiered Transformer
             C_V = batch["context_vector"]
@@ -196,8 +206,8 @@ class LogDataLoader(DataLoader):
                 C_V = C_V.cuda()
                 C_H = C_H.cuda()
 
-            split_parts.append((C_V, C_H, H_L))
-        return split_parts
+            split_batch["model_info"] = (C_V, C_H, H_L)
+        return split_batch
 
 
 def load_data_tiered(
@@ -535,7 +545,20 @@ class TieredLSTMBatcher(OnlineLMBatcher):
             C_H = C_H.cuda()
             C_C = C_C.cuda()
 
-        return X, Y, L, M, (C_V, C_H, C_C)
+        split_batch = {
+            "X": X,
+            "Y": Y,
+            "L": L,
+            "M": M,
+            "model_info": (C_V, C_H, C_C),
+        }
+
+        # Grab evaluation data
+        split_batch["user"] = batch["user"]
+        split_batch["second"] = batch["second"]
+        split_batch["red_flag"] = batch["red"]
+
+        return split_batch
 
     def init_saved_model(self, user):
         if self.cuda:
@@ -677,7 +700,20 @@ class TieredTransformerBatcher(OnlineLMBatcher):
             C_V = C_V.cuda()
             C_H = C_H.cuda()
 
-        return X, Y, L, M, (C_V, C_H, H_L)
+        split_batch = {
+            "X": X,
+            "Y": Y,
+            "L": L,
+            "M": M,
+            "model_info": (C_V, C_H, H_L),
+        }
+
+        # Grab evaluation data
+        split_batch["user"] = batch["user"]
+        split_batch["second"] = batch["second"]
+        split_batch["red_flag"] = batch["red"]
+
+        return split_batch
 
     def init_saved_model(self, user):
         if self.cuda:

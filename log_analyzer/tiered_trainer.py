@@ -24,12 +24,18 @@ class TieredTrainer(Trainer):
         self.test_loader = test_loader
         super().__init__(config, checkpoint_dir)
 
-    def train_step(self, X, Y, L, M, model_info):
+    def train_step(self, split_batch):
         """Defines a single training step.
 
         Feeds data through the model, computes the loss and makes an
         optimization step.
         """
+        X = split_batch["X"]
+        Y = split_batch["Y"]
+        L = split_batch["L"]
+        M = split_batch["M"]
+        model_info = split_batch["model_info"]
+
         self.model.train()
         self.optimizer.zero_grad()
 
@@ -52,11 +58,21 @@ class TieredTrainer(Trainer):
 
         return loss, self._EarlyStopping.early_stop
 
-    def eval_step(self, X, Y, L, M, model_info, store_eval_data=False, batch=None):
+    def eval_step(self, split_batch, store_eval_data=False):
         """Defines a single evaluation step.
 
         Feeds data through the model and computes the loss.
         """
+        X = split_batch["X"]
+        Y = split_batch["Y"]
+        L = split_batch["L"]
+        M = split_batch["M"]
+        model_info = split_batch["model_info"]
+
+        users = split_batch["user"]
+        seconds = split_batch["second"]
+        red_flags = split_batch["red_flag"]
+
         self.model.eval()
 
         output = self.eval_model(X, L, model_info, self.test_loader)
@@ -70,10 +86,10 @@ class TieredTrainer(Trainer):
             self.evaluator.add_evaluation_data(
                 torch.flatten(targets, end_dim=1),
                 torch.flatten(preds, end_dim=1),
-                torch.flatten(batch["user"], end_dim=1),
+                torch.flatten(users, end_dim=1),
                 torch.flatten(line_losses, end_dim=1),
-                torch.flatten(batch["second"], end_dim=1),
-                torch.flatten(batch["red"], end_dim=1),
+                torch.flatten(seconds, end_dim=1),
+                torch.flatten(red_flags, end_dim=1),
             )
 
         return loss, output
