@@ -588,11 +588,7 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         self.shift_window = shift_window
 
     def init_saved_model(self, user):
-        if self.cuda:
-            self.saved_ctxt[user] = [torch.zeros(self.context_model_dim).cuda(), torch.tensor([]).cuda(), 0]
-
-        else:
-            self.saved_ctxt[user] = [torch.zeros(self.context_model_dim), torch.tensor([]), 0]
+        self.saved_ctxt[user] = [torch.zeros(self.context_model_dim), torch.tensor([]), 0]
 
     def gen_datadict(self, batch, endx, endt, model_info):
         ctxt_vector = model_info[0]
