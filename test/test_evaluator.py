@@ -27,5 +27,5 @@ def test_evaluator(tmpdir, model_type):
     assert metrics["eval/token_perplexity"] >= 1
     assert metrics["eval/AUC"] >= 0 and metrics["eval/AUC"] <= 1
 
-    # Plotting functions are all called by eval_model
-    eval_model(trainer)
+    # Run through complete evaluator functionality
+    trainer.evaluator.run_all()

@@ -2,11 +2,13 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
+import wandb
 from sklearn import metrics
 from tqdm import tqdm
 
-import wandb
-from log_analyzer.model.lstm import LSTMLanguageModel
+from log_analyzer.application import Application
+from log_analyzer.model.lstm import LogModel, LSTMLanguageModel
 from log_analyzer.tokenizer.tokenizer import Char_tokenizer
 
 
@@ -106,9 +108,60 @@ class Evaluator:
         """Creates an Evaluator instance that provides methods for model
         evaluation."""
         self.data_is_prepared = False
-        self.data_is_normalized = False
         self.reset_evaluation_data()
         self.use_wandb = Application.instance().wandb_initialized
+
+    def run_all(self):
+        r"""Performs standard evaluation on the model. Assumes the model has been trained
+        and the evaluator has been populated with evaluation data (see eval_step)"""
+        self.prepare_evaluation_data()
+        # Get generic metrics
+        evaluator_metrics = self.get_metrics()
+
+        # get line losses plot
+        self.plot_line_loss_percentiles(
+            percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False
+        )
+        if self.use_wandb:
+            wandb.log({"Aggregate line losses": wandb.Image(plt)})
+        plt.clf()
+
+        # get roc curve
+        _, roc_plot = self.plot_roc_curve()
+        if self.use_wandb:
+            wandb.log({"ROC Curve": roc_plot})
+
+        # get pr curve
+        AP_score, pr_plot = self.plot_pr_curve()
+        if self.use_wandb:
+            wandb.log({"PR Curve": pr_plot})
+        evaluator_metrics["eval/AP"] = AP_score
+
+        # get normalised line losses plot
+        self.plot_line_loss_percentiles(
+            percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False, normalised=True
+        )
+        if self.use_wandb:
+            wandb.log({"Aggregate line losses (normalised)": wandb.Image(plt)})
+        plt.clf()
+
+        # get normalised roc curve
+        evaluator_metrics["eval/AUC_(normalised)"], roc_plot = self.plot_roc_curve(
+            title="ROC (normalised)", normalised=True
+        )
+        if self.use_wandb:
+            wandb.log({"ROC Curve (normalised)": roc_plot})
+
+        # get normalised pr curve
+        evaluator_metrics["eval/AP_(normalised)"], pr_plot = self.plot_pr_curve(title="PR Curve (normalised)", normalised=True)
+        if self.use_wandb:
+            wandb.log({"PR Curve": pr_plot})
+
+        # Log the evaluation results
+        if self.use_wandb and wandb.run is not None:
+            for key in evaluator_metrics:
+                wandb.run.summary[key] = evaluator_metrics[key]
+        return evaluator_metrics
 
     def add_evaluation_data(self, log_line, predictions, users, losses, seconds, red_flags):
         """Extend the data stored in self.data with the inputs."""
@@ -130,9 +183,8 @@ class Evaluator:
             self.data[key][self.index[key] : self.index[key] + len(new_data)] = new_data
             self.index[key] += len(new_data)
 
-        # Update the metatags, i.e. data is prepared and data is normalised
+        # Update the metatag, i.e. data is prepared and data is normalised
         self.data_is_prepared = False
-        self.data_is_normalized = False
         # Update token accuracy including this batch
         batch_token_accuracy = metrics.accuracy_score(log_line, predictions)
         new_token_count = self.token_count + len(log_line)
