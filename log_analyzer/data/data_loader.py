@@ -595,32 +595,21 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         ctxt_vector = model_info[0]
         history = model_info[1]
         history_length = model_info[2]
+        datadict = {
+            "line": batch[:, :, 0],
+            "second": batch[:, :, 1],
+            "day": batch[:, :, 2],
+            "user": batch[:, :, 3],
+            "red": batch[:, :, 4],
+            "input": batch[:, :, 5 + self.jagged + self.skipsos : endx],
+            "target": batch[:, :, 6 + self.jagged + self.skipsos : endt],
+            "context_vector": ctxt_vector,
+            "history": history,
+            "history_length": history_length,
+        }
         if self.cuda:
-            datadict = {
-                "line": batch[:, :, 0],
-                "second": batch[:, :, 1],
-                "day": batch[:, :, 2],
-                "user": batch[:, :, 3],
-                "red": batch[:, :, 4],
-                "input": batch[:, :, 5 + self.jagged + self.skipsos : endx].cuda(),
-                "target": batch[:, :, 6 + self.jagged + self.skipsos : endt].cuda(),
-                "context_vector": ctxt_vector.cuda(),
-                "history": history.cuda(),
-                "history_length": history_length,
-            }
-        else:
-            datadict = {
-                "line": batch[:, :, 0],
-                "second": batch[:, :, 1],
-                "day": batch[:, :, 2],
-                "user": batch[:, :, 3],
-                "red": batch[:, :, 4],
-                "input": batch[:, :, 5 + self.jagged + self.skipsos : endx],
-                "target": batch[:, :, 6 + self.jagged + self.skipsos : endt],
-                "context_vector": ctxt_vector,
-                "history": history,
-                "history_length": history_length,
-            }
+            datadict["input"] = datadict["input"].cuda()
+            datadict["target"] = datadict["target"].cuda()
         return datadict
 
     def load_lines(self):
