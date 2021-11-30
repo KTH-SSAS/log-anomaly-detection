@@ -586,6 +586,7 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         self.context_model_dim = context_model_dim
         self.context_input_dimension = context_input_dimension
         self.shift_window = shift_window
+        self.stay_cuda = []
 
     def init_saved_model(self, user):
         self.saved_ctxt[user] = [torch.zeros(self.context_model_dim), torch.tensor([]), 0]
@@ -649,14 +650,16 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         self.stay_cuda = self.users_ge_num_steps[: self.mb_size]
         max_length = max(hist_lengths)
         for idx, hist in enumerate(hist_lst):
+            device = hist.device
             if hist_lengths[idx] == max_length:
                 hist_lst[idx] = hist
             elif hist_lengths[idx] == 0:
-                hist_lst[idx] = torch.zeros(1, max_length, hist_dimension)
+                hist_lst[idx] = torch.zeros(1, max_length, hist_dimension).to(device)
             else:
-                hist_lst[idx] = torch.cat(
-                    (torch.zeros(1, max_length - hist_lengths[idx], hist_dimension), hist), dim=1
-                )
+                if self.cuda:
+                    hist_lst[idx] = torch.cat(
+                        (torch.zeros(1, max_length - hist_lengths[idx], hist_dimension).to(device), hist), dim=1
+                    )
         history = torch.cat((hist_lst), dim=0)
 
         return output, (ctxt_vector, history, hist_lengths)
