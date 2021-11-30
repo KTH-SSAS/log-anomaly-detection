@@ -19,12 +19,14 @@ class EarlyStopping:
             delta (float): Minimum change in the monitored quantity to qualify as an improvement.
                             Default: 0
             path (str): Path for the checkpoint to be saved to.
-                            Default: 'checkpoint.pt'
+                            Default: './'
         """
         self.patience = patience
-        self.counter = 0
+        self.patience_counter = 0
+        self.call_counter = 0
         self.early_stop = False
         self.val_loss_min = np.Inf
+        self.saved_val_loss = np.Inf
         self.delta = delta
         self.path = os.path.join(path, "checkpoint.pt")
         self.model_state_dict = None
@@ -33,17 +35,18 @@ class EarlyStopping:
     def __call__(self, val_loss, model):
         if val_loss < self.val_loss_min - self.delta:
             self.store_state_dict(val_loss, model)
-            self.counter = 0
+            self.patience_counter = 0
         else:
-            self.counter += 1
+            self.patience_counter += 1
             self.logger.debug(
-                "EarlyStopping counter: %d out of %d. Best loss: %f",
-                self.counter,
-                self.patience,
-                -self.val_loss_min,
+                f"EarlyStopping counter: {self.patience_counter} out of {self.patience}. Best loss: {self.val_loss_min}"
             )
-            if self.counter >= self.patience:
+            if self.patience_counter >= self.patience:
                 self.early_stop = True
+        # Save checkpoint if best model isn't already saved, at most every 2nd time early_stopping is called
+        if self.call_counter % 2 == 0 and self.val_loss_min < self.saved_val_loss:
+            self.save_checkpoint()
+        self.call_counter += 1
 
     def store_state_dict(self, val_loss, model):
         """Stores the model dict of the best performing model so far."""
@@ -53,9 +56,8 @@ class EarlyStopping:
         self.val_loss_min = val_loss
 
     def save_checkpoint(self):
-        """Saves model to file.
-
-        Must be called externally.
-        """
+        """Saves model to file if the model has improved since last time it was
+        saved."""
         self.logger.info("Best Loss: %.6f, Saving model ...", self.val_loss_min)
+        self.saved_val_loss = self.val_loss_min
         torch.save(self.model_state_dict, self.path)
