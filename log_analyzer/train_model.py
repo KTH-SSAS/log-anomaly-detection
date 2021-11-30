@@ -41,12 +41,12 @@ def prepare_args():
     )
     parser.add_argument("--model-dir", type=str, help="Directory to save stats and checkpoints to", default="runs")
     parser.add_argument(
-        "--eval_model",
+        "--no-eval-model",
         action="store_true",
-        help="Including this option will run the model through standard evaluation and return appropriate metrics and plots.",
+        help="Including this option will skip running the model through standard evaluation and returning appropriate metrics and plots.",
     )
     parser.add_argument(
-        "--wandb_sync", action="store_true", help="Including this option will sync the wandb data with the cloud."
+        "--wandb-sync", action="store_true", help="Including this option will sync the wandb data with the cloud."
     )
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--use-cuda", action="store_true", help="Use CUDA acceleration for training.")
@@ -85,9 +85,10 @@ def main():
     # Train the model
     train_model(trainer, train_loader, val_loader)
     # Test the model
-    eval_model(trainer, test_loader, store_eval_data=(args.eval_model))
+    eval_model(trainer, test_loader, store_eval_data=(not args.no_eval_model))
 
     # Perform standard evaluation on the model
+    if Application.instance().wandb_initialized and not args.no_eval_model:
         trainer.evaluator.run_all()
 
 
