@@ -6,8 +6,7 @@ import torch
 
 import wandb
 from log_analyzer.application import Application
-from log_analyzer.eval_model import eval_model
-from log_analyzer.train_loop import init_from_args, train_model
+from log_analyzer.train_loop import init_from_args, eval_model, train_model
 
 """
 Entrypoint script for training
@@ -84,7 +83,9 @@ def main():
     # Create the trainer+model
     trainer, train_loader, val_loader, test_loader = init_from_args(args)
     # Train the model
-    train_model(trainer, train_loader, val_loader, test_loader, store_eval_data=args.eval_model)
+    train_model(trainer, train_loader, val_loader)
+    # Test the model
+    eval_model(trainer, test_loader, store_eval_data=(args.eval_model))
 
     # Perform standard evaluation on the model
         trainer.evaluator.run_all()

@@ -4,8 +4,7 @@ import os
 import pytest
 import utils
 
-from log_analyzer.eval_model import eval_model
-from log_analyzer.train_loop import init_from_config_classes, train_model
+from log_analyzer.train_loop import init_from_config_classes, eval_model, train_model
 
 
 @pytest.mark.parametrize("model_type", ["lstm", "tiered-lstm", "transformer"])
@@ -17,7 +16,8 @@ def test_evaluator(tmpdir, model_type):
     args["base_logdir"] = os.path.join(tmpdir, "runs")
 
     trainer, train_loader, val_loader, test_loader = init_from_config_classes(**args)
-    _, _ = train_model(trainer, train_loader, val_loader, test_loader, store_eval_data=True)
+    _ = train_model(trainer, train_loader, val_loader)
+    _ = eval_model(trainer, test_loader, store_eval_data=True)
 
     # Numerical metrics
     metrics = trainer.evaluator.get_metrics()

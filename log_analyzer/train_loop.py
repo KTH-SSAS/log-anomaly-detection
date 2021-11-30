@@ -36,6 +36,9 @@ TRANSFORMER = "transformer"
 TIERED_LSTM = "tiered-lstm"
 TIERED_TRANSFORMER = "tiered-transformer"
 
+LOGGING_FREQUENCY = 10  # How often to log results. Set to 1 to log everything.
+VALIDATION_FREQUENCY = 10  # Number of times to do validation per epoch. Set to 1 to only validate after each epoch.
+
 
 def calculate_max_input_length(data_length, bidirectional, skip_sos):
     """Maximum input length to model."""
@@ -216,10 +219,8 @@ def init_from_config_classes(
     return lm_trainer, train_loader, val_loader, test_loader
 
 
-def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, store_eval_data=True):
+def train_model(lm_trainer: Trainer, train_loader, val_loader):
     """Perform training on lm_trainer."""
-    LOGGING_FREQUENCY = 10  # How often to log results. Set to 1 to log everything.
-    VALIDATION_FREQUENCY = 10  # Number of times to do validation per epoch. Set to 1 to only validate after each epoch.
     logger = logging.getLogger(application.TRAINER_LOGGER)
 
     def validation_run(train_iteration=0, val_run=0):
@@ -248,7 +249,6 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
         mean_val_loss = np.mean(val_losses)
         lm_trainer.early_stopping(mean_val_loss)
 
-    outfile = None
     done = False
     log_dir = lm_trainer.checkpoint_dir
     epochs = lm_trainer.config.epochs
@@ -318,6 +318,35 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
         # Save the best performing model version to file
         lm_trainer._EarlyStopping.save_checkpoint()
 
+    # Save the final model version to file
+    model_save_path = os.path.join(log_dir, "model.pt")
+    torch.save(lm_trainer.model.state_dict(), model_save_path)
+
+    lm_trainer.config.save_config(os.path.join(log_dir, "trainer_config.json"))
+    lm_trainer.model.config.save_config(os.path.join(log_dir, "model_config.json"))
+    return train_losses
+
+
+def eval_model(lm_trainer: Trainer, test_loader, store_eval_data=False, model_file_name="model.pt"):
+    """Perform testing on lm_trainer.
+
+    Note: model_file_name is only used for uploading model parameters to wandb.
+    """
+    outfile = None
+    log_dir = lm_trainer.checkpoint_dir
+    model_save_path = os.path.join(log_dir, model_file_name)
+    writer = SummaryWriter(os.path.join(log_dir, "metrics"))
+
+    if Application.instance().wandb_initialized:
+        # Save the model weights as a versioned artifact
+        artifact = wandb.Artifact(
+            Application.artifact_name,
+            "model",
+            metadata=lm_trainer.model.config.__dict__,
+        )
+        artifact.add_file(model_save_path)
+        artifact.save()
+
     test_losses = []
     for iteration, batch in enumerate(tqdm(test_loader, desc="Test")):
         split_batch = test_loader.split_batch(batch)
@@ -349,40 +378,4 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
 
     writer.close()
 
-    model_save_path = os.path.join(log_dir, "model.pt")
-    torch.save(lm_trainer.model, model_save_path)
-
-    if run_validation and lm_trainer.config.early_stopping:
-        # Load the best performing model from validation and test it too
-        lm_trainer.model.load_state_dict(torch.load(lm_trainer._EarlyStopping.path))
-        test_losses = []
-        for iteration, batch in enumerate(tqdm(test_loader, desc="Test")):
-            split_batch = test_loader.split_batch(batch)
-            with torch.no_grad():
-                loss, *_ = lm_trainer.eval_step(split_batch, store_eval_data=store_eval_data)
-                test_losses.append(loss.item())
-
-            # Don't log every result (unless LOGGING_FREQUENCY is 1)
-            if iteration % LOGGING_FREQUENCY == 0:
-                if Application.instance().wandb_initialized:
-                    wandb.log(
-                        {
-                            "eval/best_val_loss": loss,
-                            "eval/iteration": iteration,
-                            "eval/day": batch["day"][0],
-                        }
-                    )
-
-    if Application.instance().wandb_initialized:
-        # Save the model weights as a versioned artifact
-        artifact = wandb.Artifact(
-            Application.artifact_name,
-            "model",
-            metadata=lm_trainer.model.config.__dict__,
-        )
-        artifact.add_file(model_save_path)
-        artifact.save()
-
-    lm_trainer.config.save_config(os.path.join(log_dir, "trainer_config.json"))
-    lm_trainer.model.config.save_config(os.path.join(log_dir, "model_config.json"))
-    return train_losses, test_losses
+    return test_losses
