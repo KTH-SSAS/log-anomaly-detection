@@ -4,7 +4,6 @@ import socket
 from datetime import datetime
 
 import numpy as np
-from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 import log_analyzer.application as application
@@ -238,7 +237,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
                 val_losses.append(loss.item())
             # Log the current validation loss and val_iteration to enable detailed view of
             # validation loss.
-            # Also log  the current train iteration and validation run_number to enable
+            # Also log the current train iteration and validation run_number to enable
             # overview analysis of each validation run
             wandb_log(
                 val_iteration,
@@ -276,7 +275,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
         for epoch_iteration, batch in enumerate(tqdm(train_loader, desc="Training")):
             # epoch_iteration = iterations in this epoch (used to determine when to run validation)
             iteration += 1  # Total iterations in training (cumulative)
-            if isinstance(lm_trainer, TieredTrainer) or isinstance(lm_trainer, TieredTransformerTrainer):
+            if isinstance(lm_trainer, (TieredTrainer, TieredTransformerTrainer)):
                 if train_loader.flush is False:
                     loss, done = lm_trainer.train_step(batch)
                 else:
@@ -295,7 +294,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
                     "train/day": batch["day"][0],
                     "train/lr": lm_trainer.scheduler.get_last_lr()[0],
                     "train/epoch": epoch,
-                }
+                },
             )
             if run_validation and epoch_iteration > 0 and (epoch_iteration % validation_period == 0):
                 validation_run(iteration, val_run)
@@ -312,10 +311,6 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
         if done:
             break
 
-    if lm_trainer.config.early_stopping:
-        # Save the best performing model version to file
-        lm_trainer._EarlyStopping.save_checkpoint()
-
     test_losses = []
     for iteration, batch in enumerate(tqdm(test_loader, desc="Test")):
         with torch.no_grad():
@@ -328,7 +323,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
                     "eval/loss": loss,
                     "eval/iteration": iteration,
                     "eval/day": batch["day"][0],
-                }
+                },
             )
 
     model_save_path = os.path.join(log_dir, "model.pt")
@@ -342,12 +337,14 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader, test_loader, stor
             with torch.no_grad():
                 loss, *_ = lm_trainer.eval_step(batch, store_eval_data)
                 test_losses.append(loss.item())
-                wandb_log(iteration, LOGGING_FREQUENCY,
+                wandb_log(
+                    iteration,
+                    LOGGING_FREQUENCY,
                     {
                         "eval/best_val_loss": loss,
                         "eval/iteration": iteration,
                         "eval/day": batch["day"][0],
-                    }
+                    },
                 )
 
     if Application.instance().wandb_initialized:
