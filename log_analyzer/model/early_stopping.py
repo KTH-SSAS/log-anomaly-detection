@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 
@@ -47,7 +48,7 @@ class EarlyStopping:
 
     def store_state_dict(self, val_loss, model):
         """Stores the model dict of the best performing model so far."""
-        self.model_state_dict = model.state_dict()
+        self.model_state_dict = copy.deepcopy(model.state_dict())
 
         self.logger.debug("Loss decreased (%.6f --> %.6f).", self.val_loss_min, val_loss)
         self.val_loss_min = val_loss
