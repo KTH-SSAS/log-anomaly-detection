@@ -194,7 +194,6 @@ class TieredTransformer(TieredLogModel):
 
     def forward(self, src: Tensor, ctxt_vector, ctx_history, lengths=None, mask=None, has_mask=True):
         # src (num of series, batch size, sequence length, embedded dimension)
-        # lengths is currently ignored, added for compatibility with LSTM-training code
         # TODO: compatibility with character level encoding
         batch_size = src.shape[1]
 

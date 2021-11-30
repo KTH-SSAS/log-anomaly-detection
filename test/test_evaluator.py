@@ -17,7 +17,7 @@ def test_evaluator(tmpdir, model_type):
     args["base_logdir"] = os.path.join(tmpdir, "runs")
 
     trainer, train_loader, val_loader, test_loader = init_from_config_classes(**args)
-    train_losses, test_losses = train_model(trainer, train_loader, val_loader, test_loader, store_eval_data=True)
+    _, _ = train_model(trainer, train_loader, val_loader, test_loader, store_eval_data=True)
 
     # Numerical metrics
     metrics = trainer.evaluator.get_metrics()
