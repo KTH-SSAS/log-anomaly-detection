@@ -1,7 +1,7 @@
 from log_analyzer.application import Application
 from log_analyzer.config.model_config import LSTMConfig, TieredLSTMConfig
 from log_analyzer.config.trainer_config import DataConfig, TrainerConfig
-from log_analyzer.train_loop import get_model_config, init_from_config_classes, train_model
+from log_analyzer.train_loop import get_model_config, init_from_config_classes, train_model, eval_model
 
 
 def set_args(bidir, model_type, token_level):
@@ -30,5 +30,6 @@ def set_args(bidir, model_type, token_level):
 def run_test(args, cuda=False):
     Application.instance()._use_cuda = cuda  # TODO this is not a great way to do this, but it's quick.
     trainer, train_loader, val_loader, test_loader = init_from_config_classes(**args)
-    train_losses, test_losses = train_model(trainer, train_loader, val_loader, test_loader, store_eval_data=False)
+    train_losses = train_model(trainer, train_loader, val_loader)
+    test_losses = eval_model(trainer, test_loader, store_eval_data=False)
     return train_losses, test_losses
