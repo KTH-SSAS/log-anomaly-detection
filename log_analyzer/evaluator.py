@@ -13,12 +13,7 @@ from log_analyzer.tokenizer.tokenizer import Char_tokenizer
 
 
 def create_attention_matrix(
-    model: LSTMLanguageModel,
-    sequences,
-    output_dir,
-    lengths=None,
-    mask=None,
-    token_map_file=None,
+    model: LSTMLanguageModel, sequences, output_dir, lengths=None, mask=None, token_map_file=None,
 ):
     """Plot attention matrix over batched input.
 
@@ -104,12 +99,59 @@ def create_attention_matrix(
 
 
 class Evaluator:
-    def __init__(self):
+    def __init__(self, model: LogModel):
         """Creates an Evaluator instance that provides methods for model
         evaluation."""
+        self.model = model
         self.data_is_prepared = False
         self.reset_evaluation_data()
         self.use_wandb = Application.instance().wandb_initialized
+
+    @torch.no_grad()
+    def eval_step(self, split_batch, store_eval_data=False):
+        """Defines a single evaluation step.
+
+        Feeds data through the model and computes the loss.
+
+        split_batch: should contain X, Y, L, M
+            X: input
+            Y: target
+            L: sequence lengths
+            M: sequence masks
+        """
+        X = split_batch["X"]
+        Y = split_batch["Y"]
+        L = split_batch["L"]
+        M = split_batch["M"]
+
+        users = split_batch["user"]
+        seconds = split_batch["second"]
+        red_flags = split_batch["red_flag"]
+
+        self.model.eval()
+
+        # Apply the model to input to produce the output
+        output, *_ = self.model(X, lengths=L, mask=M)
+
+        # Compute the loss for the output
+        loss, line_losses, targets = self.model.compute_loss(output, Y, lengths=L, mask=M)
+
+        # Save the results if desired
+        if store_eval_data:
+            preds = torch.argmax(output, dim=-1)
+            self.evaluator.add_evaluation_data(
+                targets,
+                preds,
+                users,
+                line_losses,
+                seconds,
+                red_flags,
+            )
+            self.evaluator.test_loss += loss
+            self.evaluator.test_count += 1
+
+        # Return both the loss and the output token probabilities
+        return loss, output
 
     def run_all(self):
         r"""Performs standard evaluation on the model. Assumes the model has been trained
@@ -232,11 +274,11 @@ class Evaluator:
         self.test_loss /= max(self.test_count, 1)
         self.test_count = 1
         # Prepared the normalised losses
-        self._normalize_losses()
+        self._normalise_losses()
 
         self.data_is_prepared = True
 
-    def _normalize_losses(self):
+    def _normalise_losses(self):
         """Performs user-level anomaly score normalization by subtracting the
         average anomaly score of the user from each event (log line).
 
