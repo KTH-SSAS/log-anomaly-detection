@@ -623,22 +623,14 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         for user in self.current_batch_usr:
             output.append(self.user_logs[user][0 : self.num_steps])
             self.user_logs[user] = self.user_logs[user][self.num_steps :]
+            ctxt_vector = torch.cat(
+                (ctxt_vector, torch.unsqueeze(self.saved_ctxt[user][0], dim=0)), dim=0
+            )
             if len(self.user_logs[user]) < self.num_steps:
                 self.users_ge_num_steps.remove(user)
-            if user in self.stay_cuda and self.cuda:
-                ctxt_vector = torch.cat((ctxt_vector.cuda(), torch.unsqueeze(self.saved_ctxt[user][0], dim=0)), dim=0)
-                hist_lst.append(torch.unsqueeze(self.saved_ctxt[user][1], dim=0))
-            elif self.cuda:
-                ctxt_vector = torch.cat(
-                    (ctxt_vector.cuda(), torch.unsqueeze(self.saved_ctxt[user][0].cuda(), dim=0)), dim=0
-                )
-                hist_lst.append(torch.unsqueeze(self.saved_ctxt[user][1].cuda(), dim=0))
-            else:
-                ctxt_vector = torch.cat((ctxt_vector, torch.unsqueeze(self.saved_ctxt[user][0], dim=0)), dim=0)
-                hist_lst.append(torch.unsqueeze(self.saved_ctxt[user][1], dim=0))
+            hist_lst.append(torch.unsqueeze(self.saved_ctxt[user][1], dim=0))
             hist_lengths.append(self.saved_ctxt[user][2])
             hist_dimension = max(self.saved_ctxt[user][1].shape[-1], hist_dimension)
-        self.stay_cuda = self.users_ge_num_steps[: self.mb_size]
         max_length = max(hist_lengths)
         for idx, hist in enumerate(hist_lst):
             device = hist.device
@@ -659,17 +651,9 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         ctxt_history = ctxt_history.data
         remove_usr = []
         for usr, ctxt_v, history in zip(self.current_batch_usr, ctxt_vectors, ctxt_history):
-            if usr in self.stay_cuda:
-                self.saved_ctxt[usr] = [
-                    ctxt_v.detach(),
-                    history[-self.shift_window :].detach(),
-                    history[-self.shift_window :].shape[0],
-                ]
-                remove_usr.append(usr)
-            else:
-                self.saved_ctxt[usr] = [
-                    ctxt_v.cpu().detach(),
-                    history[-self.shift_window :].cpu().detach(),
-                    history[-self.shift_window :].shape[0],
-                ]
-                remove_usr.append(usr)
+            self.saved_ctxt[usr] = [
+                ctxt_v.cpu().detach(),
+                history[-self.shift_window :].cpu().detach(),
+                history[-self.shift_window :].shape[0],
+            ]
+            remove_usr.append(usr)
