@@ -210,7 +210,7 @@ def load_data_tiered_trans(
     context_input_dimension,
     shift_window,
 ):
-    def create_data_loader(filepath):
+    def create_tiered_data_loader(filepath):
         data_handler = TieredTransformerBatcher(
             filepath,
             sentence_length,
@@ -228,8 +228,8 @@ def load_data_tiered_trans(
 
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
-    train_loader = create_data_loader(filepaths_train)
-    test_loader = create_data_loader(filepaths_eval)
+    train_loader = create_tiered_data_loader(filepaths_train)
+    test_loader = create_tiered_data_loader(filepaths_eval)
     return train_loader, test_loader
 
 
