@@ -224,7 +224,6 @@ class TieredTransformer(LogModel):
             logits, tf_hidden = self.log_transformer(
                 batch, ctx_vector=ctxt_vector
             )  # (batch size, sequence length, model dimension)
-            print(logits.shape)
             tag_output[idx][: logits.shape[0], : logits.shape[1], : logits.shape[2]] = logits
 
             ################ Process the output of the low level transformer ##################
