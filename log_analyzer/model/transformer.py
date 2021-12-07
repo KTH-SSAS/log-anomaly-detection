@@ -203,13 +203,10 @@ class TieredTransformer(LogModel):
         # TODO: compatibility with character level encoding
         batch_size = src.shape[1]
 
-        if lengths is None:
-            if self.log_transformer.bidirectional:
-                tag_output = torch.empty((src.shape[0], src.shape[1], src.shape[2] - 2), dtype=torch.float)
-            else:
-                tag_output = torch.empty_like(src, dtype=torch.float)
+        if self.log_transformer.bidirectional:
+            tag_output = torch.empty((src.shape[0], src.shape[1], src.shape[2] - 2), dtype=torch.float)
         else:
-            tag_output = torch.zeros((src.shape[0], src.shape[1], int(torch.max(lengths))), dtype=torch.float)
+            tag_output = torch.empty_like(src, dtype=torch.float)
 
         tag_output = tag_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
 
