@@ -610,6 +610,8 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         if self.cuda:
             datadict["input"] = datadict["input"].cuda()
             datadict["target"] = datadict["target"].cuda()
+            datadict["context_vector"] = datadict["context_vector"].cuda()
+            datadict["history"] = datadict["history"].cuda()
         return datadict
 
     def load_lines(self):
