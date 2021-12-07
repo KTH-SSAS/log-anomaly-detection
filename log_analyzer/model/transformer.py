@@ -4,10 +4,10 @@ import math
 import torch
 from torch import Tensor, nn
 
+from log_analyzer.application import Application
 from log_analyzer.config.model_config import TieredTransformerConfig, TransformerConfig
 from log_analyzer.model.lstm import LogModel
 from log_analyzer.model.model_util import initialize_weights
-from log_analyzer.application import Application
 
 
 def _generate_square_subsequent_mask(sz):
@@ -224,6 +224,7 @@ class TieredTransformer(LogModel):
             logits, tf_hidden = self.log_transformer(
                 batch, ctx_vector=ctxt_vector
             )  # (batch size, sequence length, model dimension)
+            print(logits.shape)
             tag_output[idx][: logits.shape[0], : logits.shape[1], : logits.shape[2]] = logits
 
             ################ Process the output of the low level transformer ##################
@@ -243,7 +244,7 @@ class TieredTransformer(LogModel):
             else:
                 ctx_history = torch.cat((unsqz_ctx_input, ctx_history), dim=1)
             # ctx_history: concatination to generate a sequence of low level outputs (batch size, history length, 2 * model dimension)
-            ctx_history = ctx_history[:,-self.shift_window:,:]
+            ctx_history = ctx_history[:, -self.shift_window :, :]
             ################ Context level transformer with history #######################
             ctxt_vector = self.context_transformer(ctx_history)
 
