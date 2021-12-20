@@ -193,7 +193,7 @@ class BidLSTM(LSTMLanguageModel):
         else:
             split = lstm_out.view(sequences.shape[0], sequences.shape[-1], 2, lstm_out.shape[-1] // 2)
 
-        # Seperate forward and backward hidden states
+        # Separate forward and backward hidden states
         forward_hidden_states = split[:, :, 0]
         backward_hidden_states = split[:, :, 1]
 

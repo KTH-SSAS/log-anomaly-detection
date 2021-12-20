@@ -12,9 +12,6 @@ from log_analyzer.evaluator import Evaluator
 from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel
 from log_analyzer.model.transformer import Transformer
 
-# TODO name this something more descriptive, it might be used as a wrapper
-# around both transformer/LSTM
-
 
 class Trainer(ABC):
     @property
@@ -50,7 +47,7 @@ class Trainer(ABC):
             self.scaler = None
 
         # Create evaluator
-        self.evaluator = Evaluator()
+        self.evaluator = Evaluator(self.model)
 
     def early_stopping(self, val_loss):
         """Performs early stopping check after validation, if enabled."""

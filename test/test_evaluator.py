@@ -4,7 +4,7 @@ import os
 import pytest
 import utils
 
-from log_analyzer.train_loop import init_from_config_classes, eval_model, train_model
+from log_analyzer.train_loop import eval_model, init_from_config_classes, train_model
 
 
 @pytest.mark.parametrize("model_type", ["lstm", "tiered-lstm", "transformer"])
