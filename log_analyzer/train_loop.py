@@ -333,10 +333,8 @@ def eval_model(lm_trainer: Trainer, test_loader, store_eval_data=False, model_fi
 
     Note: model_file_name is only used for uploading model parameters to wandb.
     """
-    outfile = None
     log_dir = lm_trainer.checkpoint_dir
     model_save_path = os.path.join(log_dir, model_file_name)
-    writer = SummaryWriter(os.path.join(log_dir, "metrics"))
 
     if Application.instance().wandb_initialized:
         # Save the model weights as a versioned artifact
