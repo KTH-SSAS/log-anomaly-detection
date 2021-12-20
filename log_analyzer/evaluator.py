@@ -3,17 +3,22 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import wandb
 from sklearn import metrics
 from tqdm import tqdm
 
+import wandb
 from log_analyzer.application import Application
 from log_analyzer.model.lstm import LogModel, LSTMLanguageModel
 from log_analyzer.tokenizer.tokenizer import Char_tokenizer
 
 
 def create_attention_matrix(
-    model: LSTMLanguageModel, sequences, output_dir, lengths=None, mask=None, token_map_file=None,
+    model: LSTMLanguageModel,
+    sequences,
+    output_dir,
+    lengths=None,
+    mask=None,
+    token_map_file=None,
 ):
     """Plot attention matrix over batched input.
 
@@ -139,7 +144,7 @@ class Evaluator:
         # Save the results if desired
         if store_eval_data:
             preds = torch.argmax(output, dim=-1)
-            self.evaluator.add_evaluation_data(
+            self.add_evaluation_data(
                 targets,
                 preds,
                 users,
@@ -147,8 +152,8 @@ class Evaluator:
                 seconds,
                 red_flags,
             )
-            self.evaluator.test_loss += loss
-            self.evaluator.test_count += 1
+            self.test_loss += loss
+            self.test_count += 1
 
         # Return both the loss and the output token probabilities
         return loss, output
@@ -156,7 +161,8 @@ class Evaluator:
     def run_all(self):
         r"""Performs standard evaluation on the model. Assumes the model has been trained
         and the evaluator has been populated with evaluation data (see eval_step)"""
-        self.prepare_evaluation_data()
+        if not self.data_is_prepared:
+            self.prepare_evaluation_data()
         # Get generic metrics
         evaluator_metrics = self.get_metrics()
 
@@ -195,7 +201,9 @@ class Evaluator:
             wandb.log({"ROC Curve (normalised)": roc_plot})
 
         # get normalised pr curve
-        evaluator_metrics["eval/AP_(normalised)"], pr_plot = self.plot_pr_curve(title="PR Curve (normalised)", normalised=True)
+        evaluator_metrics["eval/AP_(normalised)"], pr_plot = self.plot_pr_curve(
+            title="PR Curve (normalised)", normalised=True
+        )
         if self.use_wandb:
             wandb.log({"PR Curve": pr_plot})
 
@@ -221,11 +229,14 @@ class Evaluator:
             self.data["seconds"] = np.concatenate((self.data["seconds"], np.zeros(1050000, int)))
             self.data["red_flags"] = np.concatenate((self.data["red_flags"], np.zeros(1050000, bool)))
 
-        for key, new_data in zip(["users", "losses", "seconds", "red_flags"], [users, losses, seconds, red_flags],):
+        for key, new_data in zip(
+            ["users", "losses", "seconds", "red_flags"],
+            [users, losses, seconds, red_flags],
+        ):
             self.data[key][self.index[key] : self.index[key] + len(new_data)] = new_data
             self.index[key] += len(new_data)
 
-        # Update the metatag, i.e. data is prepared and data is normalised
+        # Update the metatag, i.e. data is prepared and normalised data is ready
         self.data_is_prepared = False
         # Update token accuracy including this batch
         batch_token_accuracy = metrics.accuracy_score(log_line, predictions)
@@ -263,6 +274,9 @@ class Evaluator:
         2. Sorting the data (by second) if it is not sorted
         """
         for key in self.data:
+            # Ignore normalised_losses
+            if key == "normalised_losses":
+                continue
             self.data[key] = self.data[key][: self.index[key]]
         # Check if the data is sorted
         if not np.all(np.diff(self.data["seconds"]) >= 0):
@@ -301,7 +315,7 @@ class Evaluator:
             "eval/token_accuracy": self.get_token_accuracy(),
             "eval/token_perplexity": self.get_token_perplexity(),
             "eval/AUC": self.get_auc_score(),
-            "eval/AP": self.get_ap_score()
+            "eval/AP": self.get_ap_score(),
         }
         return metrics
 
@@ -460,13 +474,18 @@ class Evaluator:
             # ROC Curve is to be uploaded to wandb, so plot using a "fixed"
             # version of their plot.roc_curve function
             table = wandb.Table(
-                columns=["class", "fpr", "tpr"], data=list(zip(["" for _ in fp_rate], fp_rate, tp_rate)),
+                columns=["class", "fpr", "tpr"],
+                data=list(zip(["" for _ in fp_rate], fp_rate, tp_rate)),
             )
             wandb_plot = wandb.plot_table(
                 "wandb/area-under-curve/v0",
                 table,
                 {"x": "fpr", "y": "tpr", "class": "class"},
-                {"title": title, "x-axis-title": "False positive rate", "y-axis-title": "True positive rate",},
+                {
+                    "title": title,
+                    "x-axis-title": "False positive rate",
+                    "y-axis-title": "True positive rate",
+                },
             )
             return auc_score, wandb_plot
         else:
@@ -476,7 +495,11 @@ class Evaluator:
             xlabel = "False Positive Rate"
 
             plt.plot(
-                fp_rate, tp_rate, color="orange", lw=2, label=f"ROC curve (area = {auc_score:.2f})",
+                fp_rate,
+                tp_rate,
+                color="orange",
+                lw=2,
+                label=f"ROC curve (area = {auc_score:.2f})",
             )
             plt.xlabel(xlabel)
             plt.ylabel("True Positive Rate")
@@ -527,13 +550,18 @@ class Evaluator:
             # PR Curve is to be uploaded to wandb, so plot using a "fixed"
             # version of their plot.pr_curve function
             table = wandb.Table(
-                columns=["class", "recall", "precision"], data=list(zip(["" for _ in recall], recall, precision)),
+                columns=["class", "recall", "precision"],
+                data=list(zip(["" for _ in recall], recall, precision)),
             )
             wandb_plot = wandb.plot_table(
                 "wandb/area-under-curve/v0",
                 table,
                 {"x": "recall", "y": "precision", "class": "class"},
-                {"title": "Precision v. Recall", "x-axis-title": "Recall", "y-axis-title": "Precision",},
+                {
+                    "title": "Precision v. Recall",
+                    "x-axis-title": "Recall",
+                    "y-axis-title": "Precision",
+                },
             )
             return AP_score, wandb_plot
         else:
@@ -541,7 +569,11 @@ class Evaluator:
             xlabel = "Recall"
             ylabel = "Precision"
             plt.plot(
-                recall, precision, color="orange", lw=2, label=f"Intrusion events",
+                recall,
+                precision,
+                color="orange",
+                lw=2,
+                label=f"Intrusion events",
             )
             plt.xlabel(xlabel)
             plt.ylabel(ylabel)
