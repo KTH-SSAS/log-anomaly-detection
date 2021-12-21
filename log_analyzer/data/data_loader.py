@@ -427,6 +427,7 @@ class OnlineLMBatcher:
                         break
                     while output == []:
                         if not self.flush:
+                            # Read in the next line
                             l = f.readline()
                             if l == "":
                                 self.flush = True
@@ -583,24 +584,28 @@ class TieredLSTMBatcher(OnlineLMBatcher):
             "context_vector": ctxt_vector,
             "c_state_init": torch.transpose(h_state, 0, 1),
             "h_state_init": torch.transpose(c_state, 0, 1),
-        }  #
+        }
         return datadict
 
     def load_lines(self):
         output = []
+        ctxt_vector = torch.tensor([])
+        h_state = torch.tensor([])
+        c_state = torch.tensor([])
         if self.cuda:
-            ctxt_vector = torch.tensor([]).cuda()
-            h_state = torch.tensor([]).cuda()
-            c_state = torch.tensor([]).cuda()
-        else:
-            ctxt_vector = torch.tensor([])
-            h_state = torch.tensor([])
-            c_state = torch.tensor([])
+            ctxt_vector = ctxt_vector.cuda()
+            h_state = h_state.cuda()
+            c_state = c_state.cuda()
+        # Loop over users that have enough lines loaded to be used in a batch
         for user in self.users_ge_num_steps[: self.mb_size]:
+            # Add user's lines to the batch
             output.append(self.user_logs[user][0 : self.num_steps])
+            # Update user's saved lines
             self.user_logs[user] = self.user_logs[user][self.num_steps :]
+            # Remove user from list if it now doesn't have enough lines left to be used in another batch
             if len(self.user_logs[user]) < self.num_steps:
                 self.users_ge_num_steps.remove(user)
+            # Grab the context information
             ctxt_vector = torch.cat((ctxt_vector, torch.unsqueeze(self.saved_lstm[user][0], dim=0)), dim=0)
             h_state = torch.cat((h_state, torch.unsqueeze(self.saved_lstm[user][1], dim=0)), dim=0)
             c_state = torch.cat((c_state, torch.unsqueeze(self.saved_lstm[user][2], dim=0)), dim=0)
@@ -681,11 +686,9 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         return split_batch
 
     def init_saved_model(self, user):
+        self.saved_ctxt[user] = [torch.zeros(self.context_model_dim), torch.tensor([]), torch.tensor(0)]
         if self.cuda:
-            self.saved_ctxt[user] = [torch.zeros(self.context_model_dim).cuda(), torch.tensor([]).cuda(), 0]
-
-        else:
-            self.saved_ctxt[user] = [torch.zeros(self.context_model_dim), torch.tensor([]), 0]
+            self.saved_ctxt[user] = self.saved_ctxt[user].cuda()
 
     def gen_datadict(self, batch, endx, endt, model_info):
         ctxt_vector = model_info[0]
@@ -717,16 +720,22 @@ class TieredTransformerBatcher(OnlineLMBatcher):
             ctxt_vector = torch.tensor([])
             history = torch.tensor([])
         self.current_batch_usr = self.users_ge_num_steps[: self.mb_size]
+        # Loop over users that have enough lines loaded to be used in a batch
         for user in self.current_batch_usr:
+            # Add user's lines to the batch
             output.append(self.user_logs[user][0 : self.num_steps])
+            # Update user's saved lines
             self.user_logs[user] = self.user_logs[user][self.num_steps :]
+            # Remove user from list if it now doesn't have enough lines left to be used in another batch
             if len(self.user_logs[user]) < self.num_steps:
                 self.users_ge_num_steps.remove(user)
+            # Grab the context information
             ctxt_vector = torch.cat((ctxt_vector, torch.unsqueeze(self.saved_ctxt[user][0], dim=0)), dim=0)
             hist_lst.append(torch.unsqueeze(self.saved_ctxt[user][1], dim=0))
             hist_lengths.append(self.saved_ctxt[user][2])
             hist_dimension = max(self.saved_ctxt[user][1].shape[-1], hist_dimension)
 
+        device = history.device
         max_length = max(hist_lengths)
         for idx, hist in enumerate(hist_lst):
             if hist_lengths[idx] == max_length:
