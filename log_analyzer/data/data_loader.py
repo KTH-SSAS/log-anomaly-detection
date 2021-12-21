@@ -1,7 +1,7 @@
 """Data loading functions."""
 
-from abc import ABC, abstractmethod
 import os.path as path
+from abc import ABC, abstractmethod
 from functools import partial
 
 import torch
@@ -22,9 +22,9 @@ DEFAULT_HEADERS = [
 
 
 def get_mask(lens, max_len=None):
-    """For masking output of language model for jagged sequences for correct gradient
-    update. Sequence length of 0 will output nan for that row of mask so don't
-    do this.
+    """For masking output of language model for jagged sequences for correct
+    gradient update. Sequence length of 0 will output nan for that row of mask
+    so don't do this.
 
     :param lens: (int) sequence length for this sequence
     :param max_len: (int) Number of predicted tokens in longest sequence in batch. Defaults to lens if not provided
@@ -373,7 +373,15 @@ class OnlineLMBatcher(ABC):
     """
 
     def __init__(
-        self, filepaths, sentence_length, skipsos, jagged, bidir, batch_size=100, num_steps=5, delimiter=" ",
+        self,
+        filepaths,
+        sentence_length,
+        skipsos,
+        jagged,
+        bidir,
+        batch_size=100,
+        num_steps=5,
+        delimiter=" ",
     ):
         self.sentence_length = sentence_length
         self.jagged = jagged
@@ -576,15 +584,35 @@ class TieredLSTMBatcher(OnlineLMBatcher):
         if self.cuda:
             self.saved_lstm[user] = (
                 torch.zeros((self.context_size[0])).cuda(),
-                torch.zeros((len(self.context_size), self.context_size[0],)).cuda(),
-                torch.zeros((len(self.context_size), self.context_size[0],)).cuda(),
+                torch.zeros(
+                    (
+                        len(self.context_size),
+                        self.context_size[0],
+                    )
+                ).cuda(),
+                torch.zeros(
+                    (
+                        len(self.context_size),
+                        self.context_size[0],
+                    )
+                ).cuda(),
             )
 
         else:
             self.saved_lstm[user] = (
                 torch.zeros((self.context_size[0])),
-                torch.zeros((len(self.context_size), self.context_size[0],)),
-                torch.zeros((len(self.context_size), self.context_size[0],)),
+                torch.zeros(
+                    (
+                        len(self.context_size),
+                        self.context_size[0],
+                    )
+                ),
+                torch.zeros(
+                    (
+                        len(self.context_size),
+                        self.context_size[0],
+                    )
+                ),
             )
 
     def get_batch_data(self):
@@ -648,7 +676,14 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         delimiter=" ",
     ):
         super().__init__(
-            filepaths, sentence_length, skipsos, jagged, bidir, batch_size, num_steps, delimiter,
+            filepaths,
+            sentence_length,
+            skipsos,
+            jagged,
+            bidir,
+            batch_size,
+            num_steps,
+            delimiter,
         )
         # the list of users whose saved log lines are greater than or equal to the self.num_steps
         self.saved_ctxt = {}
