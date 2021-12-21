@@ -92,13 +92,13 @@ class Trainer(ABC):
                 output, *_ = self.model(X, lengths=L, mask=M)
 
                 # Compute the loss for the output
-                loss, *_ = self.model.compute_loss(output, Y, lengths=L, mask=M)
+                loss, _ = self.model.compute_loss(output, Y, lengths=L, mask=M)
         else:
             # Apply the model to input to produce the output
             output, *_ = self.model(X, lengths=L, mask=M)
 
             # Compute the loss for the output
-            loss, *_ = self.model.compute_loss(output, Y, lengths=L, mask=M)
+            loss, _ = self.model.compute_loss(output, Y, lengths=L, mask=M)
 
         # Take an optimization step based on the loss
         self.optimizer_step(loss)
@@ -131,13 +131,13 @@ class Trainer(ABC):
         output, *_ = self.model(X, lengths=L, mask=M)
 
         # Compute the loss for the output
-        loss, line_losses, targets = self.model.compute_loss(output, Y, lengths=L, mask=M)
+        loss, line_losses = self.model.compute_loss(output, Y, lengths=L, mask=M)
 
         # Save the results if desired
         if store_eval_data:
             preds = torch.argmax(output, dim=-1)
             self.evaluator.add_evaluation_data(
-                targets,
+                Y,
                 preds,
                 users,
                 line_losses,

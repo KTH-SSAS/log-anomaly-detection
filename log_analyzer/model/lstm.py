@@ -24,18 +24,14 @@ class LogModel(nn.Module):
 
     def compute_loss(self, output: torch.Tensor, Y, lengths, mask: torch.Tensor):
         """Computes the loss for the given model output and ground truth."""
-        targets = Y
-        if lengths is not None:
-            token_losses = self.criterion(output.transpose(1, 2), targets)
-            masked_losses = token_losses * mask
-            line_losses = torch.sum(masked_losses, dim=1)
-        else:
-            token_losses = self.criterion(output.transpose(1, 2), Y)
-            line_losses = torch.mean(token_losses, dim=1)
+        token_losses = self.criterion(output.transpose(1, 2), Y)
+        if mask is not None:
+            token_losses = token_losses * mask
+        line_losses = torch.mean(token_losses, dim=1)
         loss = torch.mean(line_losses, dim=0)
 
         # Return the loss, as well as extra details like loss per line
-        return loss, line_losses, targets
+        return loss, line_losses
 
 
 class TieredLogModel(LogModel):
@@ -52,9 +48,6 @@ class TieredLogModel(LogModel):
             line_losses_list = line_losses_list.cuda()
         if lengths is not None:
             max_length = int(torch.max(lengths))
-            targets = Y[:, :, :max_length]
-        else:
-            targets = Y
         # output (num_steps x batch x length x embedding dimension)  Y
         # (num_steps x batch x length)
         for i, (step_output, step_y) in enumerate(zip(output, Y)):
@@ -71,7 +64,7 @@ class TieredLogModel(LogModel):
             step_loss = torch.mean(line_losses, dim=0)
             loss += step_loss
         loss /= len(Y)
-        return loss, line_losses_list, targets
+        return loss, line_losses_list
 
 
 class LSTMLanguageModel(LogModel):

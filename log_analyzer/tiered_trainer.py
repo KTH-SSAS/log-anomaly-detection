@@ -45,13 +45,13 @@ class TieredTrainer(Trainer):
                 output = self.run_model(X, L, model_info, self.train_loader)
 
                 # Compute the loss for the output
-                loss, *_ = self.model.compute_loss(output, Y, lengths=L, mask=M)
+                loss, _ = self.model.compute_loss(output, Y, lengths=L, mask=M)
         else:
             # Apply the model to input to produce the output
             output = self.run_model(X, L, model_info, self.train_loader)
 
             # Compute the loss for the output
-            loss, *_ = self.model.compute_loss(output, Y, lengths=L, mask=M)
+            loss, _ = self.model.compute_loss(output, Y, lengths=L, mask=M)
 
         # Take an optimization step based on the loss
         self.optimizer_step(loss)
@@ -77,14 +77,18 @@ class TieredTrainer(Trainer):
 
         output = self.eval_model(X, L, model_info, self.test_loader)
 
+        if L is not None:
+            max_length = int(torch.max(L))
+            Y = Y[:, :, :max_length]
+
         # Compute the loss for the output
-        loss, line_losses, targets = self.model.compute_loss(output, Y, lengths=L, mask=M)
+        loss, line_losses = self.model.compute_loss(output, Y, lengths=L, mask=M)
 
         # Save the results if desired
         if store_eval_data:
             preds = torch.argmax(output, dim=-1)
             self.evaluator.add_evaluation_data(
-                torch.flatten(targets, end_dim=1),
+                torch.flatten(Y, end_dim=1),
                 torch.flatten(preds, end_dim=1),
                 torch.flatten(users, end_dim=1),
                 torch.flatten(line_losses, end_dim=1),
