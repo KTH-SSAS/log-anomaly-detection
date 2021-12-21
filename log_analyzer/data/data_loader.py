@@ -710,8 +710,8 @@ class TieredTransformerBatcher(OnlineLMBatcher):
 
     def load_lines(self):
         output = []
-        hist_lst = []
-        hist_lengths = []
+        hist_lst = torch.tensor([])
+        hist_lengths = torch.tensor([])
         hist_dimension = 0
         if self.cuda:
             ctxt_vector = torch.tensor([]).cuda()
@@ -731,8 +731,8 @@ class TieredTransformerBatcher(OnlineLMBatcher):
                 self.users_ge_num_steps.remove(user)
             # Grab the context information
             ctxt_vector = torch.cat((ctxt_vector, torch.unsqueeze(self.saved_ctxt[user][0], dim=0)), dim=0)
-            hist_lst.append(torch.unsqueeze(self.saved_ctxt[user][1], dim=0))
-            hist_lengths.append(self.saved_ctxt[user][2])
+            hist_lst = torch.cat((hist_lst, torch.unsqueeze(self.saved_ctxt[user][1], dim=0)), dim=0)
+            hist_lengths = torch.cat((hist_lengths, torch.unsqueeze(self.saved_ctxt[user][2], dim=0)), dim=0)
             hist_dimension = max(self.saved_ctxt[user][1].shape[-1], hist_dimension)
 
         device = history.device
@@ -741,22 +741,13 @@ class TieredTransformerBatcher(OnlineLMBatcher):
             if hist_lengths[idx] == max_length:
                 hist_lst[idx] = hist
             elif hist_lengths[idx] == 0:
-                if self.cuda:
-                    hist_lst[idx] = torch.zeros(1, max_length, hist_dimension).cuda()
-                else:
-                    hist_lst[idx] = torch.zeros(1, max_length, hist_dimension)
+                hist_lst[idx] = torch.zeros(1, max_length, hist_dimension).to(device)
             else:
-                if self.cuda:
-                    hist_lst[idx] = torch.cat(
-                        (hist, torch.zeros(1, max_length - hist_lengths[idx], hist_dimension)), dim=1
-                    ).cuda()
-                else:
-                    hist_lst[idx] = torch.cat(
-                        (hist, torch.zeros(1, max_length - hist_lengths[idx], hist_dimension)), dim=1
-                    )
-        history = torch.cat((hist_lst), dim=0)
+                hist_lst[idx] = torch.cat(
+                    (hist, torch.zeros(1, max_length - hist_lengths[idx], hist_dimension)), dim=1
+                ).to(device)
 
-        return output, (ctxt_vector, history, hist_lengths)
+        return output, (ctxt_vector, hist_lst, hist_lengths)
 
     def update_state(self, ctxt_vectors, ctxt_history):
         ctxt_vectors = ctxt_vectors.data
