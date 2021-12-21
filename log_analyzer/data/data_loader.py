@@ -21,15 +21,13 @@ DEFAULT_HEADERS = [
 
 
 def get_mask(lens, max_len=None):
-    """For masking output of lm_rnn for jagged sequences for correct gradient
+    """For masking output of language model for jagged sequences for correct gradient
     update. Sequence length of 0 will output nan for that row of mask so don't
     do this.
 
-    :param lens: Numpy vector of sequence lengths
-    :param num_tokens: (int) Number of predicted tokens in sentence.
-    :return: A numpy array mask MB X num_tokens
-             For each row there are: lens[i] values of 1/lens[i]
-                                     followed by num_tokens - lens[i] zeros
+    :param lens: (int) sequence length for this sequence
+    :param max_len: (int) Number of predicted tokens in longest sequence in batch. Defaults to lens if not provided
+    :return: A numpy array mask of length max_len. There are lens[i] values of 1/lens followed by max_len - lens zeros
     """
 
     num_tokens = lens if max_len is None else max_len
@@ -257,7 +255,7 @@ def load_data_tiered_trans(
     context_input_dimension,
     shift_window,
 ):
-    def create_data_loader(filepath):
+    def create_tiered_data_loader(filepath):
         data_handler = TieredTransformerBatcher(
             filepath,
             sentence_length,
@@ -275,8 +273,8 @@ def load_data_tiered_trans(
 
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
-    train_loader = create_data_loader(filepaths_train)
-    test_loader = create_data_loader(filepaths_eval)
+    train_loader = create_tiered_data_loader(filepaths_train)
+    test_loader = create_tiered_data_loader(filepaths_eval)
     return train_loader, test_loader
 
 
@@ -470,20 +468,15 @@ class OnlineLMBatcher:
                     datadict = self.gen_datadict(batch, endx, endt, model_info)
 
                     if self.jagged:
+                        datadict["length"] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos))
+                        datadict["mask"] = torch.empty(
+                            datadict["length"].shape[0],
+                            datadict["input"].shape[1],
+                            datadict["input"].shape[-1] - 2 * self.bidir,
+                        )
                         if self.cuda:
-                            datadict["length"] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos)).cuda()
-                            datadict["mask"] = torch.empty(
-                                datadict["length"].shape[0],
-                                datadict["input"].shape[1],
-                                datadict["input"].shape[-1] - 2 * self.bidir,
-                            ).cuda()
-                        else:
-                            datadict["length"] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos))
-                            datadict["mask"] = torch.empty(
-                                datadict["length"].shape[0],
-                                datadict["input"].shape[1],
-                                datadict["input"].shape[-1] - 2 * self.bidir,
-                            )
+                            datadict["length"] = datadict["length"].cuda()
+                            datadict["mask"] = datadict["mask"].cuda()
 
                         for i, seq_len_matrix in enumerate(datadict["length"]):
                             for j, seq_length in enumerate(seq_len_matrix):
@@ -564,35 +557,15 @@ class TieredLSTMBatcher(OnlineLMBatcher):
         if self.cuda:
             self.saved_lstm[user] = (
                 torch.zeros((self.context_size[0])).cuda(),
-                torch.zeros(
-                    (
-                        len(self.context_size),
-                        self.context_size[0],
-                    )
-                ).cuda(),
-                torch.zeros(
-                    (
-                        len(self.context_size),
-                        self.context_size[0],
-                    )
-                ).cuda(),
+                torch.zeros((len(self.context_size), self.context_size[0],)).cuda(),
+                torch.zeros((len(self.context_size), self.context_size[0],)).cuda(),
             )
 
         else:
             self.saved_lstm[user] = (
                 torch.zeros((self.context_size[0])),
-                torch.zeros(
-                    (
-                        len(self.context_size),
-                        self.context_size[0],
-                    )
-                ),
-                torch.zeros(
-                    (
-                        len(self.context_size),
-                        self.context_size[0],
-                    )
-                ),
+                torch.zeros((len(self.context_size), self.context_size[0],)),
+                torch.zeros((len(self.context_size), self.context_size[0],)),
             )
 
     def gen_datadict(self, batch, endx, endt, model_info):
@@ -660,15 +633,7 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         skiprows=0,
     ):
         super().__init__(
-            filepaths,
-            sentence_length,
-            skipsos,
-            jagged,
-            bidir,
-            batch_size,
-            num_steps,
-            delimiter,
-            skiprows,
+            filepaths, sentence_length, skipsos, jagged, bidir, batch_size, num_steps, delimiter, skiprows,
         )
         # the list of users whose saved log lines are greater than or equal to the self.num_steps
         self.saved_ctxt = {}
