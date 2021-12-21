@@ -112,6 +112,7 @@ class Evaluator:
         self.reset_evaluation_data()
         self.use_wandb = Application.instance().wandb_initialized
 
+    # TEMP TODO: Still WIP, complete move of eval_step from trainer classes to Evaluator
     @torch.no_grad()
     def eval_step(self, split_batch, store_eval_data=False):
         """Defines a single evaluation step.
@@ -139,13 +140,13 @@ class Evaluator:
         output, *_ = self.model(X, lengths=L, mask=M)
 
         # Compute the loss for the output
-        loss, line_losses, targets = self.model.compute_loss(output, Y, lengths=L, mask=M)
+        loss, line_losses = self.model.compute_loss(output, Y, lengths=L, mask=M)
 
         # Save the results if desired
         if store_eval_data:
             preds = torch.argmax(output, dim=-1)
             self.add_evaluation_data(
-                targets,
+                Y,
                 preds,
                 users,
                 line_losses,
