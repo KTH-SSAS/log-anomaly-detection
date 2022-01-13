@@ -22,16 +22,17 @@ def split_by_day(log_filename, out_dir, keep_days=None):
             day = sec2day(sec)
             user = fields[1]
 
-            if not user.startswith('U') or day not in keep_days:
+            if not (day in keep_days and user.startswith('U')):
                 continue
 
             if day != current_day:
-                print(current_day)
                 current_day = day
+                print(f"Processing day {current_day}...")
                 try:
                     out_file.close()
                 except AttributeError:
                     pass
+                
                 out_file = open(get_filename(current_day), 'w')
             
             out_file.write(line)
@@ -57,7 +58,7 @@ def main():
     parser = ArgumentParser()
     parser.add_argument("input")
     parser.add_argument("output_dir")
-    parser.add_argument("days_to_include", nargs='+')
+    parser.add_argument("days_to_include", nargs='+', type=int)
 
     args = parser.parse_args()
 
