@@ -26,6 +26,7 @@ def split_by_day(log_filename, out_dir, keep_days=None):
                 continue
 
             if day != current_day:
+                print(current_day)
                 current_day = day
                 try:
                     out_file.close()
