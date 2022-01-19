@@ -358,7 +358,7 @@ class OnlineLMBatcher:
         self.filepaths = filepaths
         self.saved_lstm = {}
         self.skiprows = skiprows
-        self.cuda = Application.instance().using_cuda
+        self.using_cuda = Application.instance().using_cuda
 
     def __iter__(self):
         for datafile in self.filepaths:
@@ -421,7 +421,7 @@ class OnlineLMBatcher:
                     datadict = self.gen_datadict(batch, endx, endt, model_info)
 
                     if self.jagged:
-                        if self.cuda:
+                        if self.using_cuda:
                             datadict["length"] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos)).cuda()
                             datadict["mask"] = torch.empty(
                                 datadict["length"].shape[0],
@@ -472,7 +472,7 @@ class TieredLSTMBatcher(OnlineLMBatcher):
         self.context_size = context_size if type(context_size) is list else [context_size]
 
     def init_saved_model(self, user):
-        if self.cuda:
+        if self.using_cuda:
             self.saved_lstm[user] = (
                 torch.zeros((self.context_size[0])).cuda(),
                 torch.zeros(
@@ -526,7 +526,7 @@ class TieredLSTMBatcher(OnlineLMBatcher):
 
     def load_lines(self):
         output = []
-        if self.cuda:
+        if self.using_cuda:
             ctxt_vector = torch.tensor([]).cuda()
             h_state = torch.tensor([]).cuda()
             c_state = torch.tensor([]).cuda()
@@ -607,7 +607,7 @@ class TieredTransformerBatcher(OnlineLMBatcher):
             "history": history,
             "history_length": history_length,
         }
-        if self.cuda:
+        if self.using_cuda:
             datadict["input"] = datadict["input"].cuda()
             datadict["target"] = datadict["target"].cuda()
             datadict["context_vector"] = datadict["context_vector"].cuda()
