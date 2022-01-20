@@ -210,7 +210,7 @@ def load_data_tiered_trans(
     context_input_dimension,
     shift_window,
 ):
-    def create_data_loader(filepath):
+    def create_tiered_data_loader(filepath):
         data_handler = TieredTransformerBatcher(
             filepath,
             sentence_length,
@@ -228,8 +228,8 @@ def load_data_tiered_trans(
 
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
-    train_loader = create_data_loader(filepaths_train)
-    test_loader = create_data_loader(filepaths_eval)
+    train_loader = create_tiered_data_loader(filepaths_train)
+    test_loader = create_tiered_data_loader(filepaths_eval)
     return train_loader, test_loader
 
 
@@ -358,7 +358,7 @@ class OnlineLMBatcher:
         self.filepaths = filepaths
         self.saved_lstm = {}
         self.skiprows = skiprows
-        self.cuda = Application.instance().using_cuda
+        self.using_cuda = Application.instance().using_cuda
 
     def __iter__(self):
         for datafile in self.filepaths:
@@ -421,7 +421,7 @@ class OnlineLMBatcher:
                     datadict = self.gen_datadict(batch, endx, endt, model_info)
 
                     if self.jagged:
-                        if self.cuda:
+                        if self.using_cuda:
                             datadict["length"] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos)).cuda()
                             datadict["mask"] = torch.empty(
                                 datadict["length"].shape[0],
@@ -472,7 +472,7 @@ class TieredLSTMBatcher(OnlineLMBatcher):
         self.context_size = context_size if type(context_size) is list else [context_size]
 
     def init_saved_model(self, user):
-        if self.cuda:
+        if self.using_cuda:
             self.saved_lstm[user] = (
                 torch.zeros((self.context_size[0])).cuda(),
                 torch.zeros(
@@ -526,7 +526,7 @@ class TieredLSTMBatcher(OnlineLMBatcher):
 
     def load_lines(self):
         output = []
-        if self.cuda:
+        if self.using_cuda:
             ctxt_vector = torch.tensor([]).cuda()
             h_state = torch.tensor([]).cuda()
             c_state = torch.tensor([]).cuda()
@@ -576,23 +576,20 @@ class TieredTransformerBatcher(OnlineLMBatcher):
             skipsos,
             jagged,
             bidir,
-            batch_size=100,
-            num_steps=5,
-            delimiter=" ",
-            skiprows=0,
+            batch_size=batch_size,
+            num_steps=num_steps,
+            delimiter=delimiter,
+            skiprows=skiprows,
         )
         # the list of users whose saved log lines are greater than or equal to the self.num_steps
         self.saved_ctxt = {}
         self.context_model_dim = context_model_dim
         self.context_input_dimension = context_input_dimension
         self.shift_window = shift_window
+        self.stay_cuda = []
 
     def init_saved_model(self, user):
-        if self.cuda:
-            self.saved_ctxt[user] = [torch.zeros(self.context_model_dim).cuda(), torch.tensor([]).cuda(), 0]
-
-        else:
-            self.saved_ctxt[user] = [torch.zeros(self.context_model_dim), torch.tensor([]), 0]
+        self.saved_ctxt[user] = [torch.zeros(self.context_model_dim), torch.tensor([]), 0]
 
     def gen_datadict(self, batch, endx, endt, model_info):
         ctxt_vector = model_info[0]
@@ -610,6 +607,11 @@ class TieredTransformerBatcher(OnlineLMBatcher):
             "history": history,
             "history_length": history_length,
         }
+        if self.using_cuda:
+            datadict["input"] = datadict["input"].cuda()
+            datadict["target"] = datadict["target"].cuda()
+            datadict["context_vector"] = datadict["context_vector"].cuda()
+            datadict["history"] = datadict["history"].cuda()
         return datadict
 
     def load_lines(self):
@@ -617,41 +619,31 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         hist_lst = []
         hist_lengths = []
         hist_dimension = 0
-        if self.cuda:
-            ctxt_vector = torch.tensor([]).cuda()
-            history = torch.tensor([]).cuda()
-        else:
-            ctxt_vector = torch.tensor([])
-            history = torch.tensor([])
+        ctxt_vector = torch.tensor([])
+        history = torch.tensor([])
         self.current_batch_usr = self.users_ge_num_steps[: self.mb_size]
         for user in self.current_batch_usr:
             output.append(self.user_logs[user][0 : self.num_steps])
             self.user_logs[user] = self.user_logs[user][self.num_steps :]
+            ctxt_vector = torch.cat(
+                (ctxt_vector, torch.unsqueeze(self.saved_ctxt[user][0], dim=0)), dim=0
+            )
             if len(self.user_logs[user]) < self.num_steps:
                 self.users_ge_num_steps.remove(user)
-            ctxt_vector = torch.cat((ctxt_vector, torch.unsqueeze(self.saved_ctxt[user][0], dim=0)), dim=0)
             hist_lst.append(torch.unsqueeze(self.saved_ctxt[user][1], dim=0))
             hist_lengths.append(self.saved_ctxt[user][2])
             hist_dimension = max(self.saved_ctxt[user][1].shape[-1], hist_dimension)
-
         max_length = max(hist_lengths)
         for idx, hist in enumerate(hist_lst):
+            device = hist.device
             if hist_lengths[idx] == max_length:
                 hist_lst[idx] = hist
             elif hist_lengths[idx] == 0:
-                if self.cuda:
-                    hist_lst[idx] = torch.zeros(1, max_length, hist_dimension).cuda()
-                else:
-                    hist_lst[idx] = torch.zeros(1, max_length, hist_dimension)
+                hist_lst[idx] = torch.zeros(1, max_length, hist_dimension).to(device)
             else:
-                if self.cuda:
-                    hist_lst[idx] = torch.cat(
-                        (hist, torch.zeros(1, max_length - hist_lengths[idx], hist_dimension)), dim=1
-                    ).cuda()
-                else:
-                    hist_lst[idx] = torch.cat(
-                        (hist, torch.zeros(1, max_length - hist_lengths[idx], hist_dimension)), dim=1
-                    )
+                hist_lst[idx] = torch.cat(
+                    (torch.zeros(1, max_length - hist_lengths[idx], hist_dimension).to(device), hist), dim=1
+                )
         history = torch.cat((hist_lst), dim=0)
 
         return output, (ctxt_vector, history, hist_lengths)
@@ -661,5 +653,9 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         ctxt_history = ctxt_history.data
         remove_usr = []
         for usr, ctxt_v, history in zip(self.current_batch_usr, ctxt_vectors, ctxt_history):
-            self.saved_ctxt[usr] = [ctxt_v, history[: self.shift_window], history.shape[0]]
+            self.saved_ctxt[usr] = [
+                ctxt_v.cpu().detach(),
+                history[-self.shift_window :].cpu().detach(),
+                history[-self.shift_window :].shape[0],
+            ]
             remove_usr.append(usr)

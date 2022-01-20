@@ -4,6 +4,7 @@ import math
 import torch
 from torch import Tensor, nn
 
+from log_analyzer.application import Application
 from log_analyzer.config.model_config import TieredTransformerConfig, TransformerConfig
 from log_analyzer.model.lstm import LogModel
 from log_analyzer.model.model_util import initialize_weights
@@ -44,6 +45,7 @@ class PositionalEncoding(nn.Module):
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0)
+        self.using_cuda = Application.instance().using_cuda
         self.register_buffer("pe", pe)
         self.pe: Tensor
 
@@ -58,7 +60,7 @@ class PositionalEncoding(nn.Module):
             >>> output = pos_encoder(x)
         """
         seq_len = x.shape[1]
-        x = x + self.pe[:, :seq_len, :]
+        x = x + self.pe[:, :seq_len, :].to(x.device)
         return self.dropout(x)
 
 
@@ -125,6 +127,8 @@ class Transformer(TransformerLanguageModel):
         self.word_embedding = nn.Embedding(self.vocab_size, self.model_dim)
         if isinstance(config, TieredTransformerConfig):
             self.reduce_dimension = nn.Linear(config.input_dim, self.model_dim)
+            if Application.instance().using_cuda:
+                self.reduce_dimension = self.reduce_dimension.cuda()
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
     def forward(self, src, ctx_vector=None, lengths=None, mask=None, has_mask=True):
@@ -135,8 +139,8 @@ class Transformer(TransformerLanguageModel):
         self.src_mask = super().forward(src, has_mask)
         word_embeddings = self.word_embedding(src) * math.sqrt(self.config.model_dim)
         if ctx_vector is not None:
-            cat_word_embeddings = torch.Tensor([])
-            trans_word_embeddings = word_embeddings.transpose(0, 1)
+            cat_word_embeddings = torch.Tensor([]).to(src.device)
+            trans_word_embeddings = word_embeddings.transpose(0, 1).to(src.device)
             # Output: trans_word_embeddings: (sequence length x batch x embedded dimension)
             for trans_word_embedding in trans_word_embeddings:
                 # trans_word_embedding (batch x embedding)
@@ -191,6 +195,7 @@ class TieredTransformer(LogModel):
         self.src_mask = None
         self.log_transformer = Transformer(config)
         self.context_transformer = ContextTransformer(config)
+        self.shift_window = config.shift_window
 
     def forward(self, src: Tensor, ctxt_vector, ctx_history, lengths=None, mask=None, has_mask=True):
         # src (num of series, batch size, sequence length, embedded dimension)
@@ -198,13 +203,10 @@ class TieredTransformer(LogModel):
         # TODO: compatibility with character level encoding
         batch_size = src.shape[1]
 
-        if lengths is None:
-            if self.log_transformer.bidirectional:
-                tag_output = torch.empty((src.shape[0], src.shape[1], src.shape[2] - 2), dtype=torch.float)
-            else:
-                tag_output = torch.empty_like(src, dtype=torch.float)
+        if self.log_transformer.bidirectional:
+            tag_output = torch.empty((src.shape[0], src.shape[1], src.shape[2] - 2), dtype=torch.float)
         else:
-            tag_output = torch.zeros((src.shape[0], src.shape[1], int(torch.max(lengths))), dtype=torch.float)
+            tag_output = torch.empty_like(src, dtype=torch.float)
 
         tag_output = tag_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
 
@@ -238,7 +240,7 @@ class TieredTransformer(LogModel):
             else:
                 ctx_history = torch.cat((unsqz_ctx_input, ctx_history), dim=1)
             # ctx_history: concatination to generate a sequence of low level outputs (batch size, history length, 2 * model dimension)
-
+            ctx_history = ctx_history[:, -self.shift_window :, :]
             ################ Context level transformer with history #######################
             ctxt_vector = self.context_transformer(ctx_history)
 
