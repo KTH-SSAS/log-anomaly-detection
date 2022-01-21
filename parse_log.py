@@ -1,6 +1,6 @@
 from argparse import ArgumentParser
 
-from log_analyzer.tokenizer.tokenizer import Char_tokenizer, Word_tokenizer
+from log_analyzer.tokenizer.tokenizer import CharTokenizer, WordTokenizer
 
 
 def arg_parser():
@@ -22,10 +22,10 @@ if __name__ == "__main__":
     args = arg_parser()
     weekend_days = [3, 4, 10, 11, 17, 18, 24, 25, 31, 32, 38, 39, 45, 46, 47, 52, 53]
     if args.type == "char_level":
-        tokenizer = Char_tokenizer(args, weekend_days)
+        tokenizer = CharTokenizer(args, weekend_days)
         tokenizer.prepare_routes()
     else:
-        tokenizer = Word_tokenizer(args, weekend_days)
+        tokenizer = WordTokenizer(args, weekend_days)
         tokenizer.prepare_routes(args.type)
         if args.type == "word_level":
             pass

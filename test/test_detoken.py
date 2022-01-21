@@ -5,7 +5,6 @@ from collections import Counter
 import pytest
 
 from log_analyzer.tokenizer.detokenizer import Int2Char, Int2Word
-from log_analyzer.tokenizer.tokenizer import Char_tokenizer
 
 
 def test_Int2Char():

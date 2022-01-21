@@ -5,7 +5,7 @@ import shutil
 import sys
 
 
-class Char_tokenizer:
+class CharTokenizer:
     def __init__(self, args, weekend_days):
         self.outpath = args.outpath
         self.authfile = args.authfile
@@ -108,7 +108,7 @@ class Char_tokenizer:
         self.build_output_dir()
 
 
-class Word_tokenizer(Char_tokenizer):
+class WordTokenizer(CharTokenizer):
     def __init__(self, args, weekend_days):
         super().__init__(args, weekend_days)
         self.OOV_CUTOFF = 40

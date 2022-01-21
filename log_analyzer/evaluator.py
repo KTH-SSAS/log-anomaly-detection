@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 import wandb
 from log_analyzer.model.lstm import LSTMLanguageModel
-from log_analyzer.tokenizer.tokenizer import Char_tokenizer
+from log_analyzer.tokenizer.tokenizer import CharTokenizer
 
 
 def create_attention_matrix(
@@ -86,7 +86,7 @@ def create_attention_matrix(
 
         ax.matshow(matrix.detach().numpy())
         if lengths is not None:
-            string = Char_tokenizer.detokenize_line(seq[: lengths[i] - 1])
+            string = CharTokenizer.detokenize_line(seq[: lengths[i] - 1])
             ax.set_xticks(range(len(string)))
             ax.set_xticklabels(string, fontsize="small")
             ax.set_yticks(range(len(string)))
