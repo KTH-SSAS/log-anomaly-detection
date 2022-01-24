@@ -29,3 +29,6 @@ def test_config():
 def test_input():
     return torch.randint(low=0, high=VOCAB_SIZE, size=(CONSECUTIVE_LOG, BATCH_SIZE, SEQUENCE_LENGTH))
 
+@pytest.fixture
+def context_input():
+    return torch.randint(low=0, high=VOCAB_SIZE, size=(BATCH_SIZE, CTX_LV_FFW_DIM))
