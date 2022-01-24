@@ -16,3 +16,12 @@ ATTENTION_HEAD = 2
 CTX_LV_MODEL_DIM = 64
 CTX_LV_FFW_DIM = 100
 LEN_SAVED_HISTORY = 10 
+
+@pytest.fixture
+def test_config():
+    context_config = TransformerConfig(None, SEQUENCE_LENGTH, CTX_LV_MODEL_DIM, 
+                                        CTX_LV_FFW_DIM, ATTENTION_HEAD, VOCAB_SIZE, DROPOUT_RATE)
+    return TieredTransformerConfig(None, SEQUENCE_LENGTH, LOW_LV_FFW_DIM, 
+                                    LOW_LV_MODEL_DIM, ATTENTION_HEAD, VOCAB_SIZE, DROPOUT_RATE, 
+                                    context_config, SHIFT_WINDOW)
+
