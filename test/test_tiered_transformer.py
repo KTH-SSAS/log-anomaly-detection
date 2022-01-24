@@ -32,3 +32,8 @@ def test_input():
 @pytest.fixture
 def context_input():
     return torch.randint(low=0, high=VOCAB_SIZE, size=(BATCH_SIZE, CTX_LV_FFW_DIM))
+
+@pytest.fixture
+def context_history():
+    return torch.randint(low=0, high=VOCAB_SIZE, size=(BATCH_SIZE, LEN_SAVED_HISTORY, VOCAB_SIZE)) 
+
