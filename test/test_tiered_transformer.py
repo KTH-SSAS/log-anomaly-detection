@@ -25,3 +25,7 @@ def test_config():
                                     LOW_LV_MODEL_DIM, ATTENTION_HEAD, VOCAB_SIZE, DROPOUT_RATE, 
                                     context_config, SHIFT_WINDOW)
 
+@pytest.fixture
+def test_input():
+    return torch.randint(low=0, high=VOCAB_SIZE, size=(CONSECUTIVE_LOG, BATCH_SIZE, SEQUENCE_LENGTH))
+
