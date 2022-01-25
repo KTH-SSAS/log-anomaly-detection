@@ -42,13 +42,17 @@ class TieredTrainer(Trainer):
         if self.scaler is not None:
             with torch.cuda.amp.autocast():
                 # Apply the model to input to produce the output
-                output = self.run_model(X, L, model_info, self.train_loader)
+                output, model_info, _ = self.model(X, model_info, lengths=L)
+                # Update the dataloader's state with new model_info (context)
+                self.train_loader.update_state(model_info)
 
                 # Compute the loss for the output
                 loss, _ = self.model.compute_loss(output, Y, lengths=L, mask=M)
         else:
             # Apply the model to input to produce the output
-            output = self.run_model(X, L, model_info, self.train_loader)
+            output, model_info, _ = self.model(X, model_info, lengths=L)
+            # Update the dataloader's state with new model_info (context)
+            self.train_loader.update_state(model_info)
 
             # Compute the loss for the output
             loss, _ = self.model.compute_loss(output, Y, lengths=L, mask=M)
@@ -75,7 +79,10 @@ class TieredTrainer(Trainer):
 
         self.model.eval()
 
-        output = self.eval_model(X, L, model_info, self.test_loader)
+        # Apply the model to input to produce the output
+        output, model_info, _ = self.model(X, model_info, lengths=L)
+        # Update the dataloader's state with new model_info (context)
+        self.test_loader.update_state(model_info)
 
         if L is not None:
             max_length = int(torch.max(L))
@@ -98,12 +105,6 @@ class TieredTrainer(Trainer):
 
         return loss, output
 
-    def run_model(batch):
-        pass
-
-    def eval_model(batch):
-        pass
-
 
 class TieredLSTMTrainer(TieredTrainer):
     @property
@@ -121,24 +122,9 @@ class TieredLSTMTrainer(TieredTrainer):
         train_loader,
         test_loader,
     ):
-
+        # Create the model
         self.lstm = TieredLSTM(lstm_config, bidirectional)
         super().__init__(config, lstm_config, bidirectional, checkpoint_dir, train_loader, test_loader)
-
-    def run_model(self, X, L, model_info, data_loader):
-        ctxt_vector = model_info[0]
-        ctxt_hidden = model_info[1]
-        ctxt_cell = model_info[2]
-
-        output, ctxt_vector, ctxt_hidden, ctxt_cell = self.model(X, ctxt_vector, ctxt_hidden, ctxt_cell, lengths=L)
-        data_loader.update_state(ctxt_vector, ctxt_hidden, ctxt_cell)
-
-        return output
-
-    def eval_model(self, X, L, model_info, data_loader):
-        # Apply the model to input to produce the output
-        output = self.run_model(X, L, model_info, data_loader)
-        return output
 
 
 class TieredTransformerTrainer(TieredTrainer):
@@ -159,20 +145,6 @@ class TieredTransformerTrainer(TieredTrainer):
         train_loader,
         test_loader,
     ):
-        # Create a model
+        # Create the model
         self.transformer = TieredTransformer(transformer_config)
         super().__init__(config, transformer_config, bidirectional, checkpoint_dir, train_loader, test_loader)
-
-    def run_model(self, X, L, model_info, data_loader):
-        ctxt_vector = model_info[0]
-        history = model_info[1]
-        history_length = model_info[2]
-
-        output, ctxt_vector, history = self.model(X, ctxt_vector, history, lengths=L)
-        data_loader.update_state(ctxt_vector, history)
-
-        return output
-
-    def eval_model(self, X, L, model_info, data_loader):
-        output = self.run_model(X, L, model_info, data_loader)
-        return output
