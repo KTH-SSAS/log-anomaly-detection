@@ -1,4 +1,4 @@
-# LSTM LM model
+# LSTM log language model
 
 from typing import Optional, Type
 
@@ -68,6 +68,8 @@ class TieredLogModel(LogModel):
 
 
 class LSTMLanguageModel(LogModel):
+    """Superclass for non-tiered LSTM log-data language models"""
+
     def __init__(self, config: LSTMConfig):
         super().__init__(config)
 
@@ -107,7 +109,7 @@ class LSTMLanguageModel(LogModel):
         else:
             self.has_attention = False
 
-        self.hidden2tag = nn.Linear(fc_input_dim, config.vocab_size)
+        self.get_token_output = nn.Linear(fc_input_dim, config.vocab_size)
 
         # Weight initialization
         initialize_weights(self)
@@ -117,6 +119,7 @@ class LSTMLanguageModel(LogModel):
         raise NotImplementedError("Bidirectional property has to be set in child class.")
 
     def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None):
+        """Performs token embedding, context-prepending if model is tiered, and runs the LSTM on the input sequences."""
         # batch size, sequence length, embedded dimension
         x_lookups = self.embeddings(sequences)
         if self.tiered:
@@ -150,11 +153,14 @@ class LSTMLanguageModel(LogModel):
 
 
 class FwdLSTM(LSTMLanguageModel):
+    """Standard forward LSTM model."""
+
     def __init__(self, config: LSTMConfig):
         self.name = "LSTM"
         super().__init__(config)
 
     def forward(self, sequences, lengths=None, context_vectors=None, mask=None):
+        """Handles attention (if relevant) and grabs the final token output guesses."""
         lstm_out, hx = super().forward(sequences, lengths, context_vectors)
 
         if self.has_attention:
@@ -163,7 +169,7 @@ class FwdLSTM(LSTMLanguageModel):
         else:
             output = lstm_out
 
-        tag_size = self.hidden2tag(output)
+        tag_size = self.get_token_output(output)
 
         return tag_size, lstm_out, hx
 
@@ -173,13 +179,16 @@ class FwdLSTM(LSTMLanguageModel):
 
 
 class BidLSTM(LSTMLanguageModel):
+    """Standard bidirectional LSTM model."""
+
     def __init__(self, config: LSTMConfig):
         self.name = "LSTM-Bid"
         super().__init__(config)
 
     def forward(self, sequences: torch.Tensor, lengths=None, context_vectors=None, mask=None):
+        """Handles bidir-state-alignment, attention (if relevant) and grabs the final token output guesses."""
         lstm_out, hx = super().forward(sequences, lengths, context_vectors)
-        # Reshape lstm_out to make forward/backward into seperate dims
+        # Reshape lstm_out to make forward/backward into separate dims
 
         if lengths is not None:
             split = lstm_out.view(sequences.shape[0], max(lengths), 2, lstm_out.shape[-1] // 2)
@@ -201,7 +210,7 @@ class BidLSTM(LSTMLanguageModel):
             attention, _ = self.attention(b_f_concat, mask)
             b_f_concat = torch.cat((b_f_concat, attention.squeeze()), dim=-1)
 
-        tag_size = self.hidden2tag(b_f_concat)
+        tag_size = self.get_token_output(b_f_concat)
 
         return tag_size, lstm_out, hx
 
@@ -211,6 +220,8 @@ class BidLSTM(LSTMLanguageModel):
 
 
 class ContextLSTM(nn.Module):
+    """High-level context LSTM model used in the tiered-LSTM models."""
+
     def __init__(self, ctxt_lv_layers, input_dim):
         super().__init__()
         # Parameter setting
@@ -224,6 +235,7 @@ class ContextLSTM(nn.Module):
         initialize_weights(self)
 
     def forward(self, lower_lv_outputs, final_hidden, context_h, context_c, seq_len=None):
+        """Handles processing and updating of context info."""
 
         if seq_len is not None:
             mean_hidden = torch.sum(lower_lv_outputs, dim=1) / seq_len.view(-1, 1)
@@ -237,6 +249,9 @@ class ContextLSTM(nn.Module):
 
 
 class TieredLSTM(TieredLogModel):
+    """Tiered-LSTM model, combines a standard forward or bidirectional LSTM model for
+    log-level analysis and a context LSTM for propagation of high-level context information."""
+
     def __init__(self, config: TieredLSTMConfig, bidirectional):
 
         super().__init__(config)
@@ -269,28 +284,22 @@ class TieredLSTM(TieredLogModel):
         self.ctxt_vector = context_vectors
         self.ctxt_h = context_h
         self.ctxt_c = context_c
-        if lengths is None:
-            if self.low_lv_lstm.bidirectional:
-                tag_output = torch.empty(
-                    (
-                        user_sequences.shape[0],
-                        user_sequences.shape[1],
-                        user_sequences.shape[2] - 2,
-                    ),
-                    dtype=torch.float,
-                )
-            else:
-                tag_output = torch.empty_like(user_sequences, dtype=torch.float)
-        else:
-            tag_output = torch.zeros(
-                (user_sequences.shape[0], user_sequences.shape[1], torch.max(lengths)),
+        if self.low_lv_lstm.bidirectional:
+            token_output = torch.empty(
+                (
+                    user_sequences.shape[0],
+                    user_sequences.shape[1],
+                    user_sequences.shape[2] - 2,
+                ),
                 dtype=torch.float,
             )
+        else:
+            token_output = torch.empty_like(user_sequences, dtype=torch.float)
 
-        tag_output = tag_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
+        token_output = token_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
 
         if Application.instance().using_cuda:
-            tag_output = tag_output.cuda()
+            token_output = token_output.cuda()
         # number of steps (e.g., 3), number of users (e.g., 64), lengths of
         # sequences (e.g., 10)
         for idx, sequences in enumerate(user_sequences):
@@ -307,9 +316,9 @@ class TieredLSTM(TieredLogModel):
                 self.ctxt_c,
                 seq_len=length,
             )
-            tag_output[idx][: tag_size.shape[0], : tag_size.shape[1], : tag_size.shape[2]] = tag_size
+            token_output[idx][: tag_size.shape[0], : tag_size.shape[1], : tag_size.shape[2]] = tag_size
             self.ctxt_vector = torch.squeeze(self.ctxt_vector, dim=1)
-        return tag_output, self.ctxt_vector, self.ctxt_h, self.ctxt_c
+        return token_output, self.ctxt_vector, self.ctxt_h, self.ctxt_c
 
 
 # if __name__ == "__main__":
