@@ -127,7 +127,7 @@ class Transformer(TransformerLanguageModel):
             self.reduce_dimension = nn.Linear(config.input_dim, self.model_dim)
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
-    def forward(self, src, ctx_vector=None, lengths=None, mask=None, has_mask=True):
+    def forward(self, src, ctx_vector=None, lengths=None, mask=None, has_mask=True, targets=None):
         # batch size, sequence length, embedded dimension
         # lengths is currently ignored, added for compatibility with LSTM-training code
         # TODO: compatibility with character level encoding
@@ -153,9 +153,13 @@ class Transformer(TransformerLanguageModel):
         tf_hidden = self.transformer_encoder(tf_input, self.src_mask)
         # word embedding encoder and decoder share weights
         logits = tf_hidden @ self.word_embedding.weight.t()
-        # Trainer expects model to return a tuple of results (for the LSTMs this would be (lstm_out, final_hidden_state))
-        # So we have to return a tuple here too (all but the first value of the tuple are discarded)
-        return logits, tf_hidden  # 2nd output (tf hidden) for context transformer.
+        
+        if targets is not None:
+            # Compute and return loss if targets is given
+            loss = self.compute_loss(logits, targets, lengths, mask)
+            return logits, tf_hidden, loss
+        
+        return logits, tf_hidden, None
 
 
 class ContextTransformer(TransformerLanguageModel):
@@ -180,7 +184,7 @@ class ContextTransformer(TransformerLanguageModel):
             :, -1, :
         ]  # context_output (batch size, model dimension)
 
-        return context_output
+        return context_output, None, None
 
 
 class TieredTransformer(TieredLogModel):
@@ -192,53 +196,59 @@ class TieredTransformer(TieredLogModel):
         self.log_transformer = Transformer(config)
         self.context_transformer = ContextTransformer(config)
 
-    def forward(self, src: Tensor, ctxt_vector, ctx_history, lengths=None, mask=None, has_mask=True):
+    def forward(self, src: Tensor, model_info, lengths=None, targets=None):
         # src (num of series, batch size, sequence length, embedded dimension)
         # TODO: compatibility with character level encoding
         batch_size = src.shape[1]
+        context_vector, context_history, history_length = model_info
 
         if lengths is None:
             if self.log_transformer.bidirectional:
-                tag_output = torch.empty((src.shape[0], src.shape[1], src.shape[2] - 2), dtype=torch.float)
+                token_output = torch.empty((src.shape[0], src.shape[1], src.shape[2] - 2), dtype=torch.float)
             else:
-                tag_output = torch.empty_like(src, dtype=torch.float)
+                token_output = torch.empty_like(src, dtype=torch.float)
         else:
-            tag_output = torch.zeros((src.shape[0], src.shape[1], int(torch.max(lengths))), dtype=torch.float)
+            token_output = torch.zeros((src.shape[0], src.shape[1], int(torch.max(lengths))), dtype=torch.float)
 
-        tag_output = tag_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
+        token_output = token_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
 
         for idx, batch in enumerate(src):
             # batch (batch size, sequence length, embedded dimension)
-            if ctxt_vector is None:
+            if context_vector is None:
                 ################ First loop without any history ##############################
                 device = src.device
-                ctxt_vector = torch.zeros(batch_size, self.config.context_config.model_dim).to(device)
+                context_vector = torch.zeros(batch_size, self.config.context_config.model_dim).to(device)
 
             ################ Low level transformer ############################################
-            logits, tf_hidden = self.log_transformer(
-                batch, ctx_vector=ctxt_vector
+            logits, tf_hidden, _ = self.log_transformer(
+                batch, ctx_vector=context_vector
             )  # (batch size, sequence length, model dimension)
-            tag_output[idx][: logits.shape[0], : logits.shape[1], : logits.shape[2]] = logits
+            token_output[idx][: logits.shape[0], : logits.shape[1], : logits.shape[2]] = logits
 
             ################ Process the output of the low level transformer ##################
             mean_hidden = torch.mean(
                 tf_hidden, dim=1
             )  # mean_hidden: Mean of a low level output. (batch size, model dimension) TODO: remove this mean and see performance improvement.
             final_hidden = tf_hidden[:, -1, :]  # final_hidden: The last token step output of the low level output
-            ctx_input = torch.cat(
+            context_input = torch.cat(
                 (mean_hidden, final_hidden), dim=1
             )  # cat_input: concatenation of mean_hidden and final_hidden (batch size, 2 * model dimension)
-            unsqz_ctx_input = torch.unsqueeze(
-                ctx_input, dim=1
+            unsqueezed_context_input = torch.unsqueeze(
+                context_input, dim=1
             )  # synthetic_input: unsqueeze to concatenate with the history of a specific user. (batch size, 1, 2 * model dimension)
 
-            if len(ctx_history.shape) == 2:
-                ctx_history = unsqz_ctx_input
+            if len(context_history.shape) == 2:
+                context_history = unsqueezed_context_input
             else:
-                ctx_history = torch.cat((unsqz_ctx_input, ctx_history), dim=1)
+                context_history = torch.cat((unsqueezed_context_input, context_history), dim=1)
             # ctx_history: concatination to generate a sequence of low level outputs (batch size, history length, 2 * model dimension)
 
             ################ Context level transformer with history #######################
-            ctxt_vector = self.context_transformer(ctx_history)
+            context_vector, _, _ = self.context_transformer(context_history)
+        
+        if targets is not None:
+            # Compute and return loss if targets is given
+            loss = self.compute_loss(token_output, targets, lengths)
+            return token_output, (context_vector, context_history, history_length), loss
 
-        return tag_output, ctxt_vector, ctx_history  # To feed the output of
+        return token_output, (context_vector, context_history, history_length), None

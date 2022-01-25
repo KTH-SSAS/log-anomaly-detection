@@ -159,8 +159,11 @@ class FwdLSTM(LSTMLanguageModel):
         self.name = "LSTM"
         super().__init__(config)
 
-    def forward(self, sequences, lengths=None, context_vectors=None, mask=None):
-        """Handles attention (if relevant) and grabs the final token output guesses."""
+    def forward(self, sequences, lengths=None, context_vectors=None, mask=None, targets=None):
+        """Handles attention (if relevant) and grabs the final token output guesses.
+        
+        Returns: predicted_tokens, (lstm_output_features, final_hidden_state), loss
+        If targets is None then loss is returned as None"""
         lstm_out, hx = super().forward(sequences, lengths, context_vectors)
 
         if self.has_attention:
@@ -169,9 +172,15 @@ class FwdLSTM(LSTMLanguageModel):
         else:
             output = lstm_out
 
-        tag_size = self.get_token_output(output)
+        token_output = self.get_token_output(output)
 
-        return tag_size, lstm_out, hx
+        if targets is not None:
+            # Compute and return loss if targets is given
+            loss = self.compute_loss(token_output, targets, lengths, mask)
+            return token_output, (lstm_out, hx), loss
+
+
+        return token_output, (lstm_out, hx), None
 
     @property
     def bidirectional(self):
@@ -185,8 +194,11 @@ class BidLSTM(LSTMLanguageModel):
         self.name = "LSTM-Bid"
         super().__init__(config)
 
-    def forward(self, sequences: torch.Tensor, lengths=None, context_vectors=None, mask=None):
-        """Handles bidir-state-alignment, attention (if relevant) and grabs the final token output guesses."""
+    def forward(self, sequences: torch.Tensor, lengths=None, context_vectors=None, mask=None, targets=None):
+        """Handles bidir-state-alignment, attention (if relevant) and grabs the final token output guesses.
+        
+        Returns: predicted_tokens, (lstm_output_features, final_hidden_state), loss
+        If targets is None then loss is returned as None"""
         lstm_out, hx = super().forward(sequences, lengths, context_vectors)
         # Reshape lstm_out to make forward/backward into separate dims
 
@@ -210,9 +222,14 @@ class BidLSTM(LSTMLanguageModel):
             attention, _ = self.attention(b_f_concat, mask)
             b_f_concat = torch.cat((b_f_concat, attention.squeeze()), dim=-1)
 
-        tag_size = self.get_token_output(b_f_concat)
+        token_output = self.get_token_output(b_f_concat)
 
-        return tag_size, lstm_out, hx
+        if targets is not None:
+            # Compute and return loss if targets is given
+            loss = self.compute_loss(token_output, targets, lengths, mask)
+            return token_output, (lstm_out, hx), loss
+
+        return token_output, (lstm_out, hx), None
 
     @property
     def bidirectional(self):
@@ -235,7 +252,9 @@ class ContextLSTM(nn.Module):
         initialize_weights(self)
 
     def forward(self, lower_lv_outputs, final_hidden, context_h, context_c, seq_len=None):
-        """Handles processing and updating of context info."""
+        """Handles processing and updating of context info.
+        
+        Returns: context_output, (final_hidden_state, final_cell_state)"""
 
         if seq_len is not None:
             mean_hidden = torch.sum(lower_lv_outputs, dim=1) / seq_len.view(-1, 1)
@@ -245,7 +264,7 @@ class ContextLSTM(nn.Module):
         synthetic_input = torch.unsqueeze(cat_input, dim=1)
         output, (context_hx, context_cx) = self.context_lstm_layers(synthetic_input, (context_h, context_c))
 
-        return output, context_hx, context_cx
+        return output, (context_hx, context_cx), None
 
 
 class TieredLSTM(TieredLogModel):
@@ -264,9 +283,9 @@ class TieredLSTM(TieredLogModel):
 
         low_lv_layers = config.layers
 
-        self.ctxt_vector = None
-        self.ctxt_h = None
-        self.ctxt_c = None
+        self.context_vector = None
+        self.context_hidden_state = None
+        self.context_cell_state = None
 
         # Layers
         self.low_lv_lstm = self.model(config)
@@ -275,15 +294,20 @@ class TieredLSTM(TieredLogModel):
             input_features = low_lv_layers[-1] * 4
         else:
             input_features = low_lv_layers[-1] * 2
-        self.ctxt_lv_lstm = ContextLSTM(config.context_layers, input_features)
+        self.context_lstm = ContextLSTM(config.context_layers, input_features)
 
         # Weight initialization
         initialize_weights(self)
 
-    def forward(self, user_sequences, context_vectors, context_h, context_c, lengths=None):
-        self.ctxt_vector = context_vectors
-        self.ctxt_h = context_h
-        self.ctxt_c = context_c
+    def forward(self, user_sequences, model_info, lengths=None, targets=None):
+        """Forward pass of tiered LSTM model.
+        
+        Returns: predicted_tokens, (context_vector, final_context_hidden_state, final_context_cell_state), loss
+        If targets is None then loss is returned as None"""
+        self.context_vector = model_info[0]
+        self.context_hidden_state = model_info[1]
+        self.context_cell_state = model_info[2]
+
         if self.low_lv_lstm.bidirectional:
             token_output = torch.empty(
                 (
@@ -304,21 +328,27 @@ class TieredLSTM(TieredLogModel):
         # sequences (e.g., 10)
         for idx, sequences in enumerate(user_sequences):
             length = None if lengths is None else lengths[idx]
-            tag_size, low_lv_lstm_outputs, final_hidden = self.low_lv_lstm(
-                sequences, lengths=length, context_vectors=self.ctxt_vector
+            tag_size, (low_lv_lstm_outputs, final_hidden), _ = self.low_lv_lstm(
+                sequences, lengths=length, context_vectors=self.context_vector
             )
             if self.low_lv_lstm.bidirectional:
                 final_hidden = final_hidden.view(1, final_hidden.shape[1], -1)
-            self.ctxt_vector, self.ctxt_h, self.ctxt_c = self.ctxt_lv_lstm(
+            self.context_vector, (self.context_hidden_state, self.context_cell_state), _ = self.context_lstm(
                 low_lv_lstm_outputs,
                 final_hidden,
-                self.ctxt_h,
-                self.ctxt_c,
+                self.context_hidden_state,
+                self.context_cell_state,
                 seq_len=length,
             )
             token_output[idx][: tag_size.shape[0], : tag_size.shape[1], : tag_size.shape[2]] = tag_size
-            self.ctxt_vector = torch.squeeze(self.ctxt_vector, dim=1)
-        return token_output, self.ctxt_vector, self.ctxt_h, self.ctxt_c
+            self.context_vector = torch.squeeze(self.context_vector, dim=1)
+
+        if targets is not None:
+            # Compute and return loss if targets is given
+            loss = self.compute_loss(token_output, targets, lengths)
+            return token_output, (self.context_vector, self.context_hidden_state, self.context_cell_state), loss
+
+        return token_output, (self.context_vector, self.context_hidden_state, self.context_cell_state), None
 
 
 # if __name__ == "__main__":

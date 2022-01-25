@@ -507,7 +507,6 @@ class OnlineLMBatcher(ABC):
                     batch[key][step] = torch.stack(batch[key][step])
             if isinstance(batch[key], list):
                 batch[key] = torch.stack(batch[key])
-            batch[key] = batch[key].squeeze()
 
         return batch
 
@@ -650,12 +649,13 @@ class TieredLSTMBatcher(OnlineLMBatcher):
         batch["c_state_init"] = torch.transpose(c_state, 0, 1)
         return batch
 
-    def update_state(self, ctxt_vectors, h_states, c_states):
-        ctxt_vectors = ctxt_vectors.data
+    def update_state(self, model_info):
+        context_vectors, h_states, c_states = model_info
+        context_vectors = context_vectors.data
         h_states = torch.transpose(h_states.data, 0, 1)
         c_states = torch.transpose(c_states.data, 0, 1)
         for usr, ctxt_v, h_state, c_state in zip(
-            self.users_ge_num_steps[: self.mb_size], ctxt_vectors, h_states, c_states
+            self.users_ge_num_steps[: self.mb_size], context_vectors, h_states, c_states
         ):
             self.saved_lstm[usr] = (ctxt_v, h_state, c_state)
 
@@ -777,17 +777,14 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         return batch_data, (ctxt_vector, hist_lst, hist_lengths)
 
     def add_model_info(self, batch, model_info):
-        ctxt_vector = model_info[0]
-        history = model_info[1]
-        history_length = model_info[2]
-
         # Add the model info to the batch
-        batch["context_vector"] = ctxt_vector
-        batch["history"] = history
-        batch["history_length"] = history_length
+        batch["context_vector"] = model_info[0]
+        batch["history"] = model_info[1]
+        batch["history_length"] = model_info[2]
         return batch
 
-    def update_state(self, ctxt_vectors, ctxt_history):
+    def update_state(self, model_info):
+        ctxt_vectors, ctxt_history, _ = model_info
         ctxt_vectors = ctxt_vectors.data
         ctxt_history = ctxt_history.data
         remove_usr = []

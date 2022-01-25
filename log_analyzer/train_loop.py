@@ -279,7 +279,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
             iteration += 1  # Total iterations in training (cumulative)
             # Split the batch
             split_batch = train_loader.split_batch(batch)
-            if isinstance(lm_trainer, (TieredTrainer, TieredTransformerTrainer)):
+            if isinstance(lm_trainer, TieredTrainer):
                 if train_loader.flush is False:
                     loss, done = lm_trainer.train_step(split_batch)
                 else:
