@@ -138,7 +138,7 @@ class LSTMLanguageModel(LogModel):
 
         if lengths is not None:
             if len(lengths.shape) > 1:
-                lengths = lengths.squeeze()
+                lengths = lengths.squeeze(1)
             lstm_in = pack_padded_sequence(lstm_in, lengths.cpu(), enforce_sorted=False, batch_first=True)
 
         lstm_out, (hx, cx) = self.stacked_lstm(lstm_in)
