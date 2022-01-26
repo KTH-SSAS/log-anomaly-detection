@@ -97,20 +97,16 @@ class TransformerLanguageModel(LogModel):
         )
         self.transformer_encoder = nn.TransformerEncoder(encoder_layers, self.layers)
 
-    def forward(self, src: torch.Tensor, lengths=None, mask=None, has_mask=True):
+    def get_mask(self, src: torch.Tensor):
         # batch size, sequence length, embedded dimension
-        # lengths is currently ignored, added for compatibility with LSTM-training code
         if isinstance(self, ContextTransformer):
             seq_len = src.shape[1]
         else:
             seq_len = src.shape[-1]
-        if has_mask:
-            device = src.device
-            if self.src_mask is None or self.src_mask.shape[-1] != seq_len:
-                mask = _generate_square_subsequent_mask(seq_len).to(device)
-                self.src_mask = mask
-        else:
-            self.src_mask = None
+        device = src.device
+        if self.src_mask is None or self.src_mask.shape[-1] != seq_len:
+            mask = _generate_square_subsequent_mask(seq_len).to(device)
+            self.src_mask = mask
         return self.src_mask
 
 
@@ -127,12 +123,12 @@ class Transformer(TransformerLanguageModel):
             self.reduce_dimension = nn.Linear(config.input_dim, self.model_dim)
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
-    def forward(self, src, ctx_vector=None, lengths=None, mask=None, has_mask=True, targets=None):
+    def forward(self, src, ctx_vector=None, lengths=None, mask=None, targets=None):
         # batch size, sequence length, embedded dimension
         # lengths is currently ignored, added for compatibility with LSTM-training code
         # TODO: compatibility with character level encoding
 
-        self.src_mask = super().forward(src, has_mask)
+        self.src_mask = self.get_mask(src)
         word_embeddings = self.word_embedding(src) * math.sqrt(self.config.model_dim)
         if ctx_vector is not None:
             cat_word_embeddings = torch.Tensor([])
@@ -152,6 +148,7 @@ class Transformer(TransformerLanguageModel):
         tf_input = self.pos_encoder(word_embeddings)
         tf_hidden = self.transformer_encoder(tf_input, self.src_mask)
         # word embedding encoder and decoder share weights
+        # @ is shorthand for matrix multiplication
         logits = tf_hidden @ self.word_embedding.weight.t()
         
         if targets is not None:
@@ -172,9 +169,8 @@ class ContextTransformer(TransformerLanguageModel):
         self.reduce_dimension = nn.Linear(2 * config.model_dim, config.context_config.model_dim)
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
-    def forward(self, ctx_history, lengths=None, mask=None, has_mask=True):
-
-        self.src_mask = super().forward(ctx_history, has_mask)
+    def forward(self, ctx_history):
+        self.src_mask = self.get_mask(ctx_history)
         ctx_input = self.reduce_dimension(ctx_history)  # ctx_input (batch size, sequence length, 2 * model dimension)
         ctx_embeddings = ctx_input * math.sqrt(
             self.config.model_dim * 2
@@ -184,7 +180,7 @@ class ContextTransformer(TransformerLanguageModel):
             :, -1, :
         ]  # context_output (batch size, model dimension)
 
-        return context_output, None, None
+        return context_output
 
 
 class TieredTransformer(TieredLogModel):
@@ -244,7 +240,7 @@ class TieredTransformer(TieredLogModel):
             # ctx_history: concatination to generate a sequence of low level outputs (batch size, history length, 2 * model dimension)
 
             ################ Context level transformer with history #######################
-            context_vector, _, _ = self.context_transformer(context_history)
+            context_vector = self.context_transformer(context_history)
         
         if targets is not None:
             # Compute and return loss if targets is given

@@ -251,10 +251,11 @@ class ContextLSTM(nn.Module):
         # Weight initialization
         initialize_weights(self)
 
-    def forward(self, lower_lv_outputs, final_hidden, context_h, context_c, seq_len=None):
+    def forward(self, lower_lv_outputs, model_info, seq_len=None):
         """Handles processing and updating of context info.
         
         Returns: context_output, (final_hidden_state, final_cell_state)"""
+        final_hidden, context_h, context_c = model_info
 
         if seq_len is not None:
             mean_hidden = torch.sum(lower_lv_outputs, dim=1) / seq_len.view(-1, 1)
@@ -264,7 +265,7 @@ class ContextLSTM(nn.Module):
         synthetic_input = torch.unsqueeze(cat_input, dim=1)
         output, (context_hx, context_cx) = self.context_lstm_layers(synthetic_input, (context_h, context_c))
 
-        return output, (context_hx, context_cx), None
+        return output, (context_hx, context_cx)
 
 
 class TieredLSTM(TieredLogModel):
