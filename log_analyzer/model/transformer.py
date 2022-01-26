@@ -133,7 +133,7 @@ class Transformer(TransformerLanguageModel):
         # TODO: compatibility with character level encoding
 
         self.src_mask = super().forward(src, has_mask)
-        word_embeddings = self.word_embedding(src) * math.sqrt(self.config.model_dim)
+        word_embeddings = self.word_embedding(src)
         if ctx_vector is not None:
             cat_word_embeddings = torch.Tensor([])
             trans_word_embeddings = word_embeddings.transpose(0, 1)
@@ -149,6 +149,7 @@ class Transformer(TransformerLanguageModel):
             # Output: trans_cat_word_embeddings: (batch x sequence length x embedded dimension + context dimension)
             word_embeddings = self.reduce_dimension(trans_cat_word_embeddings)
             # Output: word_embeddings: (batch x sequence length x embedded dimension)
+        word_embeddings = word_embeddings * math.sqrt(self.config.model_dim)
         tf_input = self.pos_encoder(word_embeddings)
         tf_hidden = self.transformer_encoder(tf_input, self.src_mask)
         # word embedding encoder and decoder share weights
