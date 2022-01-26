@@ -238,7 +238,7 @@ class TieredTransformer(LogModel):
             if len(ctx_history.shape) == 2:
                 ctx_history = unsqz_ctx_input
             else:
-                ctx_history = torch.cat((unsqz_ctx_input, ctx_history), dim=1)
+                ctx_history = torch.cat((unsqz_ctx_input, ctx_history), dim=1)[:,-self.config.shift_window:,:]
             # ctx_history: concatination to generate a sequence of low level outputs (batch size, history length, 2 * model dimension)
 
             ################ Context level transformer with history #######################
