@@ -166,7 +166,8 @@ class ContextTransformer(TransformerLanguageModel):
     def __init__(self, config: TieredTransformerConfig):
         self.name = "Context_Transformer"
         super().__init__(config.context_config)
-        self.reduce_dimension = nn.Linear(2 * config.model_dim, config.context_config.model_dim)
+        self.context_config = config.context_config
+        self.reduce_dimension = nn.Linear(2 * config.model_dim, self.context_config.model_dim)
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
     def forward(self, ctx_history, lengths=None, mask=None, has_mask=True):
