@@ -175,7 +175,7 @@ class ContextTransformer(TransformerLanguageModel):
         self.src_mask = super().forward(ctx_history, has_mask)
         ctx_input = self.reduce_dimension(ctx_history)  # ctx_input (batch size, sequence length, 2 * model dimension)
         ctx_embeddings = ctx_input * math.sqrt(
-            self.config.model_dim * 2
+            self.context_config.model_dim
         )  # ctx_embeddings (batch size, sequence length, model dimension)
         tf_input = self.pos_encoder(ctx_embeddings)  # tf_input (batch size, sequence length, model dimension)
         context_output = self.transformer_encoder(tf_input, self.src_mask)[
