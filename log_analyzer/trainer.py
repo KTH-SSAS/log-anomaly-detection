@@ -88,17 +88,11 @@ class Trainer(ABC):
 
         if self.config.mixed_precision:
             with torch.cuda.amp.autocast():
-                # Apply the model to input to produce the output
-                output, *_ = self.model(X, lengths=L, mask=M)
-
-                # Compute the loss for the output
-                loss, _ = self.model.compute_loss(output, Y, lengths=L, mask=M)
+                # Apply the model to input to produce the output, provide targets to receive loss
+                output, _, loss = self.model(X, lengths=L, mask=M, targets=Y)
         else:
-            # Apply the model to input to produce the output
-            output, *_ = self.model(X, lengths=L, mask=M)
-
-            # Compute the loss for the output
-            loss, _ = self.model.compute_loss(output, Y, lengths=L, mask=M)
+            # Apply the model to input to produce the output, provide targets to receive loss
+            output, _, loss = self.model(X, lengths=L, mask=M, targets=Y)
 
         # Take an optimization step based on the loss
         self.optimizer_step(loss)

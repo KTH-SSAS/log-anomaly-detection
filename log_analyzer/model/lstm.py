@@ -16,15 +16,16 @@ from log_analyzer.model.model_util import initialize_weights
 
 class LogModel(nn.Module):
     """Superclass for all log-data language models.
-    
+
     All log-data language models should implement the forward() function with:
-    
+
     input: input_sequence, model_info, lengths=None, mask=None, targets=None
     output: output_sequence, model_info, loss=None
-    
+
     Where model_info is any extra info needed by that model (e.g. context info, history)
     either as a singular value or a tuple of values
-    Loss should be returned if targets is provided, otherwise None is returned."""
+    Loss should be returned if targets is provided, otherwise None is returned.
+    """
 
     def __init__(self, config: Config):
         super().__init__()
@@ -77,7 +78,7 @@ class TieredLogModel(LogModel):
 
 
 class LSTMLanguageModel(LogModel):
-    """Superclass for non-tiered LSTM log-data language models"""
+    """Superclass for non-tiered LSTM log-data language models."""
 
     def __init__(self, config: LSTMConfig):
         super().__init__(config)
@@ -89,7 +90,11 @@ class LSTMLanguageModel(LogModel):
         # Layers
         self.embeddings = nn.Embedding(config.vocab_size, config.embedding_dim)
         self.stacked_lstm = nn.LSTM(
-            config.input_dim, config.layers[0], len(config.layers), batch_first=True, bidirectional=self.bidirectional,
+            config.input_dim,
+            config.layers[0],
+            len(config.layers),
+            batch_first=True,
+            bidirectional=self.bidirectional,
         )
 
         fc_input_dim = config.layers[-1]
@@ -104,7 +109,10 @@ class LSTMLanguageModel(LogModel):
             else:
                 seq_len = None
             self.attention = SelfAttention(
-                fc_input_dim, config.attention_dim, attention_type=config.attention_type, seq_len=seq_len,
+                fc_input_dim,
+                config.attention_dim,
+                attention_type=config.attention_type,
+                seq_len=seq_len,
             )
             fc_input_dim *= 2
             self.has_attention = True
@@ -121,7 +129,8 @@ class LSTMLanguageModel(LogModel):
         raise NotImplementedError("Bidirectional property has to be set in child class.")
 
     def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None):
-        """Performs token embedding, context-prepending if model is tiered, and runs the LSTM on the input sequences."""
+        """Performs token embedding, context-prepending if model is tiered, and
+        runs the LSTM on the input sequences."""
         # batch size, sequence length, embedded dimension
         x_lookups = self.embeddings(sequences)
         if self.tiered:
@@ -162,10 +171,12 @@ class FwdLSTM(LSTMLanguageModel):
         super().__init__(config)
 
     def forward(self, sequences, lengths=None, context_vectors=None, mask=None, targets=None):
-        """Handles attention (if relevant) and grabs the final token output guesses.
-        
+        """Handles attention (if relevant) and grabs the final token output
+        guesses.
+
         Returns: predicted_tokens, (lstm_output_features, final_hidden_state), loss
-        If targets is None then loss is returned as None"""
+        If targets is None then loss is returned as None
+        """
         lstm_out, hx = super().forward(sequences, lengths, context_vectors)
 
         if self.has_attention:
@@ -178,7 +189,7 @@ class FwdLSTM(LSTMLanguageModel):
 
         if targets is not None:
             # Compute and return loss if targets is given
-            loss = self.compute_loss(token_output, targets, lengths, mask)
+            loss, _ = self.compute_loss(token_output, targets, lengths, mask)
             return token_output, (lstm_out, hx), loss
 
         return token_output, (lstm_out, hx), None
@@ -196,10 +207,12 @@ class BidLSTM(LSTMLanguageModel):
         super().__init__(config)
 
     def forward(self, sequences: torch.Tensor, lengths=None, context_vectors=None, mask=None, targets=None):
-        """Handles bidir-state-alignment, attention (if relevant) and grabs the final token output guesses.
-        
+        """Handles bidir-state-alignment, attention (if relevant) and grabs the
+        final token output guesses.
+
         Returns: predicted_tokens, (lstm_output_features, final_hidden_state), loss
-        If targets is None then loss is returned as None"""
+        If targets is None then loss is returned as None
+        """
         lstm_out, hx = super().forward(sequences, lengths, context_vectors)
         # Reshape lstm_out to make forward/backward into separate dims
 
@@ -227,7 +240,7 @@ class BidLSTM(LSTMLanguageModel):
 
         if targets is not None:
             # Compute and return loss if targets is given
-            loss = self.compute_loss(token_output, targets, lengths, mask)
+            loss, _ = self.compute_loss(token_output, targets, lengths, mask)
             return token_output, (lstm_out, hx), loss
 
         return token_output, (lstm_out, hx), None
@@ -254,8 +267,9 @@ class ContextLSTM(nn.Module):
 
     def forward(self, lower_lv_outputs, model_info, seq_len=None):
         """Handles processing and updating of context info.
-        
-        Returns: context_output, (final_hidden_state, final_cell_state)"""
+
+        Returns: context_output, (final_hidden_state, final_cell_state)
+        """
         final_hidden, context_h, context_c = model_info
 
         if seq_len is not None:
@@ -270,8 +284,9 @@ class ContextLSTM(nn.Module):
 
 
 class TieredLSTM(TieredLogModel):
-    """Tiered-LSTM model, combines a standard forward or bidirectional LSTM model for
-    log-level analysis and a context LSTM for propagation of high-level context information."""
+    """Tiered-LSTM model, combines a standard forward or bidirectional LSTM
+    model for log-level analysis and a context LSTM for propagation of high-
+    level context information."""
 
     def __init__(self, config: TieredLSTMConfig, bidirectional):
 
@@ -301,18 +316,24 @@ class TieredLSTM(TieredLogModel):
         # Weight initialization
         initialize_weights(self)
 
-    def forward(self, user_sequences, model_info, lengths=None, targets=None):
+    def forward(self, user_sequences, model_info, lengths=None, mask=None, targets=None):
         """Forward pass of tiered LSTM model.
-        
+
         Returns: predicted_tokens, (context_vector, final_context_hidden_state, final_context_cell_state), loss
-        If targets is None then loss is returned as None"""
+        If targets is None then loss is returned as None
+        """
         self.context_vector = model_info[0]
         self.context_hidden_state = model_info[1]
         self.context_cell_state = model_info[2]
 
         if self.low_lv_lstm.bidirectional:
             token_output = torch.empty(
-                (user_sequences.shape[0], user_sequences.shape[1], user_sequences.shape[2] - 2,), dtype=torch.float,
+                (
+                    user_sequences.shape[0],
+                    user_sequences.shape[1],
+                    user_sequences.shape[2] - 2,
+                ),
+                dtype=torch.float,
             )
         else:
             token_output = torch.empty_like(user_sequences, dtype=torch.float)
@@ -331,14 +352,16 @@ class TieredLSTM(TieredLogModel):
             if self.low_lv_lstm.bidirectional:
                 final_hidden = final_hidden.view(1, final_hidden.shape[1], -1)
             self.context_vector, (self.context_hidden_state, self.context_cell_state) = self.context_lstm(
-                low_lv_lstm_outputs, (final_hidden, self.context_hidden_state, self.context_cell_state), seq_len=length,
+                low_lv_lstm_outputs,
+                (final_hidden, self.context_hidden_state, self.context_cell_state),
+                seq_len=length,
             )
             token_output[idx][: tag_size.shape[0], : tag_size.shape[1], : tag_size.shape[2]] = tag_size
             self.context_vector = torch.squeeze(self.context_vector, dim=1)
 
         if targets is not None:
             # Compute and return loss if targets is given
-            loss = self.compute_loss(token_output, targets, lengths)
+            loss, _ = self.compute_loss(token_output, targets, lengths, mask)
             return token_output, (self.context_vector, self.context_hidden_state, self.context_cell_state), loss
 
         return token_output, (self.context_vector, self.context_hidden_state, self.context_cell_state), None

@@ -42,7 +42,7 @@ class TieredTrainer(Trainer):
         if self.scaler is not None:
             with torch.cuda.amp.autocast():
                 # Apply the model to input to produce the output
-                output, model_info, _ = self.model(X, model_info, lengths=L)
+                output, model_info, _ = self.model(X, model_info, lengths=L, mask=M)
                 # Update the dataloader's state with new model_info (context)
                 self.train_loader.update_state(model_info)
 
@@ -50,7 +50,7 @@ class TieredTrainer(Trainer):
                 loss, _ = self.model.compute_loss(output, Y, lengths=L, mask=M)
         else:
             # Apply the model to input to produce the output
-            output, model_info, _ = self.model(X, model_info, lengths=L)
+            output, model_info, _ = self.model(X, model_info, lengths=L, mask=M)
             # Update the dataloader's state with new model_info (context)
             self.train_loader.update_state(model_info)
 

@@ -150,12 +150,12 @@ class Transformer(TransformerLanguageModel):
         # word embedding encoder and decoder share weights
         # @ is shorthand for matrix multiplication
         logits = tf_hidden @ self.word_embedding.weight.t()
-        
+
         if targets is not None:
             # Compute and return loss if targets is given
-            loss = self.compute_loss(logits, targets, lengths, mask)
+            loss, _ = self.compute_loss(logits, targets, lengths, mask)
             return logits, tf_hidden, loss
-        
+
         return logits, tf_hidden, None
 
 
@@ -192,7 +192,7 @@ class TieredTransformer(TieredLogModel):
         self.log_transformer = Transformer(config)
         self.context_transformer = ContextTransformer(config)
 
-    def forward(self, src: Tensor, model_info, lengths=None, targets=None):
+    def forward(self, src: Tensor, model_info, lengths=None, mask=None, targets=None):
         # src (num of series, batch size, sequence length, embedded dimension)
         # TODO: compatibility with character level encoding
         batch_size = src.shape[1]
@@ -241,10 +241,10 @@ class TieredTransformer(TieredLogModel):
 
             ################ Context level transformer with history #######################
             context_vector = self.context_transformer(context_history)
-        
+
         if targets is not None:
             # Compute and return loss if targets is given
-            loss = self.compute_loss(token_output, targets, lengths)
+            loss, _ = self.compute_loss(token_output, targets, lengths, mask)
             return token_output, (context_vector, context_history, history_length), loss
 
         return token_output, (context_vector, context_history, history_length), None
