@@ -15,7 +15,16 @@ from log_analyzer.model.model_util import initialize_weights
 
 
 class LogModel(nn.Module):
-    """Superclass for all log-data language models."""
+    """Superclass for all log-data language models.
+    
+    All log-data language models should implement the forward() function with:
+    
+    input: input_sequence, model_info, lengths=None, mask=None, targets=None
+    output: output_sequence, model_info, loss=None
+    
+    Where model_info is any extra info needed by that model (e.g. context info, history)
+    either as a singular value or a tuple of values
+    Loss should be returned if targets is provided, otherwise None is returned."""
 
     def __init__(self, config: Config):
         super().__init__()
@@ -80,11 +89,7 @@ class LSTMLanguageModel(LogModel):
         # Layers
         self.embeddings = nn.Embedding(config.vocab_size, config.embedding_dim)
         self.stacked_lstm = nn.LSTM(
-            config.input_dim,
-            config.layers[0],
-            len(config.layers),
-            batch_first=True,
-            bidirectional=self.bidirectional,
+            config.input_dim, config.layers[0], len(config.layers), batch_first=True, bidirectional=self.bidirectional,
         )
 
         fc_input_dim = config.layers[-1]
@@ -99,10 +104,7 @@ class LSTMLanguageModel(LogModel):
             else:
                 seq_len = None
             self.attention = SelfAttention(
-                fc_input_dim,
-                config.attention_dim,
-                attention_type=config.attention_type,
-                seq_len=seq_len,
+                fc_input_dim, config.attention_dim, attention_type=config.attention_type, seq_len=seq_len,
             )
             fc_input_dim *= 2
             self.has_attention = True
@@ -178,7 +180,6 @@ class FwdLSTM(LSTMLanguageModel):
             # Compute and return loss if targets is given
             loss = self.compute_loss(token_output, targets, lengths, mask)
             return token_output, (lstm_out, hx), loss
-
 
         return token_output, (lstm_out, hx), None
 
@@ -311,12 +312,7 @@ class TieredLSTM(TieredLogModel):
 
         if self.low_lv_lstm.bidirectional:
             token_output = torch.empty(
-                (
-                    user_sequences.shape[0],
-                    user_sequences.shape[1],
-                    user_sequences.shape[2] - 2,
-                ),
-                dtype=torch.float,
+                (user_sequences.shape[0], user_sequences.shape[1], user_sequences.shape[2] - 2,), dtype=torch.float,
             )
         else:
             token_output = torch.empty_like(user_sequences, dtype=torch.float)
@@ -334,12 +330,8 @@ class TieredLSTM(TieredLogModel):
             )
             if self.low_lv_lstm.bidirectional:
                 final_hidden = final_hidden.view(1, final_hidden.shape[1], -1)
-            self.context_vector, (self.context_hidden_state, self.context_cell_state), _ = self.context_lstm(
-                low_lv_lstm_outputs,
-                final_hidden,
-                self.context_hidden_state,
-                self.context_cell_state,
-                seq_len=length,
+            self.context_vector, (self.context_hidden_state, self.context_cell_state) = self.context_lstm(
+                low_lv_lstm_outputs, (final_hidden, self.context_hidden_state, self.context_cell_state), seq_len=length,
             )
             token_output[idx][: tag_size.shape[0], : tag_size.shape[1], : tag_size.shape[2]] = tag_size
             self.context_vector = torch.squeeze(self.context_vector, dim=1)
