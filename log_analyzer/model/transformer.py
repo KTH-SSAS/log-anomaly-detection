@@ -97,7 +97,7 @@ class TransformerLanguageModel(LogModel):
         encoder_layers = nn.TransformerEncoderLayer(
             self.model_dim, self.attention_heads, self.feedforward_dim, dropout=self.dropout, batch_first=True
         )
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, self.layers)
+        self.transformer_encoder: nn.TransformerEncoder = nn.TransformerEncoder(encoder_layers, self.layers)
 
     def forward(self, src: torch.Tensor, lengths=None, mask=None, has_mask=True):
         # batch size, sequence length, embedded dimension
@@ -154,7 +154,11 @@ class Transformer(TransformerLanguageModel):
             word_embeddings = self.reduce_dimension(trans_cat_word_embeddings)
             # Output: word_embeddings: (batch x sequence length x embedded dimension)
         tf_input = self.pos_encoder(word_embeddings)
-        tf_hidden = self.transformer_encoder(tf_input, self.src_mask)
+        if mask is None:
+            pad_mask = None
+        else:
+            pad_mask = mask == 0
+        tf_hidden = self.transformer_encoder(tf_input, self.src_mask, src_key_padding_mask=pad_mask)
         # word embedding encoder and decoder share weights
         logits = tf_hidden @ self.word_embedding.weight.t()
         # Trainer expects model to return a tuple of results (for the LSTMs this would be (lstm_out, final_hidden_state))
@@ -240,7 +244,7 @@ class TieredTransformer(LogModel):
             else:
                 ctx_history = torch.cat((unsqz_ctx_input, ctx_history), dim=1)
             # ctx_history: concatination to generate a sequence of low level outputs (batch size, history length, 2 * model dimension)
-            ctx_history = ctx_history[:, -self.shift_window :, :]
+            ctx_history = ctx_history[:, -self.shift_window:, :]
             ################ Context level transformer with history #######################
             ctxt_vector = self.context_transformer(ctx_history)
 
