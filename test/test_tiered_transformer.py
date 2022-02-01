@@ -40,5 +40,5 @@ def context_history():
 def test_tiered_transformer_forward_word(test_config : TieredTransformerConfig, 
                                         test_input, context_input, context_history):
     tieredTransformer = TieredTransformer(test_config)
-    tag_output, ctxt_vector, ctx_history = tieredTransformer(test_input, context_input, context_history)
-    return tag_output.shape == torch.Size([CONSECUTIVE_LOG, BATCH_SIZE, SEQUENCE_LENGTH, VOCAB_SIZE])
+    tag_output, ctxt_vector, ctx_history_output = tieredTransformer(test_input, context_input, context_history_input)
+    return (ctx_history_output[:,:-3,:] == context_history_input[:,3:,:]).all() and \
