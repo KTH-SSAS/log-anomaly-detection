@@ -589,11 +589,7 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         self.shift_window = shift_window
 
     def init_saved_model(self, user):
-        if self.cuda:
-            self.saved_ctxt[user] = [torch.zeros(self.context_model_dim).cuda(), torch.tensor([]).cuda(), 0]
-
-        else:
-            self.saved_ctxt[user] = [torch.zeros(self.context_model_dim), torch.tensor([]), 0]
+        self.saved_ctxt[user] = [torch.zeros(self.context_model_dim), torch.tensor([])]
 
     def gen_datadict(self, batch, endx, endt, model_info):
         ctxt_vector = model_info[0]
@@ -618,10 +614,6 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         hist_lst = []
         hist_lengths = []
         hist_dimension = 0
-        if self.cuda:
-            ctxt_vector = torch.tensor([]).cuda()
-            history = torch.tensor([]).cuda()
-        else:
             ctxt_vector = torch.tensor([])
             history = torch.tensor([])
         self.current_batch_usr = self.users_ge_num_steps[: self.mb_size]
@@ -632,7 +624,7 @@ class TieredTransformerBatcher(OnlineLMBatcher):
                 self.users_ge_num_steps.remove(user)
             ctxt_vector = torch.cat((ctxt_vector, torch.unsqueeze(self.saved_ctxt[user][0], dim=0)), dim=0)
             hist_lst.append(torch.unsqueeze(self.saved_ctxt[user][1], dim=0))
-            hist_lengths.append(self.saved_ctxt[user][2])
+            hist_lengths.append(self.saved_ctxt[user][1].shape[0])
             hist_dimension = max(self.saved_ctxt[user][1].shape[-1], hist_dimension)
 
         max_length = max(hist_lengths)
@@ -640,27 +632,17 @@ class TieredTransformerBatcher(OnlineLMBatcher):
             if hist_lengths[idx] == max_length:
                 hist_lst[idx] = hist
             elif hist_lengths[idx] == 0:
-                if self.cuda:
-                    hist_lst[idx] = torch.zeros(1, max_length, hist_dimension).cuda()
-                else:
                     hist_lst[idx] = torch.zeros(1, max_length, hist_dimension)
             else:
-                if self.cuda:
                     hist_lst[idx] = torch.cat(
-                        (hist, torch.zeros(1, max_length - hist_lengths[idx], hist_dimension)), dim=1
-                    ).cuda()
-                else:
-                    hist_lst[idx] = torch.cat(
-                        (hist, torch.zeros(1, max_length - hist_lengths[idx], hist_dimension)), dim=1
+                    (torch.zeros(1, max_length - hist_lengths[idx], hist_dimension), hist), dim=1
                     )
         history = torch.cat((hist_lst), dim=0)
 
         return output, (ctxt_vector, history, hist_lengths)
 
     def update_state(self, ctxt_vectors, ctxt_history):
-        ctxt_vectors = ctxt_vectors.data
-        ctxt_history = ctxt_history.data
-        remove_usr = []
+        ctxt_vectors = ctxt_vectors.cpu().detach()
+        ctxt_history = ctxt_history.cpu().detach()
         for usr, ctxt_v, history in zip(self.current_batch_usr, ctxt_vectors, ctxt_history):
-            self.saved_ctxt[usr] = [ctxt_v, history[: self.shift_window], history.shape[0]]
-            remove_usr.append(usr)
+            self.saved_ctxt[usr] = [ctxt_v, history]
