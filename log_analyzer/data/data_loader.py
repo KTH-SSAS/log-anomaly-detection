@@ -614,8 +614,8 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         hist_lst = []
         hist_lengths = []
         hist_dimension = 0
-            ctxt_vector = torch.tensor([])
-            history = torch.tensor([])
+        ctxt_vector = torch.tensor([])
+        history = torch.tensor([])
         self.current_batch_usr = self.users_ge_num_steps[: self.mb_size]
         for user in self.current_batch_usr:
             output.append(self.user_logs[user][0 : self.num_steps])
@@ -632,11 +632,11 @@ class TieredTransformerBatcher(OnlineLMBatcher):
             if hist_lengths[idx] == max_length:
                 hist_lst[idx] = hist
             elif hist_lengths[idx] == 0:
-                    hist_lst[idx] = torch.zeros(1, max_length, hist_dimension)
+                hist_lst[idx] = torch.zeros(1, max_length, hist_dimension)
             else:
-                    hist_lst[idx] = torch.cat(
+                hist_lst[idx] = torch.cat(
                     (torch.zeros(1, max_length - hist_lengths[idx], hist_dimension), hist), dim=1
-                    )
+                )
         history = torch.cat((hist_lst), dim=0)
 
         return output, (ctxt_vector, history, hist_lengths)
