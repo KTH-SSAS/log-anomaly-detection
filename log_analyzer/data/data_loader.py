@@ -577,10 +577,10 @@ class TieredTransformerBatcher(OnlineLMBatcher):
             skipsos,
             jagged,
             bidir,
-            batch_size=100,
-            num_steps=5,
-            delimiter=" ",
-            skiprows=0,
+            batch_size=batch_size,
+            num_steps=num_steps,
+            delimiter=delimiter,
+            skiprows=skiprows,
         )
         # the list of users whose saved log lines are greater than or equal to the self.num_steps
         self.saved_ctxt = {}
