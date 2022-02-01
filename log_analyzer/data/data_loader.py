@@ -6,6 +6,7 @@ from functools import partial
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, IterableDataset
+from sys import getsizeof
 
 from log_analyzer.application import Application
 
