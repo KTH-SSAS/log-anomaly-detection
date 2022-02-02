@@ -1,8 +1,62 @@
+import json
 import os
-from log_analyzer.tokenizer.log_analyzer import LANLReader
+import tempfile
+from collections import OrderedDict
 
 SECONDS_PER_DAY = 86400
 import csv
+
+
+class LANLReader:
+    def __init__(self, file_pointer, already_split=False, has_red=False) -> None:
+        self.field_names = [
+            "time",
+            "src_user",
+            "src_domain",
+            "dst_user",
+            "dst_domain",
+            "src_pc",
+            "dst_pc",
+            "auth_type",
+            "logon_type",
+            "auth_orient",
+            "success",
+        ]
+        self._csv_field_names = [
+            "time",
+            "src_user@src_domain",
+            "dst_user@dst_domain",
+            "src_pc",
+            "dst_pc",
+            "auth_type",
+            "logon_type",
+            "auth_orient",
+            "success",
+        ]
+        self.already_split = already_split
+        self.has_red = has_red
+        self.file_pointer = file_pointer
+
+        if self.has_red:
+            self._csv_field_names += "is_red"
+            self.field_names += "is_red"
+
+        if already_split:
+            self._csv_field_names = self.field_names
+
+    def __iter__(self):
+        reader = csv.DictReader(self.file_pointer, fieldnames=self._csv_field_names)
+        for row in reader:
+            data = row
+
+            if not self.already_split:
+                for u, d in zip(["src_user", "dst_user"], ["src_domain", "dst_domain"]):
+                    data[u], data[d] = data[f"{u}@{d}"].split("@")
+                    del data[f"{u}@{d}"]
+
+            data["dst_user"] = data["dst_user"].replace("$", "")
+
+            yield data
 
 
 def sec2day(seconds):
@@ -15,8 +69,8 @@ def day2sec(day):
 
 
 def split_by_day(log_filename, out_dir, keep_days=None):
-    """
-    Split a raw LANL log file into separate days based on the timestamp.
+    """Split a raw LANL log file into separate days based on the timestamp.
+
     Also filters out non-user activity.
     """
     if not os.path.isdir(out_dir):
@@ -67,9 +121,8 @@ def count_days():
 
 
 def split_user_and_domain(infile_path, outfile_path):
-    """
-    Split the [src|dst]_user and [src|dst]_domains into separate comma separated fields.
-    """
+    """Split the [src|dst]_user and [src|dst]_domains into separate comma
+    separated fields."""
     with open(outfile_path, "w") as outfile, open(infile_path, "r") as infile:
         reader = LANLReader(infile)
         writer = csv.DictWriter(outfile, fieldnames=reader.field_names)
@@ -77,25 +130,67 @@ def split_user_and_domain(infile_path, outfile_path):
             writer.writerow(entry)
 
 
-def add_redteam_to_log(log_data_folder, day, readteam_file):
+def add_redteam_to_log(filename_in, filename_out, readteam_file):
+    """Adds redteam activity to a LANL log file as new field.
+
+    The field is appended to each line.
     """
-    Adds redteam activity to a LANL log file as new field. The field is appended to each line.
-    """
+
     with open(readteam_file) as f:
         redteam_events = f.readlines()
 
     redteam_events = [l for l in redteam_events if sec2day(l.split(",", maxsplit=1)[0]) == 8]
 
-    with open(f"{day}_with_red.csv", "w") as outfile:
-        with open(f"data/auth_by_day/{day}.csv") as f:
-            reader = LANLReader(f)
-            for line in reader:
+    with open(filename_out, "w") as outfile, open(filename_in, "r") as infile:
+        reader = LANLReader(infile)
+        writer = csv.DictWriter(outfile, reader.field_names + ["is_red"])
+        for line in reader:
 
-                red_style_line = ",".join((line["time"], line["src_user"], line["src_domain"], line["dst_domain"])) + "\n"
+            red_style_line = ",".join((line["time"], line["src_user"], line["src_domain"], line["dst_domain"])) + "\n"
 
-                if red_style_line in redteam_events:
-                    line["is_red"] = "1"
-                else:
-                    line["is_red"] = "0"
+            if red_style_line in redteam_events:
+                line["is_red"] = "1"
+            else:
+                line["is_red"] = "0"
 
-                outfile.write(",".join(split_line) + "\n")
+            writer.writerow(line)
+
+
+def process_logfiles_for_training(auth_file, red_file, output_dir, days_to_keep):
+
+    os.mkdir(output_dir)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        split_by_day(auth_file, tmpdir, keep_days=days_to_keep)
+
+        for day in days_to_keep:
+            infile = os.path.join(tmpdir, f"{day}.csv")
+            outfile = os.path.join(output_dir, f"{day}.csv")
+            add_redteam_to_log(infile, outfile, red_file)
+
+
+def count_fields(infile_path, outfile_path=None, fields_to_exclude=None):
+    counts = OrderedDict()
+    with open(infile_path) as f:
+        reader = LANLReader(f)
+
+        fields = reader.field_names
+        for f in fields_to_exclude:
+            del fields[f]
+
+        for field in fields:
+            counts[field] = {}
+
+        for line in reader:
+            for k in fields:
+                v = line[k]
+                try:
+                    counts[k][v] += 1
+                except KeyError:
+                    counts[k][v] = 1
+
+    if outfile_path is not None:
+        with open(outfile_path, "w") as f:
+            json.dump(counts, f)
+
+    return counts
