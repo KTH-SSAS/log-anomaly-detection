@@ -583,13 +583,16 @@ class TieredTransformerBatcher(OnlineLMBatcher):
             skiprows=skiprows,
         )
         # the list of users whose saved log lines are greater than or equal to the self.num_steps
-        self.saved_ctxt = {}
         self.context_model_dim = context_model_dim
         self.context_input_dimension = context_input_dimension
         self.shift_window = shift_window
+        self.n_user = 12000
+        self.saved_ctxt_vec_tensor = torch.zeros([self.n_user,  self.context_model_dim])
+        self.saved_ctxt_history_tensor = torch.zeros([self.n_user, self.shift_window, self.context_input_dimension])
+        self.saved_ctxt_history_length = torch.zeros([self.n_user], dtype=torch.int8)
 
     def init_saved_model(self, user):
-        self.saved_ctxt[user] = [torch.zeros(self.context_model_dim), torch.tensor([])]
+        pass
 
     def gen_datadict(self, batch, endx, endt, model_info):
         ctxt_vector = model_info[0]
@@ -611,38 +614,22 @@ class TieredTransformerBatcher(OnlineLMBatcher):
 
     def load_lines(self):
         output = []
-        hist_lst = []
-        hist_lengths = []
-        hist_dimension = 0
-        ctxt_vector = torch.tensor([])
-        history = torch.tensor([])
         self.current_batch_usr = self.users_ge_num_steps[: self.mb_size]
+        ctxt_vector2 = self.saved_ctxt_vec_tensor[torch.tensor(self.current_batch_usr)]
+        history2 = self.saved_ctxt_history_tensor[torch.tensor(self.current_batch_usr)]
+        hist_lengths2 = self.saved_ctxt_history_length[torch.tensor(self.current_batch_usr)]
         for user in self.current_batch_usr:
             output.append(self.user_logs[user][0 : self.num_steps])
             self.user_logs[user] = self.user_logs[user][self.num_steps :]
             if len(self.user_logs[user]) < self.num_steps:
                 self.users_ge_num_steps.remove(user)
-            ctxt_vector = torch.cat((ctxt_vector, torch.unsqueeze(self.saved_ctxt[user][0], dim=0)), dim=0)
-            hist_lst.append(torch.unsqueeze(self.saved_ctxt[user][1], dim=0))
-            hist_lengths.append(self.saved_ctxt[user][1].shape[0])
-            hist_dimension = max(self.saved_ctxt[user][1].shape[-1], hist_dimension)
-
-        max_length = max(hist_lengths)
-        for idx, hist in enumerate(hist_lst):
-            if hist_lengths[idx] == max_length:
-                hist_lst[idx] = hist
-            elif hist_lengths[idx] == 0:
-                hist_lst[idx] = torch.zeros(1, max_length, hist_dimension)
-            else:
-                hist_lst[idx] = torch.cat(
-                    (torch.zeros(1, max_length - hist_lengths[idx], hist_dimension), hist), dim=1
-                )
-        history = torch.cat((hist_lst), dim=0)
-
-        return output, (ctxt_vector, history, hist_lengths)
+        max_length = torch.max(hist_lengths2)
+        return output, (ctxt_vector2, history2[:,-max_length:,:], hist_lengths2)
 
     def update_state(self, ctxt_vectors, ctxt_history):
-        ctxt_vectors = ctxt_vectors.cpu().detach()
-        ctxt_history = ctxt_history.cpu().detach()
-        for usr, ctxt_v, history in zip(self.current_batch_usr, ctxt_vectors, ctxt_history):
-            self.saved_ctxt[usr] = [ctxt_v, history]
+        ctxt_vectors = ctxt_vectors.detach().cpu()
+        ctxt_history = ctxt_history.detach().cpu()
+        self.saved_ctxt_vec_tensor[torch.tensor(self.current_batch_usr)] = ctxt_vectors
+        self.saved_ctxt_history_length[torch.tensor(self.current_batch_usr)]= torch.min(self.saved_ctxt_history_length[torch.tensor(self.current_batch_usr)] + self.num_steps, torch.tensor([self.shift_window]*len(self.current_batch_usr), dtype=torch.int8))
+        max_length = torch.max(self.saved_ctxt_history_length[torch.tensor(self.current_batch_usr)])
+        self.saved_ctxt_history_tensor[torch.tensor(self.current_batch_usr), -max_length:, :]= ctxt_history[:, -max_length:, :]
