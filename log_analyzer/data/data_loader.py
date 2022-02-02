@@ -207,6 +207,7 @@ def load_data_tiered_trans(
     jagged,
     sentence_length,
     num_steps,
+    model_dim,
     context_model_dim,
     context_input_dimension,
     shift_window,
@@ -215,6 +216,7 @@ def load_data_tiered_trans(
         data_handler = TieredTransformerBatcher(
             filepath,
             sentence_length,
+            model_dim,
             context_model_dim,
             skipsos,
             jagged,
@@ -560,6 +562,7 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         self,
         filepaths,
         sentence_length,
+        model_dim,
         context_model_dim,
         skipsos,
         jagged,
@@ -583,12 +586,13 @@ class TieredTransformerBatcher(OnlineLMBatcher):
             skiprows=skiprows,
         )
         # the list of users whose saved log lines are greater than or equal to the self.num_steps
+        self.model_dim = model_dim 
         self.context_model_dim = context_model_dim
         self.context_input_dimension = context_input_dimension
         self.shift_window = shift_window
-        self.n_user = 12000
+        self.n_user = 24000
         self.saved_ctxt_vec_tensor = torch.zeros([self.n_user,  self.context_model_dim])
-        self.saved_ctxt_history_tensor = torch.zeros([self.n_user, self.shift_window, self.context_input_dimension])
+        self.saved_ctxt_history_tensor = torch.zeros([self.n_user, self.shift_window, self.model_dim])
         self.saved_ctxt_history_length = torch.zeros([self.n_user], dtype=torch.int8)
 
     def init_saved_model(self, user):
