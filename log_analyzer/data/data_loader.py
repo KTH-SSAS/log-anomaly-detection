@@ -625,9 +625,7 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         for user in self.current_batch_usr:
             output.append(self.user_logs[user][0 : self.num_steps])
             self.user_logs[user] = self.user_logs[user][self.num_steps :]
-            ctxt_vector = torch.cat(
-                (ctxt_vector, torch.unsqueeze(self.saved_ctxt[user][0], dim=0)), dim=0
-            )
+            ctxt_vector = torch.cat((ctxt_vector, torch.unsqueeze(self.saved_ctxt[user][0], dim=0)), dim=0)
             if len(self.user_logs[user]) < self.num_steps:
                 self.users_ge_num_steps.remove(user)
             hist_lst.append(torch.unsqueeze(self.saved_ctxt[user][1], dim=0))

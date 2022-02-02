@@ -165,8 +165,7 @@ class LANLVocab(FieldVocab):
 
     @classmethod
     def counts2vocab(cls, counts_file, outfile, cutoff):
-        """
-        Generates a vocabulary file based on a file of token counts per
+        """Generates a vocabulary file based on a file of token counts per
         field.
 
         Tokens are assigned different indexes for each field they appear
