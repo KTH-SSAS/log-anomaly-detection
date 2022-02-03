@@ -205,10 +205,6 @@ class TieredTransformer(LogModel):
 
         for idx, batch in enumerate(src):
             # batch (batch size, sequence length, embedded dimension)
-            if ctxt_vector is None:
-                ################ First loop without any history ##############################
-                device = src.device
-                ctxt_vector = torch.zeros(batch_size, self.config.context_config.model_dim).to(device)
 
             ################ Low level transformer ############################################
             logits, tf_hidden = self.log_transformer(
@@ -229,9 +225,6 @@ class TieredTransformer(LogModel):
             # )  # synthetic_input: unsqueeze to concatenate with the history of a specific user. (batch size, 1, 2 * model dimension)
             unsqz_ctx_input = torch.unsqueeze(
                 tf_hidden[:, -1, :], dim=1)
-            if len(ctx_history.shape) == 2:
-                ctx_history = unsqz_ctx_input
-            else:
                 ctx_history = torch.cat((ctx_history, unsqz_ctx_input), dim=1)[:,-self.config.shift_window:,:]
             # ctx_history: concatination to generate a sequence of low level outputs (batch size, history length, 2 * model dimension)
 
