@@ -134,7 +134,7 @@ class Transformer(TransformerLanguageModel):
 
         self.src_mask = super().forward(src, has_mask)
         word_embeddings = self.word_embedding(src)
-        cat_ctxt_vector = torch.tile(torch.unsqueeze(ctx_vector, dim=1), dims=(1,word_embeddings.shape[1],1))
+        cat_ctxt_vector = torch.tile(torch.unsqueeze(ctx_vector, dim=1), dims=(1, word_embeddings.shape[1], 1))
         if ctx_vector is not None:
             cat_ctxt_vector = torch.tile(torch.unsqueeze(ctx_vector, dim=1), dims=(1,word_embeddings.shape[1],1))
             cat_word_embeddings = torch.cat([word_embeddings, cat_ctxt_vector], dim=-1)
