@@ -590,7 +590,7 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         self.context_model_dim = context_model_dim
         self.context_input_dimension = context_input_dimension
         self.shift_window = shift_window
-        self.n_user = 24000
+        self.n_user = 20000
         self.saved_ctxt_vec_tensor = torch.zeros([self.n_user,  self.context_model_dim])
         self.saved_ctxt_history_tensor = torch.zeros([self.n_user, self.shift_window, self.model_dim])
         self.saved_ctxt_history_length = torch.zeros([self.n_user], dtype=torch.int8)
