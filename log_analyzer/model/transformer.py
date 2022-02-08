@@ -4,6 +4,7 @@ import math
 import torch
 from torch import Tensor, nn
 
+from log_analyzer.application import Application
 from log_analyzer.config.model_config import TieredTransformerConfig, TransformerConfig
 from log_analyzer.model.lstm import LogModel, TieredLogModel
 from log_analyzer.model.model_util import initialize_weights
@@ -44,6 +45,7 @@ class PositionalEncoding(nn.Module):
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0)
+        self.using_cuda = Application.instance().using_cuda
         self.register_buffer("pe", pe)
         self.pe: Tensor
 
@@ -58,7 +60,7 @@ class PositionalEncoding(nn.Module):
             >>> output = pos_encoder(x)
         """
         seq_len = x.shape[1]
-        x = x + self.pe[:, :seq_len, :]
+        x = x + self.pe[:, :seq_len, :].to(x.device)
         return self.dropout(x)
 
 
@@ -95,7 +97,7 @@ class TransformerLanguageModel(LogModel):
         encoder_layers = nn.TransformerEncoderLayer(
             self.model_dim, self.attention_heads, self.feedforward_dim, dropout=self.dropout, batch_first=True
         )
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, self.layers)
+        self.transformer_encoder: nn.TransformerEncoder = nn.TransformerEncoder(encoder_layers, self.layers)
 
     def get_mask(self, src: torch.Tensor):
         # batch size, sequence length, embedded dimension
@@ -121,6 +123,8 @@ class Transformer(TransformerLanguageModel):
         self.word_embedding = nn.Embedding(self.vocab_size, self.model_dim)
         if isinstance(config, TieredTransformerConfig):
             self.reduce_dimension = nn.Linear(config.input_dim, self.model_dim)
+            if Application.instance().using_cuda:
+                self.reduce_dimension = self.reduce_dimension.cuda()
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
     def forward(self, src, ctx_vector=None, lengths=None, mask=None, targets=None):
@@ -131,8 +135,8 @@ class Transformer(TransformerLanguageModel):
         self.src_mask = self.get_mask(src)
         word_embeddings = self.word_embedding(src) * math.sqrt(self.config.model_dim)
         if ctx_vector is not None:
-            cat_word_embeddings = torch.Tensor([])
-            trans_word_embeddings = word_embeddings.transpose(0, 1)
+            cat_word_embeddings = torch.Tensor([]).to(src.device)
+            trans_word_embeddings = word_embeddings.transpose(0, 1).to(src.device)
             # Output: trans_word_embeddings: (sequence length x batch x embedded dimension)
             for trans_word_embedding in trans_word_embeddings:
                 # trans_word_embedding (batch x embedding)
@@ -146,7 +150,11 @@ class Transformer(TransformerLanguageModel):
             word_embeddings = self.reduce_dimension(trans_cat_word_embeddings)
             # Output: word_embeddings: (batch x sequence length x embedded dimension)
         tf_input = self.pos_encoder(word_embeddings)
-        tf_hidden = self.transformer_encoder(tf_input, self.src_mask)
+        if mask is None:
+            pad_mask = None
+        else:
+            pad_mask = mask == 0
+        tf_hidden = self.transformer_encoder(tf_input, self.src_mask, src_key_padding_mask=pad_mask)
         # word embedding encoder and decoder share weights
         # @ is shorthand for matrix multiplication
         logits = tf_hidden @ self.word_embedding.weight.t()
@@ -194,6 +202,7 @@ class TieredTransformer(TieredLogModel):
         self.log_transformer = Transformer(config)
         self.log_transformer.tiered = True
         self.context_transformer = ContextTransformer(config)
+        self.shift_window = config.shift_window
 
         # User model state
         self.context_model_dim = config.context_config.model_dim
@@ -221,13 +230,7 @@ class TieredTransformer(TieredLogModel):
         self.num_steps = src.shape[0]
         batch_size = src.shape[1]
 
-        if lengths is None:
-            if self.log_transformer.bidirectional:
-                token_output = torch.empty((src.shape[0], src.shape[1], src.shape[2] - 2), dtype=torch.float)
-            else:
-                token_output = torch.empty_like(src, dtype=torch.float)
-        else:
-            token_output = torch.zeros((src.shape[0], src.shape[1], int(torch.max(lengths))), dtype=torch.float)
+        token_output = torch.empty_like(src, dtype=torch.float)
 
         token_output = token_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
 
@@ -239,8 +242,9 @@ class TieredTransformer(TieredLogModel):
                 context_vector = torch.zeros(batch_size, self.config.context_config.model_dim).to(device)
 
             ################ Low level transformer ############################################
+            idx_mask = None if mask == None else mask[idx]
             logits, tf_hidden, _ = self.log_transformer(
-                batch, ctx_vector=context_vector
+                batch, ctx_vector=context_vector, mask=idx_mask
             )  # (batch size, sequence length, model dimension)
             token_output[idx][: logits.shape[0], : logits.shape[1], : logits.shape[2]] = logits
 
@@ -261,7 +265,7 @@ class TieredTransformer(TieredLogModel):
             else:
                 context_history = torch.cat((unsqueezed_context_input, context_history), dim=1)
             # ctx_history: concatination to generate a sequence of low level outputs (batch size, history length, 2 * model dimension)
-
+            context_history = context_history[:, -self.shift_window:, :]
             ################ Context level transformer with history #######################
             context_vector = self.context_transformer(context_history)
 
