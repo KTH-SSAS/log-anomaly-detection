@@ -1,6 +1,6 @@
 # LSTM log language model
 
-from typing import Optional, Type
+from typing import Dict, Optional, Tuple, Type
 
 import torch
 import torch.nn as nn
@@ -19,11 +19,12 @@ class LogModel(nn.Module):
 
     All log-data language models should implement the forward() function with:
 
-    input: input_sequence, model_info, lengths=None, mask=None, targets=None
-    output: output_sequence, model_info, loss=None
+    input: input_sequence, lengths=None, mask=None, targets=None
+    output: output_sequence, model_info?, loss=None
 
-    Where model_info is any extra info needed by that model (e.g. context info, history)
-    either as a singular value or a tuple of values
+    Where model_info is only returned if the model is used internally by a tiered-model.
+    model_info is any extra output produced by the model that's used by the tiered model (e.g. hidden states).
+    model_info should either be a singular value or a tuple of values.
     Loss should be returned if targets is provided, otherwise None is returned.
     """
 
@@ -31,6 +32,8 @@ class LogModel(nn.Module):
         super().__init__()
         self.config: Config = config
         self.criterion = nn.CrossEntropyLoss(reduction="none", ignore_index=0)
+        # Parameter setting
+        self.tiered: bool = False
 
     def compute_loss(self, output: torch.Tensor, Y, lengths, mask: torch.Tensor):
         """Computes the loss for the given model output and ground truth."""
@@ -49,6 +52,8 @@ class TieredLogModel(LogModel):
 
     def __init__(self, config: Config):
         super().__init__(config)
+        # Parameter setting
+        self.tiered: bool = True
 
     def compute_loss(self, output: Tensor, Y: Tensor, lengths, mask):
         """Computes the loss for the given model output and ground truth."""
@@ -84,8 +89,6 @@ class LSTMLanguageModel(LogModel):
         super().__init__(config)
 
         self.config = config
-        # Parameter setting
-        self.tiered: bool = False
 
         # Layers
         self.embeddings = nn.Embedding(config.vocab_size, config.embedding_dim)
@@ -187,12 +190,14 @@ class FwdLSTM(LSTMLanguageModel):
 
         token_output = self.get_token_output(output)
 
+        loss = None
         if targets is not None:
             # Compute and return loss if targets is given
             loss, _ = self.compute_loss(token_output, targets, lengths, mask)
-            return token_output, (lstm_out, hx), loss
 
-        return token_output, (lstm_out, hx), None
+        if self.tiered:
+            return token_output, (lstm_out, hx), loss
+        return token_output, loss
 
     @property
     def bidirectional(self):
@@ -238,12 +243,14 @@ class BidLSTM(LSTMLanguageModel):
 
         token_output = self.get_token_output(b_f_concat)
 
+        loss = None
         if targets is not None:
             # Compute and return loss if targets is given
             loss, _ = self.compute_loss(token_output, targets, lengths, mask)
-            return token_output, (lstm_out, hx), loss
 
-        return token_output, (lstm_out, hx), None
+        if self.tiered:
+            return token_output, (lstm_out, hx), loss
+        return token_output, loss
 
     @property
     def bidirectional(self):
@@ -300,9 +307,9 @@ class TieredLSTM(TieredLogModel):
 
         low_lv_layers = config.layers
 
-        self.context_vector = None
-        self.context_hidden_state = None
-        self.context_cell_state = None
+        # User model state
+        self.context_layers = config.context_layers if type(config.context_layers) is list else [config.context_layers]
+        self.saved_lstm: Dict[int, Tuple[Tensor, Tensor, Tensor]] = {}
 
         # Layers
         self.low_lv_lstm = self.model(config)
@@ -313,18 +320,32 @@ class TieredLSTM(TieredLogModel):
             input_features = low_lv_layers[-1] * 2
         self.context_lstm = ContextLSTM(config.context_layers, input_features)
 
+        self.use_cuda = torch.cuda.is_available()
+
         # Weight initialization
         initialize_weights(self)
 
-    def forward(self, user_sequences, model_info, lengths=None, mask=None, targets=None):
+    def forward(self, user_sequences, lengths=None, mask=None, targets=None):
         """Forward pass of tiered LSTM model.
 
-        Returns: predicted_tokens, (context_vector, final_context_hidden_state, final_context_cell_state), loss
+        1. Applies context LSTM to the saved context information to generate context input for event LSTM.
+        2. Applies event LSTM on the user sequences + context information
+        3. Saves new context information for next forward pass
+
+        Returns: predicted_tokens, loss
         If targets is None then loss is returned as None
         """
-        self.context_vector = model_info[0]
-        self.context_hidden_state = model_info[1]
-        self.context_cell_state = model_info[2]
+        # Split the input into users list and user sequences
+        users, user_sequences = user_sequences
+        # Convert users list to python list
+        users = [user.item() for user in users]
+        # Add a state list for any users we haven't seen before
+        for user in users:
+            if user not in self.saved_lstm:
+                self.prepare_state(user)
+
+        # Get the state for the users in the batch - save in class variable to avoid breaking backprop when updating state
+        self.context_vector, self.context_hidden_state, self.context_cell_state = self.get_batch_data(users)
 
         if self.low_lv_lstm.bidirectional:
             token_output = torch.empty(
@@ -359,25 +380,58 @@ class TieredLSTM(TieredLogModel):
             token_output[idx][: tag_size.shape[0], : tag_size.shape[1], : tag_size.shape[2]] = tag_size
             self.context_vector = torch.squeeze(self.context_vector, dim=1)
 
+        # Update state for each user
+        self.update_state(users, self.context_vector, self.context_hidden_state, self.context_cell_state)
+
+        loss = None
         if targets is not None:
             # Compute and return loss if targets is given
             loss, _ = self.compute_loss(token_output, targets, lengths, mask)
-            return token_output, (self.context_vector, self.context_hidden_state, self.context_cell_state), loss
 
-        return token_output, (self.context_vector, self.context_hidden_state, self.context_cell_state), None
+        return token_output, loss
 
+    def prepare_state(self, user):
+        """Set up the model state necessary to maintain user-specific
+        history/state for this user."""
+        self.saved_lstm[user] = (
+            torch.zeros((self.context_layers[0])),
+            torch.zeros((len(self.context_layers), self.context_layers[0])),
+            torch.zeros((len(self.context_layers), self.context_layers[0])),
+        )
+        if self.use_cuda:
+            self.saved_lstm[user] = (
+                self.saved_lstm[user][0].cuda(),
+                self.saved_lstm[user][1].cuda(),
+                self.saved_lstm[user][2].cuda(),
+            )
 
-# if __name__ == "__main__":
-# I tried to make this code self-explanatory,
-# but if there is any difficulty to understand ti or possible improvements, please tell me.
-# test_layers = [10, 10]  # each layer has to have the same hidden units.
-# test_vocab_size = 96
-# test_embedding_dim = 30
+    def get_batch_data(self, users):
+        """Given a list of users, fetch the relevant history and model data for
+        each user."""
+        context_vector = torch.tensor([])
+        h_state = torch.tensor([])
+        c_state = torch.tensor([])
+        if self.use_cuda:
+            context_vector = context_vector.cuda()
+            h_state = h_state.cuda()
+            c_state = c_state.cuda()
+        # Loop over users
+        for user in users:
+            # Grab the context information
+            context_vector = torch.cat((context_vector, torch.unsqueeze(self.saved_lstm[user][0], dim=0)), dim=0)
+            h_state = torch.cat((h_state, torch.unsqueeze(self.saved_lstm[user][1], dim=0)), dim=0)
+            c_state = torch.cat((c_state, torch.unsqueeze(self.saved_lstm[user][2], dim=0)), dim=0)
+        # Transpose the h and c states to order (num_steps, batchsize, sequence)
+        h_state = torch.transpose(h_state, 0, 1)
+        c_state = torch.transpose(c_state, 0, 1)
+        return context_vector, h_state, c_state
 
-# fwd_lstm_model = Fwd_LSTM(test_layers, test_vocab_size, test_embedding_dim,
-#                          tiered=False, context_vector_size=0)
-# print(fwd_lstm_model)
-
-# bid_lstm_model = Bid_LSTM(test_layers, test_vocab_size, test_embedding_dim,
-#                          tiered=False, context_vector_size=0)
-# print(bid_lstm_model)
+    def update_state(self, users, context_vectors, h_states, c_states):
+        """Given one batch of history/model data output by the model, update
+        the stored state for future use."""
+        # Transpose the h and c states to order (batchsize, num_steps, sequence)
+        h_states = torch.transpose(h_states, 0, 1).detach()
+        c_states = torch.transpose(c_states, 0, 1).detach()
+        context_vectors = context_vectors.detach()
+        for usr, ctxt_v, h_state, c_state in zip(users, context_vectors, h_states, c_states):
+            self.saved_lstm[usr] = (ctxt_v, h_state, c_state)

@@ -151,12 +151,14 @@ class Transformer(TransformerLanguageModel):
         # @ is shorthand for matrix multiplication
         logits = tf_hidden @ self.word_embedding.weight.t()
 
+        loss = None
         if targets is not None:
             # Compute and return loss if targets is given
             loss, _ = self.compute_loss(logits, targets, lengths, mask)
-            return logits, tf_hidden, loss
 
-        return logits, tf_hidden, None
+        if self.tiered:
+            return logits, tf_hidden, loss
+        return logits, loss
 
 
 class ContextTransformer(TransformerLanguageModel):
@@ -190,13 +192,34 @@ class TieredTransformer(TieredLogModel):
         self.config: TieredTransformerConfig = config
         self.src_mask = None
         self.log_transformer = Transformer(config)
+        self.log_transformer.tiered = True
         self.context_transformer = ContextTransformer(config)
 
-    def forward(self, src: Tensor, model_info, lengths=None, mask=None, targets=None):
+        # User model state
+        self.context_model_dim = config.context_config.model_dim
+        self.context_input_dimension = config.input_dim
+        self.shift_window = config.shift_window
+        self.n_users = 12000
+        self.saved_context_vectors = torch.zeros([self.n_users, self.context_model_dim])
+        self.saved_context_histories = torch.zeros([self.n_users, self.shift_window, self.context_input_dimension])
+        self.saved_context_history_lengths = torch.zeros([self.n_users], dtype=torch.int16)
+
+        self.use_cuda = torch.cuda.is_available()
+
+    def forward(self, src: Tensor, lengths=None, mask=None, targets=None):
         # src (num of series, batch size, sequence length, embedded dimension)
         # TODO: compatibility with character level encoding
+        # Split the input into users list and src
+        users, src = src
+        # Convert users list to python list
+        users = [user.item() for user in users]
+
+        # Get the state for the users in the batch
+        context_vector, context_history, history_length = self.get_batch_data(users)
+
+        # Get the number of steps in the batch
+        self.num_steps = src.shape[0]
         batch_size = src.shape[1]
-        context_vector, context_history, history_length = model_info
 
         if lengths is None:
             if self.log_transformer.bidirectional:
@@ -242,9 +265,35 @@ class TieredTransformer(TieredLogModel):
             ################ Context level transformer with history #######################
             context_vector = self.context_transformer(context_history)
 
+        # Update context state
+        self.update_state(users, context_vector, context_history)
+
+        loss = None
         if targets is not None:
             # Compute and return loss if targets is given
             loss, _ = self.compute_loss(token_output, targets, lengths, mask)
-            return token_output, (context_vector, context_history, history_length), loss
 
-        return token_output, (context_vector, context_history, history_length), None
+        return token_output, loss
+
+    def get_batch_data(self, users):
+        """Given a list of users, fetch the relevant history and model data for
+        each user."""
+        context_vector = self.saved_context_vectors[torch.tensor(users)]
+        history = self.saved_context_histories[torch.tensor(users)]
+        history_lengths = self.saved_context_history_lengths[torch.tensor(users)]
+        # Crop the length of history returned to max history_length amongst users in this batch
+        max_length = torch.max(history_lengths)
+        return context_vector, history[:, -max_length:, :], history_lengths
+
+    def update_state(self, users, context_vectors, context_history):
+        """Given one batch of history/model data output by the model, update
+        the stored state for future use."""
+        context_vectors = context_vectors.detach().cpu()
+        context_history = context_history.detach().cpu()
+        self.saved_context_vectors[torch.tensor(users)] = context_vectors
+        for user in users:
+            self.saved_context_history_lengths[user] = min(
+                self.saved_context_history_lengths[user] + self.num_steps, self.shift_window
+            )
+        max_length = torch.max(self.saved_context_history_lengths[torch.tensor(users)])
+        self.saved_context_histories[torch.tensor(users), -max_length:, :] = context_history[:, -max_length:, :]

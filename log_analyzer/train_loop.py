@@ -18,8 +18,7 @@ from log_analyzer.config.model_config import (
     TransformerConfig,
 )
 from log_analyzer.config.trainer_config import DataConfig, TrainerConfig
-from log_analyzer.tiered_trainer import TieredLSTMTrainer, TieredTrainer, TieredTransformerTrainer
-from log_analyzer.trainer import LSTMTrainer, Trainer, TransformerTrainer
+from log_analyzer.trainer import LSTMTrainer, TieredLSTMTrainer, TieredTransformerTrainer, Trainer, TransformerTrainer
 
 try:
     import torch
@@ -156,9 +155,8 @@ def init_from_config_classes(
             jagged,
             max_input_length,
             num_steps=3,
-            context_layers=model_config.context_layers,
         )
-        lm_trainer = TieredLSTMTrainer(trainer_config, model_config, bidirectional, log_dir, train_loader, test_loader)
+        lm_trainer = TieredLSTMTrainer(trainer_config, model_config, bidirectional, log_dir)
     elif model_type == LSTM and isinstance(model_config, LSTMConfig):
         train_loader, val_loader, test_loader = data_utils.load_data(
             data_folder,
@@ -189,7 +187,7 @@ def init_from_config_classes(
         lm_trainer = TransformerTrainer(trainer_config, model_config, log_dir)
     elif model_type == TIERED_TRANSFORMER and isinstance(model_config, TieredTransformerConfig):
         val_loader = None
-        train_loader, test_loader = data_utils.load_data_tiered_trans(
+        train_loader, test_loader = data_utils.load_data_tiered(
             data_folder,
             train_days,
             test_days,
@@ -199,13 +197,8 @@ def init_from_config_classes(
             jagged,
             max_input_length,
             num_steps=3,
-            context_model_dim=model_config.context_config.model_dim,
-            context_input_dimension=model_config.input_dim,
-            shift_window=model_config.shift_window,
         )
-        lm_trainer = TieredTransformerTrainer(
-            trainer_config, model_config, bidirectional, log_dir, train_loader, test_loader
-        )
+        lm_trainer = TieredTransformerTrainer(trainer_config, model_config, bidirectional, log_dir)
 
     if Application.instance().wandb_initialized:
         wandb.config.update(model_config)
@@ -235,7 +228,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
         for val_iteration, val_batch in enumerate(tqdm(val_loader, desc=f"Valid:{val_run:2d}")):
             split_batch = val_loader.split_batch(val_batch)
             with torch.no_grad():
-                loss, *_ = lm_trainer.eval_step(split_batch, store_eval_data=False)
+                loss, *_ = lm_trainer.evaluator.eval_step(split_batch, store_eval_data=False)
                 val_losses.append(loss.item())
             # Log the current validation loss and val_iteration to enable detailed view of
             # validation loss.
@@ -279,7 +272,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
             iteration += 1  # Total iterations in training (cumulative)
             # Split the batch
             split_batch = train_loader.split_batch(batch)
-            if isinstance(lm_trainer, TieredTrainer):
+            if isinstance(lm_trainer, (TieredTransformerTrainer, TieredLSTMTrainer)):
                 if train_loader.flush is False:
                     loss, done = lm_trainer.train_step(split_batch)
                 else:
@@ -350,7 +343,7 @@ def eval_model(lm_trainer: Trainer, test_loader, store_eval_data=False, model_fi
     for iteration, batch in enumerate(tqdm(test_loader, desc="Test")):
         split_batch = test_loader.split_batch(batch)
         with torch.no_grad():
-            loss, *_ = lm_trainer.eval_step(split_batch, store_eval_data=store_eval_data)
+            loss, *_ = lm_trainer.evaluator.eval_step(split_batch, store_eval_data=store_eval_data)
             test_losses.append(loss.item())
             wandb_log(
                 iteration,

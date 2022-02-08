@@ -6,11 +6,11 @@ from torch.cuda.amp.grad_scaler import GradScaler
 
 import log_analyzer.model.early_stopping as early_stopping
 from log_analyzer.application import Application
-from log_analyzer.config.model_config import LSTMConfig, TransformerConfig
+from log_analyzer.config.model_config import LSTMConfig, TieredLSTMConfig, TieredTransformerConfig, TransformerConfig
 from log_analyzer.config.trainer_config import TrainerConfig
 from log_analyzer.evaluator import Evaluator
-from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel
-from log_analyzer.model.transformer import Transformer
+from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel, TieredLSTM
+from log_analyzer.model.transformer import TieredTransformer, Transformer
 
 
 class Trainer(ABC):
@@ -89,60 +89,15 @@ class Trainer(ABC):
         if self.config.mixed_precision:
             with torch.cuda.amp.autocast():
                 # Apply the model to input to produce the output, provide targets to receive loss
-                output, _, loss = self.model(X, lengths=L, mask=M, targets=Y)
+                _, loss = self.model(X, lengths=L, mask=M, targets=Y)
         else:
             # Apply the model to input to produce the output, provide targets to receive loss
-            output, _, loss = self.model(X, lengths=L, mask=M, targets=Y)
+            _, loss = self.model(X, lengths=L, mask=M, targets=Y)
 
         # Take an optimization step based on the loss
         self.optimizer_step(loss)
 
         return loss, self._EarlyStopping.early_stop
-
-    def eval_step(self, split_batch, store_eval_data=False):
-        """Defines a single evaluation step.
-
-        Feeds data through the model and computes the loss.
-
-        split_batch: should contain X, Y, L, M
-            X: input
-            Y: target
-            L: sequence lengths
-            M: sequence masks
-        """
-        X = split_batch["X"]
-        Y = split_batch["Y"]
-        L = split_batch["L"]
-        M = split_batch["M"]
-
-        users = split_batch["user"]
-        seconds = split_batch["second"]
-        red_flags = split_batch["red_flag"]
-
-        self.model.eval()
-
-        # Apply the model to input to produce the output
-        output, *_ = self.model(X, lengths=L, mask=M)
-
-        # Compute the loss for the output
-        loss, line_losses = self.model.compute_loss(output, Y, lengths=L, mask=M)
-
-        # Save the results if desired
-        if store_eval_data:
-            preds = torch.argmax(output, dim=-1)
-            self.evaluator.add_evaluation_data(
-                Y,
-                preds,
-                users,
-                line_losses,
-                seconds,
-                red_flags,
-            )
-            self.evaluator.test_loss += loss
-            self.evaluator.test_count += 1
-
-        # Return both the loss and the output token probabilities
-        return loss, output
 
 
 class LSTMTrainer(Trainer):
@@ -163,7 +118,7 @@ class LSTMTrainer(Trainer):
     ):
 
         model = BidLSTM if bidirectional else FwdLSTM
-        # Create a model
+        # Create the model
         self.lstm = model(lstm_config)
 
         super().__init__(config, checkpoint_dir)
@@ -184,7 +139,50 @@ class TransformerTrainer(Trainer):
         transformer_config: TransformerConfig,
         checkpoint_dir,
     ):
-        # Create a model
+        # Create the model
         self.transformer = Transformer(transformer_config)
 
+        super().__init__(config, checkpoint_dir)
+
+
+class TieredLSTMTrainer(Trainer):
+    """Trainer class for tiered LSTM model."""
+
+    @property
+    def model(self):
+        if self.lstm is None:
+            raise RuntimeError("Model not intialized!")
+        return self.lstm
+
+    def __init__(
+        self,
+        config: TrainerConfig,
+        lstm_config: TieredLSTMConfig,
+        bidirectional,
+        checkpoint_dir,
+    ):
+        # Create the model
+        self.lstm = TieredLSTM(lstm_config, bidirectional)
+
+        super().__init__(config, checkpoint_dir)
+
+
+class TieredTransformerTrainer(Trainer):
+    """Trainer class for tiered transformer model."""
+
+    @property
+    def model(self):
+        if self.transformer is None:
+            raise RuntimeError("Model not initialized!")
+        return self.transformer
+
+    def __init__(
+        self,
+        config: TrainerConfig,
+        transformer_config: TieredTransformerConfig,
+        bidirectional,
+        checkpoint_dir,
+    ):
+        # Create the model
+        self.transformer = TieredTransformer(transformer_config)
         super().__init__(config, checkpoint_dir)
