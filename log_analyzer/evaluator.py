@@ -112,7 +112,6 @@ class Evaluator:
         self.reset_evaluation_data()
         self.use_wandb = Application.instance().wandb_initialized
 
-    # TEMP TODO: Still WIP, complete move of eval_step from trainer classes to Evaluator
     @torch.no_grad()
     def eval_step(self, split_batch, store_eval_data=False):
         """Defines a single evaluation step.
