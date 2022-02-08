@@ -38,9 +38,9 @@ def context_history():
     return torch.randint(low=0, high=VOCAB_SIZE, size=(BATCH_SIZE, LEN_SAVED_HISTORY, VOCAB_SIZE)) 
 
 def test_tiered_transformer_forward_word(test_config : TieredTransformerConfig, 
-                                        test_input, context_input, context_history_input):
+                                        test_input, ctxt_vector_input, ctx_history_input):
     tieredTransformer = TieredTransformer(test_config)
-    tag_output, ctxt_vector, ctx_history_output = tieredTransformer(test_input, context_input, context_history_input)
-    return (ctx_history_output[:,:-3,:] == context_history_input[:,3:,:]).all() and \
-            ctx_history_output.shape == torch.Size([BATCH_SIZE, SHIFT_WINDOW, VOCAB_SIZE]) and \
+    tag_output, ctxt_vector, ctx_history_output = tieredTransformer(test_input, ctxt_vector_input, ctx_history_input)
+    return (ctx_history_input[:,3:,:] == ctx_history_output[:,:-3,:]).all() and \
+            ctx_history_output.shape == torch.Size([BATCH_SIZE, SHIFT_WINDOW, LOW_LV_MODEL_DIM]) and \
             tag_output.shape == torch.Size([CONSECUTIVE_LOG, BATCH_SIZE, SEQUENCE_LENGTH, VOCAB_SIZE])
