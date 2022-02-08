@@ -7,6 +7,7 @@ from log_analyzer.data.data_loader import TieredTransformerBatcher
 @pytest.mark.parametrize("shuffle", [False, True])
 @pytest.mark.parametrize("bidirectional", [False, True])
 def test_tiered_data_loader_word(shuffle, bidirectional):
+    from log_analyzer.train_loop import calculate_max_input_length
 
     filepath = "data/test_data/word_day_split/0.txt"
     data_config = DataConfig.init_from_file("config/lanl_config_data_word.json")
@@ -18,6 +19,7 @@ def test_tiered_data_loader_word(shuffle, bidirectional):
     context_input_dimension = 128
     shift_window = 100
     num_steps = 3
+    input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skip_sos)
     data_handler = TieredTransformerBatcher(
             filepath,
             data_config.sentence_length,
