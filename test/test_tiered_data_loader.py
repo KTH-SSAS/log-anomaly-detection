@@ -6,3 +6,4 @@ from log_analyzer.data.data_loader import TieredTransformerBatcher
 
 @pytest.mark.parametrize("shuffle", [False, True])
 @pytest.mark.parametrize("bidirectional", [False, True])
+def test_tiered_data_loader_word(shuffle, bidirectional):
