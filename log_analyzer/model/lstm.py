@@ -272,22 +272,16 @@ class ContextLSTM(nn.Module):
         # Weight initialization
         initialize_weights(self)
 
-    def forward(self, lower_lv_outputs, model_info, seq_len=None):
+    def forward(self, context_input, context_prior_state: Tuple[Tensor, Tensor]):
         """Handles processing and updating of context info.
 
         Returns: context_output, (final_hidden_state, final_cell_state)
         """
-        final_hidden, context_h, context_c = model_info
-
-        if seq_len is not None:
-            mean_hidden = torch.sum(lower_lv_outputs, dim=1) / seq_len.view(-1, 1)
-        else:
-            mean_hidden = torch.mean(lower_lv_outputs, dim=1)
-        cat_input = torch.cat((mean_hidden, final_hidden[-1]), dim=1)
-        synthetic_input = torch.unsqueeze(cat_input, dim=1)
-        output, (context_hx, context_cx) = self.context_lstm_layers(synthetic_input, (context_h, context_c))
-
-        return output, (context_hx, context_cx)
+        context_prior_hidden_state, context_prior_cell_state = context_prior_state
+        output, (context_hidden_state, context_cell_state) = self.context_lstm_layers(
+            context_input, (context_prior_hidden_state, context_prior_cell_state)
+        )
+        return output, (context_hidden_state, context_cell_state)
 
 
 class TieredLSTM(TieredLogModel):
@@ -305,20 +299,21 @@ class TieredLSTM(TieredLogModel):
         else:
             self.model = FwdLSTM
 
-        low_lv_layers = config.layers
+        event_model_layers = config.layers
 
         # User model state
         self.context_layers = config.context_layers if type(config.context_layers) is list else [config.context_layers]
+        self.context_lstm_input = None
         self.saved_lstm: Dict[int, Tuple[Tensor, Tensor, Tensor]] = {}
 
         # Layers
-        self.low_lv_lstm = self.model(config)
-        self.low_lv_lstm.tiered = True  # TODO make this more elegant
+        self.event_level_lstm = self.model(config)
+        self.event_level_lstm.tiered = True  # TODO make this more elegant
         if bidirectional:
-            input_features = low_lv_layers[-1] * 4
+            self.context_input_features = event_model_layers[-1] * 4
         else:
-            input_features = low_lv_layers[-1] * 2
-        self.context_lstm = ContextLSTM(config.context_layers, input_features)
+            self.context_input_features = event_model_layers[-1] * 2
+        self.context_lstm = ContextLSTM(config.context_layers, self.context_input_features)
 
         self.use_cuda = torch.cuda.is_available()
 
@@ -344,10 +339,10 @@ class TieredLSTM(TieredLogModel):
             if user not in self.saved_lstm:
                 self.prepare_state(user)
 
-        # Get the state for the users in the batch
-        context_vector, context_hidden_state, context_cell_state = self.get_batch_data(users)
+        # Get the saved state for the users in the batch
+        context_lstm_input, context_hidden_state, context_cell_state = self.get_batch_data(users)
 
-        if self.low_lv_lstm.bidirectional:
+        if self.event_level_lstm.bidirectional:
             token_output = torch.empty(
                 (
                     user_sequences.shape[0],
@@ -367,21 +362,33 @@ class TieredLSTM(TieredLogModel):
         # sequences (e.g., 10)
         for idx, sequences in enumerate(user_sequences):
             length = None if lengths is None else lengths[idx]
-            tag_size, (low_lv_lstm_outputs, final_hidden), _ = self.low_lv_lstm(
-                sequences, lengths=length, context_vectors=context_vector
-            )
-            if self.low_lv_lstm.bidirectional:
-                final_hidden = final_hidden.view(1, final_hidden.shape[1], -1)
+            # Apply the context LSTM to get context vector
             context_vector, (context_hidden_state, context_cell_state) = self.context_lstm(
-                low_lv_lstm_outputs,
-                (final_hidden, context_hidden_state, context_cell_state),
-                seq_len=length,
+                context_lstm_input,
+                (context_hidden_state, context_cell_state),
             )
-            token_output[idx][: tag_size.shape[0], : tag_size.shape[1], : tag_size.shape[2]] = tag_size
             context_vector = torch.squeeze(context_vector, dim=1)
 
+            # Apply the event model to get token predictions
+            event_model_output, (all_hidden, final_hidden), _ = self.event_level_lstm(
+                sequences, lengths=length, context_vectors=context_vector
+            )
+            if self.event_level_lstm.bidirectional:
+                final_hidden = final_hidden.view(1, final_hidden.shape[1], -1)
+            token_output[idx][
+                : event_model_output.shape[0], : event_model_output.shape[1], : event_model_output.shape[2]
+            ] = event_model_output
+
+            # Save the mean hidden + final hidden for the event model
+            if length is not None:
+                mean_hidden = torch.sum(all_hidden, dim=1) / length.view(-1, 1)
+            else:
+                mean_hidden = torch.mean(all_hidden, dim=1)
+            mean_final_hidden = torch.cat((mean_hidden, final_hidden[-1]), dim=1)
+            context_lstm_input = torch.unsqueeze(mean_final_hidden, dim=1)
+
         # Update state for each user
-        self.update_state(users, context_vector, context_hidden_state, context_cell_state)
+        self.update_state(users, context_lstm_input, context_hidden_state, context_cell_state)
 
         loss = None
         if targets is not None:
@@ -391,10 +398,14 @@ class TieredLSTM(TieredLogModel):
         return token_output, loss
 
     def prepare_state(self, user):
-        """Set up the model state necessary to maintain user-specific
-        history/state for this user."""
+        """Set up the model state necessary to maintain user-specific state for
+        this user.
+
+        saved_lstm is a dict holding the tuple: (context_lstm_input,
+        hidden_state, cell_state) for each user.
+        """
         self.saved_lstm[user] = (
-            torch.zeros((self.context_layers[0])),
+            torch.zeros((len(self.context_layers), self.context_input_features)),
             torch.zeros((len(self.context_layers), self.context_layers[0])),
             torch.zeros((len(self.context_layers), self.context_layers[0])),
         )
@@ -408,30 +419,34 @@ class TieredLSTM(TieredLogModel):
     def get_batch_data(self, users):
         """Given a list of users, fetch the relevant history and model data for
         each user."""
-        context_vector = torch.tensor([])
-        h_state = torch.tensor([])
-        c_state = torch.tensor([])
+        context_lstm_inputs = torch.tensor([])
+        hidden_states = torch.tensor([])
+        cell_states = torch.tensor([])
         if self.use_cuda:
-            context_vector = context_vector.cuda()
-            h_state = h_state.cuda()
-            c_state = c_state.cuda()
+            context_lstm_inputs = context_lstm_inputs.cuda()
+            hidden_states = hidden_states.cuda()
+            cell_states = cell_states.cuda()
         # Loop over users
         for user in users:
             # Grab the context information
-            context_vector = torch.cat((context_vector, torch.unsqueeze(self.saved_lstm[user][0], dim=0)), dim=0)
-            h_state = torch.cat((h_state, torch.unsqueeze(self.saved_lstm[user][1], dim=0)), dim=0)
-            c_state = torch.cat((c_state, torch.unsqueeze(self.saved_lstm[user][2], dim=0)), dim=0)
+            context_lstm_inputs = torch.cat(
+                (context_lstm_inputs, torch.unsqueeze(self.saved_lstm[user][0].detach(), dim=0)), dim=0
+            )
+            hidden_states = torch.cat((hidden_states, torch.unsqueeze(self.saved_lstm[user][1].detach(), dim=0)), dim=0)
+            cell_states = torch.cat((cell_states, torch.unsqueeze(self.saved_lstm[user][2].detach(), dim=0)), dim=0)
         # Transpose the h and c states to order (num_steps, batchsize, sequence)
-        h_state = torch.transpose(h_state, 0, 1)
-        c_state = torch.transpose(c_state, 0, 1)
-        return context_vector, h_state, c_state
+        hidden_states = torch.transpose(hidden_states, 0, 1)
+        cell_states = torch.transpose(cell_states, 0, 1)
+        return context_lstm_inputs, hidden_states, cell_states
 
-    def update_state(self, users, context_vectors, h_states, c_states):
+    def update_state(self, users, context_lstm_inputs, hidden_states, cell_states):
         """Given one batch of history/model data output by the model, update
         the stored state for future use."""
         # Transpose the h and c states to order (batchsize, num_steps, sequence)
-        h_states = torch.transpose(h_states, 0, 1).detach()
-        c_states = torch.transpose(c_states, 0, 1).detach()
-        context_vectors = context_vectors.detach()
-        for usr, ctxt_v, h_state, c_state in zip(users, context_vectors, h_states, c_states):
-            self.saved_lstm[usr] = (ctxt_v, h_state, c_state)
+        hidden_states = torch.transpose(hidden_states, 0, 1)
+        cell_states = torch.transpose(cell_states, 0, 1)
+        context_lstm_inputs = context_lstm_inputs
+        for user, context_lstm_input, hidden_state, cell_state in zip(
+            users, context_lstm_inputs, hidden_states, cell_states
+        ):
+            self.saved_lstm[user] = (context_lstm_input, hidden_state, cell_state)
