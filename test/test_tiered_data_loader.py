@@ -18,3 +18,17 @@ def test_tiered_data_loader_word(shuffle, bidirectional):
     context_input_dimension = 128
     shift_window = 100
     num_steps = 3
+    data_handler = TieredTransformerBatcher(
+            filepath,
+            data_config.sentence_length,
+            model_dim,
+            context_model_dim,
+            skip_sos,
+            jagged,
+            bidirectional,
+            context_input_dimension,
+            shift_window=shift_window,
+            batch_size=batch_size,
+            num_steps=num_steps,
+            delimiter=" ",)
+
