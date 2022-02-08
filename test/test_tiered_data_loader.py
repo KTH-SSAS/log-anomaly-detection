@@ -32,3 +32,5 @@ def test_tiered_data_loader_word(shuffle, bidirectional):
             num_steps=num_steps,
             delimiter=" ",)
 
+    for batch in data_handler:
+        x: torch.Tensor = batch["input"]
