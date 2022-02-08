@@ -344,8 +344,8 @@ class TieredLSTM(TieredLogModel):
             if user not in self.saved_lstm:
                 self.prepare_state(user)
 
-        # Get the state for the users in the batch - save in class variable to avoid breaking backprop when updating state
-        self.context_vector, self.context_hidden_state, self.context_cell_state = self.get_batch_data(users)
+        # Get the state for the users in the batch
+        context_vector, context_hidden_state, context_cell_state = self.get_batch_data(users)
 
         if self.low_lv_lstm.bidirectional:
             token_output = torch.empty(
@@ -368,20 +368,20 @@ class TieredLSTM(TieredLogModel):
         for idx, sequences in enumerate(user_sequences):
             length = None if lengths is None else lengths[idx]
             tag_size, (low_lv_lstm_outputs, final_hidden), _ = self.low_lv_lstm(
-                sequences, lengths=length, context_vectors=self.context_vector
+                sequences, lengths=length, context_vectors=context_vector
             )
             if self.low_lv_lstm.bidirectional:
                 final_hidden = final_hidden.view(1, final_hidden.shape[1], -1)
-            self.context_vector, (self.context_hidden_state, self.context_cell_state) = self.context_lstm(
+            context_vector, (context_hidden_state, context_cell_state) = self.context_lstm(
                 low_lv_lstm_outputs,
-                (final_hidden, self.context_hidden_state, self.context_cell_state),
+                (final_hidden, context_hidden_state, context_cell_state),
                 seq_len=length,
             )
             token_output[idx][: tag_size.shape[0], : tag_size.shape[1], : tag_size.shape[2]] = tag_size
-            self.context_vector = torch.squeeze(self.context_vector, dim=1)
+            context_vector = torch.squeeze(context_vector, dim=1)
 
         # Update state for each user
-        self.update_state(users, self.context_vector, self.context_hidden_state, self.context_cell_state)
+        self.update_state(users, context_vector, context_hidden_state, context_cell_state)
 
         loss = None
         if targets is not None:
