@@ -1,10 +1,12 @@
 import logging
 import os
+import random
 from argparse import ArgumentParser
 
 import torch
 
 import wandb
+import numpy as np
 from log_analyzer.application import Application
 from log_analyzer.train_loop import eval_model, init_from_args, train_model
 
@@ -53,8 +55,15 @@ def prepare_args():
     args = parser.parse_args()
     return args
 
+def set_seeds(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    return seed
 
 def main():
+    # Initialize seeds
+    set_seeds(22)
 
     args = prepare_args()
 
