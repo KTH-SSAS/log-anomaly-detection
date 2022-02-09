@@ -184,16 +184,13 @@ class TieredTransformer(LogModel):
         super().__init__(config)
         self.name = "Tiered_Transformer"
         self.config: TieredTransformerConfig = config
-        self.src_mask = None
         self.log_transformer = Transformer(config)
         self.context_transformer = ContextTransformer(config)
 
-    def forward(self, src: Tensor, ctxt_vector, ctx_history, lengths=None, mask=None, has_mask=True):
+    def forward(self, src: Tensor, ctx_vector, ctx_history, lengths=None, mask=None, has_mask=True):
         # src (num of series, batch size, sequence length, embedded dimension)
         # lengths is currently ignored, added for compatibility with LSTM-training code
         # TODO: compatibility with character level encoding
-        batch_size = src.shape[1]
-
         if lengths is None:
             if self.log_transformer.bidirectional:
                 tag_output = torch.empty((src.shape[0], src.shape[1], src.shape[2] - 2), dtype=torch.float)
