@@ -196,8 +196,8 @@ class ContextTransformer(TransformerLanguageModel):
     def forward(self, ctx_history, lengths=None, mask=None, has_mask=True):
 
         self.src_mask = super().forward(ctx_history, has_mask)
-        ctx_input = self.reduce_dimension(ctx_history)  # ctx_input (batch size, sequence length, 2 * model dimension)
-        ctx_embeddings = ctx_input * math.sqrt(
+        # ctx_input = self.reduce_dimension(ctx_history)  # ctx_input (batch size, sequence length, 2 * model dimension)
+        ctx_embeddings = ctx_history * math.sqrt(
             self.context_config.model_dim
         )  # ctx_embeddings (batch size, sequence length, model dimension)
         tf_input = self.pos_encoder(ctx_embeddings)  # tf_input (batch size, sequence length, model dimension)
@@ -213,10 +213,11 @@ class TieredTransformer(LogModel):
         super().__init__(config)
         self.name = "Tiered_Transformer"
         self.config: TieredTransformerConfig = config
-        self.log_transformer = Transformer(config)
+        # self.log_transformer = Transformer(config)
+        self.log_transformer  = TransformerDecoder(config)
         self.context_transformer = ContextTransformer(config)
 
-    def forward(self, src: Tensor, ctx_vector, ctx_history, lengths=None, mask=None, has_mask=True):
+    def forward(self, src: Tensor, ctx_history, lengths=None, mask=None, has_mask=True):
         # src (num of series, batch size, sequence length, embedded dimension)
         # lengths is currently ignored, added for compatibility with LSTM-training code
         # TODO: compatibility with character level encoding
