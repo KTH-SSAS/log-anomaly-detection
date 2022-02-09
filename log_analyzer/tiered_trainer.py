@@ -5,6 +5,7 @@ from log_analyzer.config.trainer_config import TrainerConfig
 from log_analyzer.model.lstm import TieredLSTM
 from log_analyzer.model.transformer import TieredTransformer
 from log_analyzer.trainer import Trainer
+from log_analyzer.data.data_loader import TieredTransformerBatcher
 
 
 class TieredTrainer(Trainer):
