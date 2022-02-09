@@ -450,7 +450,7 @@ class TieredLogDataLoader:
         M = batch.get("mask")
 
         if self.use_cuda:
-            X = X.cuda()
+            X = (X[0].cuda(), X[1].cuda())
             Y = Y.cuda()
             if M is not None:
                 M = M.cuda()
