@@ -204,29 +204,19 @@ class TieredTransformer(LogModel):
         for idx, batch in enumerate(src):
             # batch (batch size, sequence length, embedded dimension)
 
+            ctx_vector = self.context_transformer(ctx_history)
             ################ Low level transformer ############################################
             logits, tf_hidden = self.log_transformer(
-                batch, ctx_vector=ctxt_vector
+                batch, ctx_vector=ctx_vector
             )  # (batch size, sequence length, model dimension)
             tag_output[idx][: logits.shape[0], : logits.shape[1], : logits.shape[2]] = logits
 
             ################ Process the output of the low level transformer ##################
-            # mean_hidden = torch.mean(
-            #     tf_hidden, dim=1
-            # )  # mean_hidden: Mean of a low level output. (batch size, model dimension) TODO: remove this mean and see performance improvement.
-            # final_hidden = tf_hidden[:, -1, :]  # final_hidden: The last token step output of the low level output
-            # ctx_input = torch.cat(
-            #     (mean_hidden, final_hidden), dim=1
-            # )  # cat_input: concatenation of mean_hidden and final_hidden (batch size, 2 * model dimension)
-            # unsqz_ctx_input = torch.unsqueeze(
-            #     ctx_input, dim=1
-            # )  # synthetic_input: unsqueeze to concatenate with the history of a specific user. (batch size, 1, 2 * model dimension)
             unsqz_ctx_input = torch.unsqueeze(
                 tf_hidden[:, -1, :], dim=1)
             ctx_history = torch.cat((ctx_history, unsqz_ctx_input), dim=1)[:, -self.config.shift_window:, :]
             # ctx_history: concatination to generate a sequence of low level outputs (batch size, history length, 2 * model dimension)
 
             ################ Context level transformer with history #######################
-            ctxt_vector = self.context_transformer(ctx_history)
 
-        return tag_output, ctxt_vector, ctx_history  # To feed the output of
+        return tag_output, ctx_vector, ctx_history  # To feed the output of
