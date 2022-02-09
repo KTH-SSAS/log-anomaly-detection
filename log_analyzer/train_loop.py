@@ -18,7 +18,10 @@ from log_analyzer.config.model_config import (
     TransformerConfig,
 )
 from log_analyzer.config.trainer_config import DataConfig, TrainerConfig
-from log_analyzer.trainer import LSTMTrainer, TieredLSTMTrainer, TieredTransformerTrainer, Trainer, TransformerTrainer
+from log_analyzer.evaluator import Evaluator
+from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel, TieredLSTM
+from log_analyzer.model.transformer import TieredTransformer, Transformer
+from log_analyzer.trainer import Trainer
 
 try:
     import torch
@@ -127,7 +130,6 @@ def init_from_config_classes(
         raise RuntimeError("Invalid tokenization.")
 
     # Settings for dataloader.
-
     max_input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skip_sos)
 
     train_days = trainer_config.train_files
@@ -141,64 +143,43 @@ def init_from_config_classes(
         else:
             model_config.sequence_length = max_input_length
 
+    if model_type in (TIERED_LSTM, TIERED_TRANSFORMER):
+        val_loader = None
+        train_loader, test_loader = data_utils.load_data_tiered(
+            data_folder,
+            train_days,
+            test_days,
+            trainer_config.batch_size,
+            bidirectional,
+            skip_sos,
+            jagged,
+            max_input_length,
+            num_steps=3,
+        )
+    elif model_type in (LSTM, TRANSFORMER):
+        train_loader, val_loader, test_loader = data_utils.load_data(
+            data_folder,
+            train_days,
+            test_days,
+            trainer_config.batch_size,
+            bidirectional,
+            skip_sos,
+            jagged,
+            data_config.sentence_length,
+            trainer_config.train_val_split,
+            shuffle_train_data,
+        )
+    else:
+        raise RuntimeError("Invalid model type.")
+
     # Settings for model
-    lm_trainer: Trainer
-    if model_type == TIERED_LSTM and isinstance(model_config, TieredLSTMConfig):
-        val_loader = None
-        train_loader, test_loader = data_utils.load_data_tiered(
-            data_folder,
-            train_days,
-            test_days,
-            trainer_config.batch_size,
-            bidirectional,
-            skip_sos,
-            jagged,
-            max_input_length,
-            num_steps=3,
-        )
-        lm_trainer = TieredLSTMTrainer(trainer_config, model_config, bidirectional, log_dir)
-    elif model_type == LSTM and isinstance(model_config, LSTMConfig):
-        train_loader, val_loader, test_loader = data_utils.load_data(
-            data_folder,
-            train_days,
-            test_days,
-            trainer_config.batch_size,
-            bidirectional,
-            skip_sos,
-            jagged,
-            data_config.sentence_length,
-            trainer_config.train_val_split,
-            shuffle_train_data,
-        )
-        lm_trainer = LSTMTrainer(trainer_config, model_config, bidirectional, log_dir)
-    elif model_type == TRANSFORMER and isinstance(model_config, TransformerConfig):
-        train_loader, val_loader, test_loader = data_utils.load_data(
-            data_folder,
-            train_days,
-            test_days,
-            trainer_config.batch_size,
-            bidirectional,
-            skip_sos,
-            jagged,
-            data_config.sentence_length,
-            trainer_config.train_val_split,
-            shuffle_train_data,
-        )
-        lm_trainer = TransformerTrainer(trainer_config, model_config, log_dir)
-    elif model_type == TIERED_TRANSFORMER and isinstance(model_config, TieredTransformerConfig):
-        val_loader = None
-        train_loader, test_loader = data_utils.load_data_tiered(
-            data_folder,
-            train_days,
-            test_days,
-            trainer_config.batch_size,
-            bidirectional,
-            skip_sos,
-            jagged,
-            max_input_length,
-            num_steps=3,
-        )
-        lm_trainer = TieredTransformerTrainer(trainer_config, model_config, bidirectional, log_dir)
+    model = init_model(model_config, bidirectional)
+
+    # Trainer
+    lm_trainer = Trainer(trainer_config, model, log_dir)
+
+    # Evaluator
+    lm_evaluator = Evaluator(model, log_dir)
 
     if Application.instance().wandb_initialized:
         wandb.config.update(model_config)
@@ -208,7 +189,24 @@ def init_from_config_classes(
     Application.artifact_name = f"{model_type}-{data_config.tokenization}"
     Application.artifact_name += "-bidir" if bidirectional else ""
 
-    return lm_trainer, train_loader, val_loader, test_loader
+    return lm_trainer, lm_evaluator, train_loader, val_loader, test_loader
+
+
+def init_model(model_config: ModelConfig, bidirectional) -> LogModel:
+    """Initialises a new model based on the model config."""
+    if type(model_config) == TieredLSTMConfig:
+        # TieredLSTMConfig is a type of LSTMConfig, so check for tiered first
+        return TieredLSTM(model_config, bidirectional)
+    elif type(model_config) == LSTMConfig:
+        model = BidLSTM(model_config) if bidirectional else FwdLSTM(model_config)
+        return model
+    elif type(model_config) == TieredTransformerConfig:
+        # TieredTransformerConfig is a type of TransformerConfig, so check for tiered first
+        return TieredTransformer(model_config)
+    elif type(model_config) == TransformerConfig:
+        return Transformer(model_config)
+    else:
+        raise RuntimeError("Invalid model config type.")
 
 
 def wandb_log(iteration, frequency, data: dict):
@@ -228,7 +226,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
         for val_iteration, val_batch in enumerate(tqdm(val_loader, desc=f"Valid:{val_run:2d}")):
             split_batch = val_loader.split_batch(val_batch)
             with torch.no_grad():
-                loss, *_ = lm_trainer.evaluator.eval_step(split_batch, store_eval_data=False)
+                loss, *_ = lm_trainer.train_step(split_batch, validation=True)
                 val_losses.append(loss.item())
             # Log the current validation loss and val_iteration to enable detailed view of
             # validation loss.
@@ -272,7 +270,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
             iteration += 1  # Total iterations in training (cumulative)
             # Split the batch
             split_batch = train_loader.split_batch(batch)
-            if isinstance(lm_trainer, (TieredTransformerTrainer, TieredLSTMTrainer)):
+            if lm_trainer.model.tiered:
                 if train_loader.flush is False:
                     loss, done = lm_trainer.train_step(split_batch)
                 else:
@@ -321,12 +319,12 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
     return train_losses
 
 
-def eval_model(lm_trainer: Trainer, test_loader, store_eval_data=False, model_file_name="model.pt"):
+def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, model_file_name="model.pt"):
     """Perform testing on lm_trainer.
 
     Note: model_file_name is only used for uploading model parameters to wandb.
     """
-    log_dir = lm_trainer.checkpoint_dir
+    log_dir = lm_evaluator.checkpoint_dir
     model_save_path = os.path.join(log_dir, model_file_name)
 
     if Application.instance().wandb_initialized:
@@ -334,7 +332,7 @@ def eval_model(lm_trainer: Trainer, test_loader, store_eval_data=False, model_fi
         artifact = wandb.Artifact(
             Application.artifact_name,
             "model",
-            metadata=lm_trainer.model.config.__dict__,
+            metadata=lm_evaluator.model.config.__dict__,
         )
         artifact.add_file(model_save_path)
         artifact.save()
@@ -343,7 +341,7 @@ def eval_model(lm_trainer: Trainer, test_loader, store_eval_data=False, model_fi
     for iteration, batch in enumerate(tqdm(test_loader, desc="Test")):
         split_batch = test_loader.split_batch(batch)
         with torch.no_grad():
-            loss, *_ = lm_trainer.evaluator.eval_step(split_batch, store_eval_data=store_eval_data)
+            loss, *_ = lm_evaluator.eval_step(split_batch, store_eval_data=store_eval_data)
             test_losses.append(loss.item())
             wandb_log(
                 iteration,

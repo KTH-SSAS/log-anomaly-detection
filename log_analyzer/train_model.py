@@ -81,11 +81,11 @@ def main():
     logging.basicConfig(level=log_level)
 
     # Create the trainer+model
-    trainer, train_loader, val_loader, test_loader = init_from_args(args)
+    trainer, evaluator, train_loader, val_loader, test_loader = init_from_args(args)
     # Train the model
     train_model(trainer, train_loader, val_loader)
     # Test the model
-    eval_model(trainer, test_loader, store_eval_data=(not args.no_eval_model))
+    eval_model(evaluator, test_loader, store_eval_data=(not args.no_eval_model))
 
     # Perform standard evaluation on the model
     if Application.instance().wandb_initialized and not args.no_eval_model:

@@ -265,7 +265,7 @@ class TieredTransformer(TieredLogModel):
             else:
                 context_history = torch.cat((unsqueezed_context_input, context_history), dim=1)
             # ctx_history: concatination to generate a sequence of low level outputs (batch size, history length, 2 * model dimension)
-            context_history = context_history[:, -self.shift_window:, :]
+            context_history = context_history[:, -self.shift_window :, :]
             ################ Context level transformer with history #######################
             context_vector = self.context_transformer(context_history)
 

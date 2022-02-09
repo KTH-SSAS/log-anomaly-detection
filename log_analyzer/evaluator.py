@@ -104,13 +104,14 @@ def create_attention_matrix(
 
 
 class Evaluator:
-    def __init__(self, model: LogModel):
+    def __init__(self, model: LogModel, checkpoint_dir):
         """Creates an Evaluator instance that provides methods for model
         evaluation."""
         self.model = model
         self.data_is_prepared = False
         self.reset_evaluation_data()
         self.use_wandb = Application.instance().wandb_initialized
+        self.checkpoint_dir = checkpoint_dir
 
     @torch.no_grad()
     def eval_step(self, split_batch, store_eval_data=False):
