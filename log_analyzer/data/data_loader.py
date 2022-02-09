@@ -591,7 +591,7 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         self.context_input_dimension = context_input_dimension
         self.shift_window = shift_window
         self.n_user = 20000
-        self.saved_ctxt_vec_tensor = torch.zeros([self.n_user,  self.context_model_dim])
+        # self.saved_ctxt_vec_tensor = torch.zeros([self.n_user,  self.context_model_dim])
         self.saved_ctxt_history_tensor = torch.zeros([self.n_user, self.shift_window, self.model_dim])
         self.saved_ctxt_history_length = torch.zeros([self.n_user], dtype=torch.int8)
 
@@ -599,9 +599,8 @@ class TieredTransformerBatcher(OnlineLMBatcher):
         pass
 
     def gen_datadict(self, batch, endx, endt, model_info):
-        ctxt_vector = model_info[0]
-        history = model_info[1]
-        history_length = model_info[2]
+        history = model_info[0]
+        history_length = model_info[1]
         datadict = {
             "line": batch[:, :, 0],
             "second": batch[:, :, 1],
@@ -610,7 +609,7 @@ class TieredTransformerBatcher(OnlineLMBatcher):
             "red": batch[:, :, 4],
             "input": batch[:, :, 5 + self.jagged + self.skipsos : endx],
             "target": batch[:, :, 6 + self.jagged + self.skipsos : endt],
-            "context_vector": ctxt_vector,
+            # "context_vector": ctx_vector,
             "history": history,
             "history_length": history_length,
         }
@@ -619,7 +618,7 @@ class TieredTransformerBatcher(OnlineLMBatcher):
     def load_lines(self):
         output = []
         self.current_batch_usr = self.users_ge_num_steps[: self.mb_size]
-        ctxt_vector2 = self.saved_ctxt_vec_tensor[torch.tensor(self.current_batch_usr)]
+        # ctxt_vector2 = self.saved_ctxt_vec_tensor[torch.tensor(self.current_batch_usr)]
         history2 = self.saved_ctxt_history_tensor[torch.tensor(self.current_batch_usr)]
         hist_lengths2 = self.saved_ctxt_history_length[torch.tensor(self.current_batch_usr)]
         for user in self.current_batch_usr:
@@ -628,12 +627,12 @@ class TieredTransformerBatcher(OnlineLMBatcher):
             if len(self.user_logs[user]) < self.num_steps:
                 self.users_ge_num_steps.remove(user)
         max_length = torch.max(hist_lengths2)
-        return output, (ctxt_vector2, history2[:,-max_length:,:], hist_lengths2)
+        return output, (history2[:,-max_length:,:], hist_lengths2)
 
-    def update_state(self, ctxt_vectors, ctxt_history):
-        ctxt_vectors = ctxt_vectors.detach().cpu()
+    def update_state(self, ctxt_history):
         ctxt_history = ctxt_history.detach().cpu()
-        self.saved_ctxt_vec_tensor[torch.tensor(self.current_batch_usr)] = ctxt_vectors
-        self.saved_ctxt_history_length[torch.tensor(self.current_batch_usr)]= torch.min(self.saved_ctxt_history_length[torch.tensor(self.current_batch_usr)] + self.num_steps, torch.tensor([self.shift_window]*len(self.current_batch_usr), dtype=torch.int8))
+        self.saved_ctxt_history_length[torch.tensor(self.current_batch_usr)]= torch.min(
+                                                                            self.saved_ctxt_history_length[torch.tensor(self.current_batch_usr)] + self.num_steps, 
+                                                                            torch.tensor([self.shift_window] * len(self.current_batch_usr), dtype=torch.int8))
         max_length = torch.max(self.saved_ctxt_history_length[torch.tensor(self.current_batch_usr)])
         self.saved_ctxt_history_tensor[torch.tensor(self.current_batch_usr), -max_length:, :]= ctxt_history[:, -max_length:, :]
