@@ -200,23 +200,22 @@ class TieredTransformerTrainer(TieredTrainer):
 
         X, Y, L, M = super().split_batch(batch)
 
-        C_V = batch["context_vector"]
+        # C_V = batch["context_vector"]
         C_H = batch["history"]
         H_L = batch["history_length"]
 
         if self.cuda:
-            C_V = C_V.cuda()
+            # C_V = C_V.cuda()
             C_H = C_H.cuda()
 
-        return X, Y, L, M, (C_V, C_H, H_L)
+        return X, Y, L, M, (C_H, H_L)
 
-    def run_model(self, X, L, model_info, data_loader):
-        ctxt_vector = model_info[0]
-        history = model_info[1]
-        history_length = model_info[2]
+    def run_model(self, X, L, model_info, data_loader: TieredTransformerBatcher):
+        history = model_info[0]
+        history_length = model_info[1]
 
-        output, ctxt_vector, history = self.model(X, ctxt_vector, history, lengths=L)
-        data_loader.update_state(ctxt_vector, history)
+        output, ctxt_vector, history = self.model(X, history, lengths=L)
+        data_loader.update_state(history)
 
         return output
 
