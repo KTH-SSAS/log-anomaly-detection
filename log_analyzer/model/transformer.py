@@ -150,6 +150,35 @@ class Transformer(TransformerLanguageModel):
         # Trainer expects model to return a tuple of results (for the LSTMs this would be (lstm_out, final_hidden_state))
         # So we have to return a tuple here too (all but the first value of the tuple are discarded)
         return logits, tf_hidden  # 2nd output (tf hidden) for context transformer.
+class TransformerDecoder(TransformerLanguageModel):
+    """Container module with an encoder, a recurrent or transformer module, and
+    a decoder."""
+
+    def __init__(self, config: TransformerConfig):
+        self.name = "Transformer_Decoder"
+        super().__init__(config)
+        self.bidirectional = False  # TODO: Change this when we make a bidirectional model.
+        self.word_embedding = nn.Embedding(self.vocab_size, self.model_dim)
+        if isinstance(config, TieredTransformerConfig):
+            self.reduce_dimension = nn.Linear(config.input_dim, self.model_dim)
+        initialize_weights(self, dist_func=nn.init.xavier_uniform_)
+
+    def forward(self, src, ctx_vector=None, lengths=None, mask=None, has_mask=True):
+        # batch size, sequence length, embedded dimension
+        # lengths is currently ignored, added for compatibility with LSTM-training code
+        # TODO: compatibility with character level encoding
+
+        self.src_mask = super().forward(src, has_mask)
+        word_embeddings = self.word_embedding(src)
+        word_embeddings = word_embeddings * math.sqrt(self.config.model_dim)
+        cat_ctxt_vector = torch.unsqueeze(ctx_vector, dim=1) #torch.tile(torch.unsqueeze(ctx_vector, dim=1), dims=(1, word_embeddings.shape[1], 1))
+        tf_input = self.pos_encoder(word_embeddings)
+        tf_hidden = self.transformer_decoder(tf_input, cat_ctxt_vector)
+        # word embedding encoder and decoder share weights
+        logits = tf_hidden @ self.word_embedding.weight.t()
+        # Trainer expects model to return a tuple of results (for the LSTMs this would be (lstm_out, final_hidden_state))
+        # So we have to return a tuple here too (all but the first value of the tuple are discarded)
+        return logits, tf_hidden  # 2nd output (tf hidden) for context transformer.
 
 
 class ContextTransformer(TransformerLanguageModel):
