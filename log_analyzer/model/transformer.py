@@ -156,6 +156,7 @@ class Transformer(TransformerLanguageModel):
         # Trainer expects model to return a tuple of results (for the LSTMs this would be (lstm_out, final_hidden_state))
         # So we have to return a tuple here too (all but the first value of the tuple are discarded)
         return logits, tf_hidden  # 2nd output (tf hidden) for context transformer.
+
 class TransformerDecoder(TransformerLanguageModel):
     """Container module with an encoder, a recurrent or transformer module, and
     a decoder."""
@@ -179,7 +180,7 @@ class TransformerDecoder(TransformerLanguageModel):
         word_embeddings = word_embeddings * math.sqrt(self.config.model_dim)
         cat_ctxt_vector = torch.unsqueeze(ctx_vector, dim=1) #torch.tile(torch.unsqueeze(ctx_vector, dim=1), dims=(1, word_embeddings.shape[1], 1))
         tf_input = self.pos_encoder(word_embeddings)
-        tf_hidden = self.transformer_decoder(tf_input, cat_ctxt_vector)
+        tf_hidden = self.transformer_decoder(tf_input, cat_ctxt_vector, tgt_mask  = self.src_mask)
         # word embedding encoder and decoder share weights
         logits = tf_hidden @ self.word_embedding.weight.t()
         # Trainer expects model to return a tuple of results (for the LSTMs this would be (lstm_out, final_hidden_state))
