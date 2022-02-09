@@ -89,7 +89,7 @@ def main():
 
     # Perform standard evaluation on the model
     if Application.instance().wandb_initialized and not args.no_eval_model:
-        trainer.evaluator.run_all()
+        evaluator.run_all()
 
 
 if __name__ == "__main__":
