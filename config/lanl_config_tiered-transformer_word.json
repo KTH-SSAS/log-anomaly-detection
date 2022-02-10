@@ -1,15 +1,15 @@
 {
-	"layers": 2,
-	"feedforward_dim": 2048,
-	"model_dim": 512,
+	"layers": 6,
+	"feedforward_dim": 1024,
+	"model_dim": 256,
 	"attention_heads": 8,
 	"vocab_size": 28199,
 	"dropout": 0.1,
 	"sequence_length": null,
 	"context_config": {
-		"model_dim": 512,
+		"model_dim": 256,
 		"layers": 2,
-		"feedforward_dim": 2048,
+		"feedforward_dim": 1024,
 		"attention_heads": 8,
 		"dropout": 0.1
 	},
