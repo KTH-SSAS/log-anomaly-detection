@@ -315,7 +315,7 @@ class TieredLSTM(TieredLogModel):
             self.context_input_features = event_model_layers[-1] * 2
         self.context_lstm = ContextLSTM(config.context_layers, self.context_input_features)
 
-        self.use_cuda = Application.instance().using_cuda
+        self.using_cuda = Application.instance().using_cuda
 
         # Weight initialization
         initialize_weights(self)
@@ -362,7 +362,7 @@ class TieredLSTM(TieredLogModel):
         # sequences (e.g., 10)
         for idx, sequences in enumerate(user_sequences):
             length = None if lengths is None else lengths[idx]
-            if self.use_cuda:
+            if self.using_cuda:
                 length = length.cuda()
             # Apply the context LSTM to get context vector
             context_vector, (context_hidden_state, context_cell_state) = self.context_lstm(
@@ -411,7 +411,7 @@ class TieredLSTM(TieredLogModel):
             torch.zeros((len(self.context_layers), self.context_layers[0])),
             torch.zeros((len(self.context_layers), self.context_layers[0])),
         )
-        if self.use_cuda:
+        if self.using_cuda:
             self.saved_lstm[user] = (
                 self.saved_lstm[user][0].cuda(),
                 self.saved_lstm[user][1].cuda(),
@@ -424,7 +424,7 @@ class TieredLSTM(TieredLogModel):
         context_lstm_inputs = torch.tensor([])
         hidden_states = torch.tensor([])
         cell_states = torch.tensor([])
-        if self.use_cuda:
+        if self.using_cuda:
             context_lstm_inputs = context_lstm_inputs.cuda()
             hidden_states = hidden_states.cuda()
             cell_states = cell_states.cuda()
