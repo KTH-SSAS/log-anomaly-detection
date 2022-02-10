@@ -17,11 +17,11 @@ class Trainer:
         self.model = model
 
         # Check GPU
-        self.cuda = Application.instance().using_cuda
+        self.using_cuda = Application.instance().using_cuda
 
         self.checkpoint_dir = checkpoint_dir
 
-        if self.cuda:
+        if self.using_cuda:
             self.model.cuda()
 
         # Create settings for training.
