@@ -362,7 +362,7 @@ class TieredLSTM(TieredLogModel):
         # sequences (e.g., 10)
         for idx, sequences in enumerate(user_sequences):
             length = None if lengths is None else lengths[idx]
-            if self.using_cuda:
+            if self.using_cuda and length is not None:
                 length = length.cuda()
             # Apply the context LSTM to get context vector
             context_vector, (context_hidden_state, context_cell_state) = self.context_lstm(
