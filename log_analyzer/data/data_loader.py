@@ -152,7 +152,7 @@ class LogDataLoader(DataLoader):
 
     def __init__(self, dataset, batch_size, shuffle, collate_fn):
         super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
-        self.cuda = Application.instance().using_cuda
+        self.using_cuda = Application.instance().using_cuda
 
     def split_batch(self, batch: dict):
         """Splits a batch into variables containing relevant data."""
@@ -163,7 +163,7 @@ class LogDataLoader(DataLoader):
         L = batch.get("length")
         M = batch.get("mask")
 
-        if self.cuda:
+        if self.using_cuda:
             X = X.cuda()
             Y = Y.cuda()
             if M is not None:
@@ -332,7 +332,7 @@ class TieredLogDataLoader:
         # (i.e. whose # of saved log lines are greater than or equal to the self.num_steps)
         self.batch_ready_users_list = []
         self.filepaths = filepaths
-        self.use_cuda = Application.instance().using_cuda
+        self.using_cuda = Application.instance().using_cuda
 
         # __iter__ attributes
         # Flush = entire file has been read and a full batch of different users can no longer be produced
@@ -449,7 +449,7 @@ class TieredLogDataLoader:
         L = batch.get("length")
         M = batch.get("mask")
 
-        if self.use_cuda:
+        if self.using_cuda:
             X = (X[0].cuda(), X[1].cuda())
             Y = Y.cuda()
             if M is not None:

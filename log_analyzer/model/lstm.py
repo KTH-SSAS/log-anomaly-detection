@@ -77,7 +77,7 @@ class TieredLogModel(LogModel):
                 line_losses = torch.mean(token_losses, dim=1)
             line_losses_list[i] = line_losses
             step_loss = torch.mean(line_losses, dim=0)
-            loss += step_loss
+            loss += step_loss.cpu()
         loss /= len(Y)
         return loss, line_losses_list
 
@@ -315,7 +315,7 @@ class TieredLSTM(TieredLogModel):
             self.context_input_features = event_model_layers[-1] * 2
         self.context_lstm = ContextLSTM(config.context_layers, self.context_input_features)
 
-        self.use_cuda = torch.cuda.is_available()
+        self.use_cuda = Application.instance().using_cuda
 
         # Weight initialization
         initialize_weights(self)
@@ -362,6 +362,8 @@ class TieredLSTM(TieredLogModel):
         # sequences (e.g., 10)
         for idx, sequences in enumerate(user_sequences):
             length = None if lengths is None else lengths[idx]
+            if self.use_cuda:
+                length = length.cuda()
             # Apply the context LSTM to get context vector
             context_vector, (context_hidden_state, context_cell_state) = self.context_lstm(
                 context_lstm_input,

@@ -213,7 +213,7 @@ class TieredTransformer(TieredLogModel):
         self.saved_context_histories = torch.zeros([self.n_users, self.shift_window, self.context_input_dimension])
         self.saved_context_history_lengths = torch.zeros([self.n_users], dtype=torch.int16)
 
-        self.use_cuda = torch.cuda.is_available()
+        self.using_cuda = Application.instance().using_cuda
 
     def forward(self, src: Tensor, lengths=None, mask=None, targets=None):
         # src (num of series, batch size, sequence length, embedded dimension)

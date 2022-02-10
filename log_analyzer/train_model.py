@@ -76,11 +76,11 @@ def main():
 
     if args.use_cuda and not torch.cuda.is_available():
         print("CUDA not available. Ignoring the --cuda option.")
-        cuda = False
+        using_cuda = False
     else:
-        cuda = args.use_cuda
+        using_cuda = args.use_cuda
 
-    Application(cuda=cuda, wandb=wandb_initalized)
+    Application(cuda=using_cuda, wandb=wandb_initalized)
 
     if args.verbose:
         log_level = "DEBUG"
