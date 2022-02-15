@@ -142,6 +142,28 @@ class IterableLogDataset(LogDataset, IterableDataset):
     def __iter__(self):
         return parse_multiple_files(self.filepaths, self.jag, self.bidir, self.skipsos)
 
+class MapLoglineDataset(LogDataset, Dataset):
+    """Provides data via __getitem__, allowing arbitrary data entries to be
+    accessed via index."""
+
+    def __init__(self, filepaths, bidirectional, skipsos, jagged, delimiter=" ", window_size=100) -> None:
+        super().__init__(filepaths, bidirectional, skipsos, jagged, delimiter)
+
+        self.loglines = []
+        self.window_size = window_size
+        iterator = parse_multiple_files(self.filepaths, jagged, bidirectional, skipsos, raw_lines=True)
+
+        self.loglines.extend(iterator)
+
+    def __getitem__(self, index):
+        start = max(0, index-self.window_size)
+        lines = self.loglines[start:index]
+        parsed_lines = [parse_line(line, self.jag, self.bidir, self.skipsos) for line in lines]
+        return parsed_lines
+
+    def __len__(self):
+        return len(self.loglines)
+
 
 class LogDataLoader(DataLoader):
     """Wrapper class around torch's DataLoader, used for non-tiered data
@@ -277,6 +299,64 @@ def create_data_loaders(filepath, batch_size, bidir, skipsos, jagged, max_len, s
             data_handlers.append(LogDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate))
     return data_handlers
 
+def create_data_loaders_linelevel(filepath, batch_size, bidir, skipsos, jagged, max_len, shuffle=False, dataset_split=None):
+    """Creates and returns 2 data loaders.
+
+    If dataset_split is not provided the second data loader is instead
+    set to None.
+    """
+
+    def collate_fn(data, jagged=False):
+        """Pads the input fields to the length of the longest sequence in the
+        batch."""
+        batch = {}
+
+        for key in data[0]:
+            batch[key] = []
+
+        for sample in data:
+            for key in sample:
+                batch[key].append(sample[key])
+
+        if jagged:
+            fields_to_pad = ["input", "target", "mask"]
+            for key in fields_to_pad:
+                batch[key] = pad_sequence(batch[key], batch_first=True, padding_value=0)
+
+        for key in batch:
+            if isinstance(batch[key], list):
+                batch[key] = torch.stack(batch[key])
+
+        return batch
+
+    dataset = MapLoglineDataset(filepath, bidir, skipsos, jagged, max_len)
+
+    # Split the dataset according to the split list
+    if dataset_split is not None:
+        # Ensure the list has 2 values and sums to 1
+        if sum(dataset_split) != 1:
+            raise ValueError("Sum of list of splits is not 1.")
+        if len(dataset_split) != 2:
+            raise ValueError("Split list does not contain exactly 2 values.")
+        # Convert splits into lengths as proportion of dataset length
+        dataset_split = [int(split_val * len(dataset)) for split_val in dataset_split]
+        # Ensure sum of dataset_split is the same as dataset length
+        size_diff = len(dataset) - sum(dataset_split)
+        dataset_split[0] += size_diff
+
+        datasets = torch.utils.data.random_split(dataset, dataset_split)
+    else:
+        # Return just a single dataset
+        datasets = [dataset, None]
+
+    collate = partial(collate_fn, jagged=jagged)
+    data_handlers = []
+    for dataset in datasets:
+        if dataset is None:
+            data_handlers.append(None)
+        else:
+            data_handlers.append(LogDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate))
+    return data_handlers
 
 def load_data(
     data_folder,
@@ -301,6 +381,28 @@ def load_data(
 
     return train_loader, val_loader, test_loader
 
+def load_data_linelevel(
+    data_folder,
+    train_files,
+    test_files,
+    batch_size,
+    bidir,
+    skipsos,
+    jagged,
+    sentence_length,
+    train_val_split=[1, 0],
+    shuffle_train_data=True,
+):
+    filepaths_train = [path.join(data_folder, f) for f in train_files]
+    filepaths_eval = [path.join(data_folder, f) for f in test_files]
+    train_loader, val_loader = create_data_loaders_linelevel(
+        filepaths_train, batch_size, bidir, skipsos, jagged, sentence_length, shuffle_train_data, train_val_split
+    )
+    test_loader, _ = create_data_loaders_linelevel(
+        filepaths_eval, batch_size, bidir, skipsos, jagged, sentence_length, shuffle=False, dataset_split=None
+    )
+
+    return train_loader, val_loader, test_loader
 
 class TieredLogDataLoader:
     """For use with tiered language models.

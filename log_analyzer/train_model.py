@@ -31,7 +31,7 @@ data/data_examples/raw_day_split,
 def prepare_args():
     parser = ArgumentParser()
     parser.add_argument(
-        "--model-type", choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer"], required=True
+        "--model-type", choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer", "logline-transformer"], required=True
     )
     parser.add_argument("--model-config", type=str, help="Model configuration file.", required=True)
     parser.add_argument("--data-config", type=str, help="Data description file.", required=True)

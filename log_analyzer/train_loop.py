@@ -16,11 +16,12 @@ from log_analyzer.config.model_config import (
     TieredLSTMConfig,
     TieredTransformerConfig,
     TransformerConfig,
+    LoglineTransformerConfig,
 )
 from log_analyzer.config.trainer_config import DataConfig, TrainerConfig
 from log_analyzer.evaluator import Evaluator
 from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel, TieredLSTM
-from log_analyzer.model.transformer import TieredTransformer, Transformer
+from log_analyzer.model.transformer import LoglineTransformer, TieredTransformer, Transformer
 from log_analyzer.trainer import Trainer
 
 try:
@@ -36,6 +37,7 @@ LSTM = "lstm"
 TRANSFORMER = "transformer"
 TIERED_LSTM = "tiered-lstm"
 TIERED_TRANSFORMER = "tiered-transformer"
+LOGLINE_TRANSFORMER = "logline-transformer"
 
 LOGGING_FREQUENCY = 10  # How often to log results. Set to 1 to log everything.
 VALIDATION_FREQUENCY = 10  # Number of times to do validation per epoch. Set to 1 to only validate after each epoch.
@@ -55,6 +57,8 @@ def get_model_config(filename, model_type) -> ModelConfig:
         return TransformerConfig.init_from_file(filename)
     elif model_type == TIERED_TRANSFORMER:
         return TieredTransformerConfig.init_from_file(filename)
+    elif model_type == LOGLINE_TRANSFORMER:
+        return LoglineTransformerConfig.init_from_file(filename)
     else:
         raise RuntimeError("Invalid model type.")
 
@@ -169,6 +173,19 @@ def init_from_config_classes(
             trainer_config.train_val_split,
             shuffle_train_data,
         )
+    elif model_type in (LOGLINE_TRANSFORMER):
+        train_loader, val_loader, test_loader = data_utils.load_data_linelevel(
+            data_folder,
+            train_days,
+            test_days,
+            trainer_config.batch_size,
+            bidirectional,
+            skip_sos,
+            jagged,
+            data_config.sentence_length,
+            trainer_config.train_val_split,
+            shuffle_train_data,
+        )
     else:
         raise RuntimeError("Invalid model type.")
 
@@ -203,6 +220,9 @@ def init_model(model_config: ModelConfig, bidirectional) -> LogModel:
     elif type(model_config) == TieredTransformerConfig:
         # TieredTransformerConfig is a type of TransformerConfig, so check for tiered first
         return TieredTransformer(model_config)
+    elif type(model_config) == LoglineTransformerConfig:
+        # LoglineTransformerConfig is a type of TransformerConfig, so check for Logline first
+        return LoglineTransformer(model_config)
     elif type(model_config) == TransformerConfig:
         return Transformer(model_config)
     else:
