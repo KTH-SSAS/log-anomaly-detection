@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch import nn
 from torch.functional import Tensor
 
-from log_analyzer import application
+from log_analyzer.application import Application
 
 
 def generate_mask(seq_len, hidden_dim, use_cuda=False):
@@ -37,7 +37,7 @@ class SelfAttention(nn.Module):
 
     def __init__(self, hidden_dim, attention_dim, attention_type, seq_len=None):
         super().__init__()
-        self.use_cuda = application.Application.instance().using_cuda
+        self.using_cuda = Application.instance().using_cuda
         self.w_a = nn.Parameter(torch.Tensor(hidden_dim, attention_dim))
         torch.nn.init.xavier_normal_(self.w_a)
         self.attention_type = attention_type
@@ -59,8 +59,8 @@ class SelfAttention(nn.Module):
             torch.nn.init.xavier_normal_(self.query)
 
         if seq_len is not None:  # If the input length is fixed, we can cache the masks
-            self.input_mask = generate_mask(seq_len, hidden_dim, self.use_cuda)
-            self.softmax_mask = generate_softmax_mask(seq_len, self.use_cuda)
+            self.input_mask = generate_mask(seq_len, hidden_dim, self.using_cuda)
+            self.softmax_mask = generate_softmax_mask(seq_len, self.using_cuda)
         else:
             self.input_mask = None
             self.softmax_mask = None
@@ -71,14 +71,11 @@ class SelfAttention(nn.Module):
         For fixed attention, the hidden states are replicated and masked
         in order to get an attention matrix of size LxL
         """
-
-        use_cuda = self.use_cuda
-
         seq_len = x.shape[1]
         if self.attention_type == "fixed":
 
             mask = (
-                generate_mask(seq_len, hidden_dim=x.shape[-1], use_cuda=use_cuda)
+                generate_mask(seq_len, hidden_dim=x.shape[-1], use_cuda=self.using_cuda)
                 if self.input_mask is None
                 else self.input_mask
             )
@@ -98,7 +95,7 @@ class SelfAttention(nn.Module):
         temp = torch.matmul(q, key.transpose(-2, -1))
 
         softmax_mask = (
-            generate_softmax_mask(seq_len, use_cuda=use_cuda) if self.softmax_mask is None else self.softmax_mask
+            generate_softmax_mask(seq_len, use_cuda=self.using_cuda) if self.softmax_mask is None else self.softmax_mask
         )  # Use cached mask for fixed length seqs
 
         temp = temp + softmax_mask
