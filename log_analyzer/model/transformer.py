@@ -301,3 +301,43 @@ class TieredTransformer(TieredLogModel):
             )
         max_length = torch.max(self.saved_context_history_lengths[torch.tensor(users)])
         self.saved_context_histories[torch.tensor(users), -max_length:, :] = context_history[:, -max_length:, :]
+
+class LoglineTransformer(TransformerLanguageModel):
+    """Transformer that works on the logline level - each "token" input is a single log line.
+    
+    Output: predicted embedding value for the next logline."""
+
+    def __init__(self, config: TransformerConfig):
+        self.name = "Transformer"
+        super().__init__(config)
+        self.bidirectional = False
+        self.word_embedding = nn.Embedding(self.vocab_size, self.model_dim)
+        initialize_weights(self, dist_func=nn.init.xavier_uniform_)
+
+    def forward(self, src, lengths=None, mask=None, targets=None):
+        # src: (batch, sequence)
+        # Step 1: perform sentence embedding by getting the element-wise average embedding of tokens in the line
+        # Step 2: Apply transformer across this logline sequence
+        word_embeddings = self.word_embedding(src) * math.sqrt(self.config.model_dim)
+        # word_embeddings: (batch size, sequence length, embedded dimension)
+        line_embeddings = torch.mean(word_embeddings, dim=1) # Logline embeddings - average of word tokens in the line
+        # line_embeddings: (batch size, embedded dimension)
+
+        self.src_mask = self.get_mask(src)
+
+        tf_input = self.pos_encoder(word_embeddings)
+        if mask is None:
+            pad_mask = None
+        else:
+            pad_mask = mask == 0
+        tf_hidden = self.transformer_encoder(tf_input, self.src_mask, src_key_padding_mask=pad_mask)
+        # word embedding encoder and decoder share weights
+        # @ is shorthand for matrix multiplication
+        logits = tf_hidden @ self.word_embedding.weight.t()
+
+        loss = None
+        if targets is not None:
+            # Compute and return loss if targets is given
+            loss, _ = self.compute_loss(logits, targets, lengths, mask)
+
+        return logits, loss
