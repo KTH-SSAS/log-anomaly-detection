@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+from argparse import ArgumentParser
 from collections import OrderedDict
 
 SECONDS_PER_DAY = 86400
@@ -71,7 +72,8 @@ def day2sec(day):
 def split_by_day(log_filename, out_dir, keep_days=None):
     """Split a raw LANL log file into separate days based on the timestamp.
 
-    Also filters out non-user activity.
+    Also filters out non-user activity and splits the source/destination
+    user/domain.
     """
     if not os.path.isdir(out_dir):
         os.mkdir(out_dir)
@@ -158,7 +160,8 @@ def add_redteam_to_log(filename_in, filename_out, readteam_file):
 
 def process_logfiles_for_training(auth_file, red_file, output_dir, days_to_keep):
 
-    os.mkdir(output_dir)
+    if not os.path.isdir(output_dir):
+        os.mkdir(output_dir)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         split_by_day(auth_file, tmpdir, keep_days=days_to_keep)
@@ -194,3 +197,14 @@ def count_fields(infile_path, outfile_path=None, fields_to_exclude=None):
             json.dump(counts, f)
 
     return counts
+
+
+def process_file():
+    parser = ArgumentParser()
+    parser.add_argument("--auth-file", type=str, help="Path to auth.txt.")
+    parser.add_argument("--redteam-file", type=str, help="Path to file with redteam events.")
+    parser.add_argument("-o", "--output", type=str, help="Output directory.")
+    parser.add_argument("days-to-keep", nargs="+", type=int, help="Days to keep logs from.")
+    args = parser.parse_args()
+
+    process_logfiles_for_training(args.auth_file, args.redteam_file, args.output, args.days_to_keep)
