@@ -9,7 +9,7 @@ from tqdm import tqdm
 import wandb
 from log_analyzer.application import Application
 from log_analyzer.model.lstm import LogModel, LSTMLanguageModel
-from log_analyzer.tokenizer.tokenizer import Char_tokenizer
+from log_analyzer.tokenizer.tokenizer import CharTokenizer
 
 
 def create_attention_matrix(
