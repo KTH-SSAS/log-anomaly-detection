@@ -6,7 +6,7 @@ from torch import Tensor, nn
 
 from log_analyzer.application import Application
 from log_analyzer.config.model_config import TieredTransformerConfig, TransformerConfig
-from log_analyzer.model.lstm import LogModel
+from log_analyzer.model.lstm import LogModel, TieredLogModel
 from log_analyzer.model.model_util import initialize_weights
 
 
@@ -99,20 +99,16 @@ class TransformerLanguageModel(LogModel):
         )
         self.transformer_encoder: nn.TransformerEncoder = nn.TransformerEncoder(encoder_layers, self.layers)
 
-    def forward(self, src: torch.Tensor, lengths=None, mask=None, has_mask=True):
+    def get_mask(self, src: torch.Tensor):
         # batch size, sequence length, embedded dimension
-        # lengths is currently ignored, added for compatibility with LSTM-training code
         if isinstance(self, ContextTransformer):
             seq_len = src.shape[1]
         else:
             seq_len = src.shape[-1]
-        if has_mask:
-            device = src.device
-            if self.src_mask is None or self.src_mask.shape[-1] != seq_len:
-                mask = _generate_square_subsequent_mask(seq_len).to(device)
-                self.src_mask = mask
-        else:
-            self.src_mask = None
+        device = src.device
+        if self.src_mask is None or self.src_mask.shape[-1] != seq_len:
+            mask = _generate_square_subsequent_mask(seq_len).to(device)
+            self.src_mask = mask
         return self.src_mask
 
 
@@ -131,12 +127,12 @@ class Transformer(TransformerLanguageModel):
                 self.reduce_dimension = self.reduce_dimension.cuda()
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
-    def forward(self, src, ctx_vector=None, lengths=None, mask=None, has_mask=True):
+    def forward(self, src, ctx_vector=None, lengths=None, mask=None, targets=None):
         # batch size, sequence length, embedded dimension
         # lengths is currently ignored, added for compatibility with LSTM-training code
         # TODO: compatibility with character level encoding
 
-        self.src_mask = super().forward(src, has_mask)
+        self.src_mask = self.get_mask(src)
         word_embeddings = self.word_embedding(src) * math.sqrt(self.config.model_dim)
         if ctx_vector is not None:
             cat_word_embeddings = torch.Tensor([]).to(src.device)
@@ -160,10 +156,17 @@ class Transformer(TransformerLanguageModel):
             pad_mask = mask == 0
         tf_hidden = self.transformer_encoder(tf_input, self.src_mask, src_key_padding_mask=pad_mask)
         # word embedding encoder and decoder share weights
+        # @ is shorthand for matrix multiplication
         logits = tf_hidden @ self.word_embedding.weight.t()
-        # Trainer expects model to return a tuple of results (for the LSTMs this would be (lstm_out, final_hidden_state))
-        # So we have to return a tuple here too (all but the first value of the tuple are discarded)
-        return logits, tf_hidden  # 2nd output (tf hidden) for context transformer.
+
+        loss = None
+        if targets is not None:
+            # Compute and return loss if targets is given
+            loss, _ = self.compute_loss(logits, targets, lengths, mask)
+
+        if self.tiered:
+            return logits, tf_hidden, loss
+        return logits, loss
 
 
 class ContextTransformer(TransformerLanguageModel):
@@ -176,9 +179,8 @@ class ContextTransformer(TransformerLanguageModel):
         self.reduce_dimension = nn.Linear(2 * config.model_dim, config.context_config.model_dim)
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
-    def forward(self, ctx_history, lengths=None, mask=None, has_mask=True):
-
-        self.src_mask = super().forward(ctx_history, has_mask)
+    def forward(self, ctx_history):
+        self.src_mask = self.get_mask(ctx_history)
         ctx_input = self.reduce_dimension(ctx_history)  # ctx_input (batch size, sequence length, 2 * model dimension)
         ctx_embeddings = ctx_input * math.sqrt(
             self.config.model_dim * 2
@@ -191,61 +193,111 @@ class ContextTransformer(TransformerLanguageModel):
         return context_output
 
 
-class TieredTransformer(LogModel):
+class TieredTransformer(TieredLogModel):
     def __init__(self, config: TieredTransformerConfig):
         super().__init__(config)
         self.name = "Tiered_Transformer"
         self.config: TieredTransformerConfig = config
         self.src_mask = None
         self.log_transformer = Transformer(config)
+        self.log_transformer.tiered = True
         self.context_transformer = ContextTransformer(config)
         self.shift_window = config.shift_window
 
-    def forward(self, src: Tensor, ctxt_vector, ctx_history, lengths=None, mask=None, has_mask=True):
+        # User model state
+        self.context_model_dim = config.context_config.model_dim
+        self.context_input_dimension = config.input_dim
+        self.shift_window = config.shift_window
+        self.n_users = 1200
+        self.saved_context_vectors = torch.zeros([self.n_users, self.context_model_dim])
+        self.saved_context_histories = torch.zeros([self.n_users, self.shift_window, self.context_input_dimension])
+        self.saved_context_history_lengths = torch.zeros([self.n_users], dtype=torch.int16)
+
+        self.using_cuda = Application.instance().using_cuda
+
+    def forward(self, src: Tensor, lengths=None, mask=None, targets=None):
         # src (num of series, batch size, sequence length, embedded dimension)
-        # lengths is currently ignored, added for compatibility with LSTM-training code
         # TODO: compatibility with character level encoding
+        # Split the input into users list and src
+        users, src = src
+        # Convert users list to python list
+        users = [user.item() for user in users]
+
+        # Get the state for the users in the batch
+        context_vector, context_history, history_length = self.get_batch_data(users)
+
+        # Get the number of steps in the batch
+        self.num_steps = src.shape[0]
         batch_size = src.shape[1]
 
-        if self.log_transformer.bidirectional:
-            tag_output = torch.empty((src.shape[0], src.shape[1], src.shape[2] - 2), dtype=torch.float)
-        else:
-            tag_output = torch.empty_like(src, dtype=torch.float)
+        token_output = torch.empty_like(src, dtype=torch.float)
 
-        tag_output = tag_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
+        token_output = token_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
 
         for idx, batch in enumerate(src):
             # batch (batch size, sequence length, embedded dimension)
-            if ctxt_vector is None:
+            if context_vector is None:
                 ################ First loop without any history ##############################
                 device = src.device
-                ctxt_vector = torch.zeros(batch_size, self.config.context_config.model_dim).to(device)
+                context_vector = torch.zeros(batch_size, self.config.context_config.model_dim).to(device)
 
             ################ Low level transformer ############################################
-            logits, tf_hidden = self.log_transformer(
-                batch, ctx_vector=ctxt_vector, mask=mask
+            idx_mask = None if mask == None else mask[idx]
+            logits, tf_hidden, _ = self.log_transformer(
+                batch, ctx_vector=context_vector, mask=idx_mask
             )  # (batch size, sequence length, model dimension)
-            tag_output[idx][: logits.shape[0], : logits.shape[1], : logits.shape[2]] = logits
+            token_output[idx][: logits.shape[0], : logits.shape[1], : logits.shape[2]] = logits
 
             ################ Process the output of the low level transformer ##################
             mean_hidden = torch.mean(
                 tf_hidden, dim=1
             )  # mean_hidden: Mean of a low level output. (batch size, model dimension) TODO: remove this mean and see performance improvement.
             final_hidden = tf_hidden[:, -1, :]  # final_hidden: The last token step output of the low level output
-            ctx_input = torch.cat(
+            context_input = torch.cat(
                 (mean_hidden, final_hidden), dim=1
             )  # cat_input: concatenation of mean_hidden and final_hidden (batch size, 2 * model dimension)
-            unsqz_ctx_input = torch.unsqueeze(
-                ctx_input, dim=1
+            unsqueezed_context_input = torch.unsqueeze(
+                context_input, dim=1
             )  # synthetic_input: unsqueeze to concatenate with the history of a specific user. (batch size, 1, 2 * model dimension)
 
-            if len(ctx_history.shape) == 2:
-                ctx_history = unsqz_ctx_input
+            if len(context_history.shape) == 2:
+                context_history = unsqueezed_context_input
             else:
-                ctx_history = torch.cat((unsqz_ctx_input, ctx_history), dim=1)
+                context_history = torch.cat((unsqueezed_context_input, context_history), dim=1)
             # ctx_history: concatination to generate a sequence of low level outputs (batch size, history length, 2 * model dimension)
-            ctx_history = ctx_history[:, -self.shift_window:, :]
+            context_history = context_history[:, -self.shift_window :, :]
             ################ Context level transformer with history #######################
-            ctxt_vector = self.context_transformer(ctx_history)
+            context_vector = self.context_transformer(context_history)
 
-        return tag_output, ctxt_vector, ctx_history  # To feed the output of
+        # Update context state
+        self.update_state(users, context_vector, context_history)
+
+        loss = None
+        if targets is not None:
+            # Compute and return loss if targets is given
+            loss, _ = self.compute_loss(token_output, targets, lengths, mask)
+
+        return token_output, loss
+
+    def get_batch_data(self, users):
+        """Given a list of users, fetch the relevant history and model data for
+        each user."""
+        context_vector = self.saved_context_vectors[torch.tensor(users)]
+        history = self.saved_context_histories[torch.tensor(users)]
+        history_lengths = self.saved_context_history_lengths[torch.tensor(users)]
+        # Crop the length of history returned to max history_length amongst users in this batch
+        max_length = torch.max(history_lengths)
+        return context_vector, history[:, -max_length:, :], history_lengths
+
+    def update_state(self, users, context_vectors, context_history):
+        """Given one batch of history/model data output by the model, update
+        the stored state for future use."""
+        context_vectors = context_vectors.detach().cpu()
+        context_history = context_history.detach().cpu()
+        self.saved_context_vectors[torch.tensor(users)] = context_vectors
+        for user in users:
+            self.saved_context_history_lengths[user] = min(
+                self.saved_context_history_lengths[user] + self.num_steps, self.shift_window
+            )
+        max_length = torch.max(self.saved_context_history_lengths[torch.tensor(users)])
+        self.saved_context_histories[torch.tensor(users), -max_length:, :] = context_history[:, -max_length:, :]

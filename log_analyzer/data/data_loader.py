@@ -20,30 +20,23 @@ DEFAULT_HEADERS = [
 ]
 
 
-def char_tokens_to_text(tokens):
-    characters = [chr(t + 30) for t in tokens]
-    string = "".join(characters)
-    return characters, string
+def get_mask(lens, max_len=None):
+    """For masking output of language model for jagged sequences for correct
+    gradient update. Sequence length of 0 will output nan for that row of mask
+    so don't do this.
 
-
-def translate_line(string, pad_len):
+    :param lens: (int) sequence length for this sequence
+    :param max_len: (int) Number of predicted tokens in longest sequence in batch. Defaults to lens if not provided
+    :return: A numpy array mask of length max_len. There are lens[i] values of 1/lens followed by max_len - lens zeros
     """
 
-    :param string:
-    :param pad_len:
-    :return:
-    """
-    return "0 " + " ".join([str(ord(c) - 30) for c in string]) + " 1 " + " ".join(["0"] * pad_len) + "\n"
+    num_tokens = lens if max_len is None else max_len
 
+    mask_template = torch.arange(num_tokens, dtype=torch.float)
+    if Application.instance().using_cuda:
+        mask_template = mask_template.cuda()
 
-def parse_multiple_files(filepaths, jag, bidir, skipsos, raw_lines=False):
-    for datafile in filepaths:
-        with open(datafile, "r") as f:
-            for line in f:
-                if raw_lines:
-                    yield line
-                else:
-                    yield parse_line(line, jag, bidir, skipsos)
+    return (mask_template < lens) / lens
 
 
 def parse_line(line, jag, bidir, skipsos, delimiter=" "):
@@ -94,27 +87,14 @@ def parse_line(line, jag, bidir, skipsos, delimiter=" "):
     return datadict
 
 
-# Pads the input fields to the length of the longest sequence in the batch
-def collate_fn(data, jagged=False):
-    batch = {}
-
-    for key in data[0]:
-        batch[key] = []
-
-    for sample in data:
-        for key in sample:
-            batch[key].append(sample[key])
-
-    if jagged:
-        fields_to_pad = ["input", "target", "mask"]
-        for key in fields_to_pad:
-            batch[key] = pad_sequence(batch[key], batch_first=True, padding_value=0)
-
-    for key in batch:
-        if isinstance(batch[key], list):
-            batch[key] = torch.stack(batch[key])
-
-    return batch
+def parse_multiple_files(filepaths, jag, bidir, skipsos, raw_lines=False):
+    for datafile in filepaths:
+        with open(datafile, "r") as f:
+            for line in f:
+                if raw_lines:
+                    yield line
+                else:
+                    yield parse_line(line, jag, bidir, skipsos)
 
 
 class LogDataset:
@@ -163,6 +143,47 @@ class IterableLogDataset(LogDataset, IterableDataset):
         return parse_multiple_files(self.filepaths, self.jag, self.bidir, self.skipsos)
 
 
+class LogDataLoader(DataLoader):
+    """Wrapper class around torch's DataLoader, used for non-tiered data
+    loading.
+
+    Provides a function to split the batch provided by the data loader.
+    """
+
+    def __init__(self, dataset, batch_size, shuffle, collate_fn):
+        super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
+        self.using_cuda = Application.instance().using_cuda
+
+    def split_batch(self, batch: dict):
+        """Splits a batch into variables containing relevant data."""
+        X = batch["input"]
+        Y = batch["target"]
+
+        # Optional fields
+        L = batch.get("length")
+        M = batch.get("mask")
+
+        if self.using_cuda:
+            X = X.cuda()
+            Y = Y.cuda()
+            if M is not None:
+                M = M.cuda()
+
+        split_batch = {
+            "X": X,
+            "Y": Y,
+            "L": L,
+            "M": M,
+        }
+
+        # Grab evaluation data
+        split_batch["user"] = batch["user"]
+        split_batch["second"] = batch["second"]
+        split_batch["red_flag"] = batch["red"]
+
+        return split_batch
+
+
 def load_data_tiered(
     data_folder,
     train_files,
@@ -173,53 +194,14 @@ def load_data_tiered(
     jagged,
     sentence_length,
     num_steps,
-    context_layers,
 ):
     def create_tiered_data_loader(filepath):
-        data_handler = TieredLSTMBatcher(
+        data_handler = TieredLogDataLoader(
             filepath,
             sentence_length,
-            context_layers,
             skipsos,
             jagged,
             bidir,
-            batch_size=batch_size,
-            num_steps=num_steps,
-            delimiter=" ",
-        )
-        return data_handler
-
-    filepaths_train = [path.join(data_folder, f) for f in train_files]
-    filepaths_eval = [path.join(data_folder, f) for f in test_files]
-    train_loader = create_tiered_data_loader(filepaths_train)
-    test_loader = create_tiered_data_loader(filepaths_eval)
-    return train_loader, test_loader
-
-
-def load_data_tiered_trans(
-    data_folder,
-    train_files,
-    test_files,
-    batch_size,
-    bidir,
-    skipsos,
-    jagged,
-    sentence_length,
-    num_steps,
-    context_model_dim,
-    context_input_dimension,
-    shift_window,
-):
-    def create_tiered_data_loader(filepath):
-        data_handler = TieredTransformerBatcher(
-            filepath,
-            sentence_length,
-            context_model_dim,
-            skipsos,
-            jagged,
-            bidir,
-            context_input_dimension,
-            shift_window=shift_window,
             batch_size=batch_size,
             num_steps=num_steps,
             delimiter=" ",
@@ -239,6 +221,30 @@ def create_data_loaders(filepath, batch_size, bidir, skipsos, jagged, max_len, s
     If dataset_split is not provided the second data loader is instead
     set to None.
     """
+
+    def collate_fn(data, jagged=False):
+        """Pads the input fields to the length of the longest sequence in the
+        batch."""
+        batch = {}
+
+        for key in data[0]:
+            batch[key] = []
+
+        for sample in data:
+            for key in sample:
+                batch[key].append(sample[key])
+
+        if jagged:
+            fields_to_pad = ["input", "target", "mask"]
+            for key in fields_to_pad:
+                batch[key] = pad_sequence(batch[key], batch_first=True, padding_value=0)
+
+        for key in batch:
+            if isinstance(batch[key], list):
+                batch[key] = torch.stack(batch[key])
+
+        return batch
+
     if shuffle or dataset_split is not None:
         dataset = MapLogDataset(filepath, bidir, skipsos, jagged, max_len)
     else:
@@ -268,7 +274,7 @@ def create_data_loaders(filepath, batch_size, bidir, skipsos, jagged, max_len, s
         if dataset is None:
             data_handlers.append(None)
         else:
-            data_handlers.append(DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate))
+            data_handlers.append(LogDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate))
     return data_handlers
 
 
@@ -284,7 +290,6 @@ def load_data(
     train_val_split=[1, 0],
     shuffle_train_data=True,
 ):
-
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
     train_loader, val_loader = create_data_loaders(
@@ -297,31 +302,10 @@ def load_data(
     return train_loader, val_loader, test_loader
 
 
-def get_mask(lens, max_len=None):
-    """For masking output of lm_rnn for jagged sequences for correct gradient
-    update. Sequence length of 0 will output nan for that row of mask so don't
-    do this.
+class TieredLogDataLoader:
+    """For use with tiered language models.
 
-    :param lens: Numpy vector of sequence lengths
-    :param num_tokens: (int) Number of predicted tokens in sentence.
-    :return: A numpy array mask MB X num_tokens
-             For each row there are: lens[i] values of 1/lens[i]
-                                     followed by num_tokens - lens[i] zeros
-    """
-
-    num_tokens = lens if max_len is None else max_len
-
-    mask_template = torch.arange(num_tokens, dtype=torch.float)
-    if Application.instance().using_cuda:
-        mask_template = mask_template.cuda()
-
-    return (mask_template < lens) / lens
-
-
-class OnlineLMBatcher:
-    """For use with tiered_lm.py.
-
-    Batcher keeps track of user states in upper tier RNN.
+    Prepares batches that include several steps.
     """
 
     def __init__(
@@ -334,328 +318,180 @@ class OnlineLMBatcher:
         batch_size=100,
         num_steps=5,
         delimiter=" ",
-        skiprows=0,
     ):
         self.sentence_length = sentence_length
         self.jagged = jagged
         self.skipsos = skipsos
         self.bidir = bidir
         self.delimiter = delimiter  # delimiter for input file
-        self.init_mb_size = batch_size
-        self.init_num_steps = num_steps
         self.mb_size = batch_size  # the number of users in a batch
         self.num_steps = num_steps  # The number of log lines for each user in a batch
         self.user_logs = {}
+        self.staggler_num_steps = 1
+        # the list of users who are ready to be included in the next batch
+        # (i.e. whose # of saved log lines are greater than or equal to the self.num_steps)
+        self.batch_ready_users_list = []
+        self.filepaths = filepaths
+        self.using_cuda = Application.instance().using_cuda
+
+        # __iter__ attributes
+        # Flush = entire file has been read and a full batch of different users can no longer be produced
         self.flush = False
         # Used by the trainer to signal if the rest of the current file should
         # be skipped when flush is reached
         self.skip_file = False
-        self.empty = False
-        self.staggler_num_steps = 1
-        # the list of users whose saved log lines are greater than or equal to
-        # the self.num_steps
-        self.users_ge_num_steps = []
-        self.filepaths = filepaths
-        self.saved_lstm = {}
-        self.skiprows = skiprows
-        self.using_cuda = Application.instance().using_cuda
 
     def __iter__(self):
         for datafile in self.filepaths:
             self.flush = False
-            self.empty = False
-            self.mb_size = self.init_mb_size
-            self.num_steps = self.init_num_steps
             self.skip_file = False
 
-            with open(datafile, "r") as f:
-                for i in range(self.skiprows):
-                    _ = f.readline()
+            # Feed one file at a time to parse_multiple_files so we can keep track of flush more easily
+            file_reader = parse_multiple_files([datafile], self.jagged, self.bidir, self.skipsos)
 
-                while True:
-                    output = []
-                    if self.skip_file:
-                        # Skip the rest of the current file, because it is flush and
-                        # we're currently training (see train_loop.py)
-                        break
-                    while output == []:
-                        if not self.flush:
-                            l = f.readline()
-                            if l == "":
-                                self.flush = True
-                            else:
-                                split_line = l.strip().split(self.delimiter)
-                                rowtext = [int(k) for k in split_line]
-                                user = int(rowtext[3])
+            while True:
+                batch_data = []
+                if self.skip_file:
+                    # Skip the rest of the current file, because it is flush and
+                    # we're currently training (see train_loop.py)
+                    break
+                while batch_data == []:
+                    if not self.flush:
+                        try:
+                            # Get the next line
+                            datadict = next(file_reader)
+                            user = datadict["user"].item()
+                            if user not in self.user_logs:
+                                self.user_logs[user] = []
+                            self.user_logs[user].append(datadict)
+                            if user not in self.batch_ready_users_list and len(self.user_logs[user]) >= self.num_steps:
+                                self.batch_ready_users_list.append(user)
+                        except StopIteration:
+                            # Failed to get line because file is empty - activate flush
+                            self.flush = True
 
-                                if self.user_logs.get(user) is None:
-                                    self.user_logs[user] = []
-                                    self.init_saved_model(user)
-                                self.user_logs[user].append(rowtext)
-                                if user not in self.users_ge_num_steps and len(self.user_logs[user]) >= self.num_steps:
-                                    self.users_ge_num_steps.append(user)
+                    # Before the data loader reads the last line of the log - we only want fullsized batches (mb_size)
+                    if len(self.batch_ready_users_list) >= self.mb_size and not self.flush:
+                        batch_data = self.get_batch_data()
 
-                        # Before the data loader read the last line of the log.
-                        if len(self.users_ge_num_steps) >= self.mb_size and self.flush == False:
-                            output, model_info = self.load_lines()
+                    # When the data loader has read the last line of the log - we accept any size of batch
+                    elif len(self.batch_ready_users_list) > 0 and self.flush:
+                        batch_data = self.get_batch_data()
 
-                        # When the data loader read the last line of the log.
-                        elif len(self.users_ge_num_steps) > 0 and self.flush:
-                            output, model_info = self.load_lines()
+                    # Activate the staggler mode - accept batches with smaller number of steps than num_steps
+                    elif len(self.batch_ready_users_list) == 0 and self.flush:
+                        if self.num_steps == self.staggler_num_steps:
+                            break
+                        self.mb_size = self.num_steps * self.mb_size
+                        self.num_steps = self.staggler_num_steps
 
-                        # Activate the staggler mode.
-                        elif len(self.users_ge_num_steps) == 0 and self.flush:
-                            if self.num_steps == self.staggler_num_steps:
-                                self.empty = True
-                                break
-                            self.mb_size = self.num_steps * self.mb_size
-                            self.num_steps = self.staggler_num_steps
+                if batch_data == []:
+                    break
 
-                    if self.empty:
-                        break
+                # Create the batch by collating the datadicts. Also, if jagged, pad
+                # the input fields to the length of the longest sequence in the batch
+                batch = self.tiered_collate_fn(batch_data)
+                # Add the user that each line belongs to to model input
+                batch["input"] = (batch["user"][0], batch["input"])
 
-                    output = torch.Tensor(output).long()
-                    batch = torch.transpose(output, 0, 1)
-                    endx = batch.shape[2] - int(not self.bidir)
-                    endt = batch.shape[2] - int(self.bidir)
-                    datadict = self.gen_datadict(batch, endx, endt, model_info)
+                yield batch
 
-                    if self.jagged:
-                        if self.using_cuda:
-                            datadict["length"] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos)).cuda()
-                            datadict["mask"] = torch.empty(
-                                datadict["length"].shape[0],
-                                datadict["input"].shape[1],
-                                datadict["input"].shape[-1] - 2 * self.bidir,
-                            ).cuda()
-                        else:
-                            datadict["length"] = torch.LongTensor(batch[:, :, 5] - int(self.skipsos))
-                            datadict["mask"] = torch.empty(
-                                datadict["length"].shape[0],
-                                datadict["input"].shape[1],
-                                datadict["input"].shape[-1] - 2 * self.bidir,
-                            )
+    def tiered_collate_fn(self, data):
+        """Pads the input fields to the length of the longest sequence in the
+        batch."""
+        batch = {}
 
-                        for i, seq_len_matrix in enumerate(datadict["length"]):
-                            for j, seq_length in enumerate(seq_len_matrix):
-                                datadict["mask"][i, j, :] = get_mask(
-                                    seq_length.view(-1, 1).item() - 2 * self.bidir,
-                                    self.sentence_length - 2 * self.bidir,
-                                )
-                    yield datadict
+        # Prep the batch structure (with python lists for simplicity)
+        for key in data[0][0]:
+            batch[key] = [[] for _ in range(self.num_steps)]
 
-    def init_saved_model(self, user):
-        pass
+        # Fill the batch structure with the input data
+        for sample in data:
+            for step, line_sample in enumerate(sample):
+                for key in line_sample:
+                    batch[key][step].append(line_sample[key])
 
-    def load_lines(self):
-        pass
+        # batch is a dict of the batch entries (input, target, mask, user, day, etc.)
+        # Each of the sequence entries (input, target, mask) are of shape [num_steps, batchsize, sequence], e.g. [3, 64, sequence]
+        # Where sequence varies (if self.jagged=True).
 
-    def gen_datadict(self, batch, endx, endt, model_info):
-        pass
+        if self.jagged:
+            # First pad within each num_step so that we get a uniform sequence_length within each num_step
+            fields_to_pad = ["input", "target", "mask"]
+            for key in fields_to_pad:
+                for step in range(self.num_steps):
+                    batch[key][step] = pad_sequence(batch[key][step], batch_first=True, padding_value=0)
+            # Next pad across the num_step so that we have a uniform sequence_length across the entire batch
+            for key in fields_to_pad:
+                # Swap the batchsize and sequence_length dimensions to allow padding
+                for step in range(self.num_steps):
+                    batch[key][step] = batch[key][step].transpose(0, 1)
+                batch[key] = pad_sequence(batch[key], batch_first=True, padding_value=0)
+                # Reverse the transposition of batchsize and sequence_length - batch[key] is now a tensor
+                batch[key] = batch[key].transpose(1, 2)
+        # Convert the remaining python lists to tensors
+        for key in batch:
+            for step in range(self.num_steps):
+                if isinstance(batch[key][step], list):
+                    batch[key][step] = torch.stack(batch[key][step])
+            if isinstance(batch[key], list):
+                batch[key] = torch.stack(batch[key])
 
+        return batch
 
-class TieredLSTMBatcher(OnlineLMBatcher):
-    def __init__(
-        self,
-        filepaths,
-        sentence_length,
-        context_size,
-        skipsos,
-        jagged,
-        bidir,
-        batch_size=100,
-        num_steps=5,
-        delimiter=" ",
-        skiprows=0,
-    ):
-        super().__init__(filepaths, sentence_length, skipsos, jagged, bidir, batch_size, num_steps, delimiter, skiprows)
-        self.context_size = context_size if type(context_size) is list else [context_size]
+    def split_batch(self, batch: dict):
+        """Splits a batch into variables containing relevant data."""
 
-    def init_saved_model(self, user):
+        X = batch["input"]
+        Y = batch["target"]
+
+        # Optional fields
+        L = batch.get("length")
+        M = batch.get("mask")
+
         if self.using_cuda:
-            self.saved_lstm[user] = (
-                torch.zeros((self.context_size[0])).cuda(),
-                torch.zeros(
-                    (
-                        len(self.context_size),
-                        self.context_size[0],
-                    )
-                ).cuda(),
-                torch.zeros(
-                    (
-                        len(self.context_size),
-                        self.context_size[0],
-                    )
-                ).cuda(),
-            )
+            X = (X[0].cuda(), X[1].cuda())
+            Y = Y.cuda()
+            if M is not None:
+                M = M.cuda()
 
-        else:
-            self.saved_lstm[user] = (
-                torch.zeros((self.context_size[0])),
-                torch.zeros(
-                    (
-                        len(self.context_size),
-                        self.context_size[0],
-                    )
-                ),
-                torch.zeros(
-                    (
-                        len(self.context_size),
-                        self.context_size[0],
-                    )
-                ),
-            )
-
-    def gen_datadict(self, batch, endx, endt, model_info):
-        ctxt_vector = model_info[0]
-        h_state = model_info[1]
-        c_state = model_info[2]
-        datadict = {
-            "line": batch[:, :, 0],
-            "second": batch[:, :, 1],
-            "day": batch[:, :, 2],
-            "user": batch[:, :, 3],
-            "red": batch[:, :, 4],
-            "input": batch[:, :, 5 + self.jagged + self.skipsos : endx],
-            "target": batch[:, :, 6 + self.jagged + self.skipsos : endt],
-            "context_vector": ctxt_vector,
-            "c_state_init": torch.transpose(h_state, 0, 1),
-            "h_state_init": torch.transpose(c_state, 0, 1),
-        }  #
-        return datadict
-
-    def load_lines(self):
-        output = []
-        if self.using_cuda:
-            ctxt_vector = torch.tensor([]).cuda()
-            h_state = torch.tensor([]).cuda()
-            c_state = torch.tensor([]).cuda()
-        else:
-            ctxt_vector = torch.tensor([])
-            h_state = torch.tensor([])
-            c_state = torch.tensor([])
-        for user in self.users_ge_num_steps[: self.mb_size]:
-            output.append(self.user_logs[user][0 : self.num_steps])
-            self.user_logs[user] = self.user_logs[user][self.num_steps :]
-            if len(self.user_logs[user]) < self.num_steps:
-                self.users_ge_num_steps.remove(user)
-            ctxt_vector = torch.cat((ctxt_vector, torch.unsqueeze(self.saved_lstm[user][0], dim=0)), dim=0)
-            h_state = torch.cat((h_state, torch.unsqueeze(self.saved_lstm[user][1], dim=0)), dim=0)
-            c_state = torch.cat((c_state, torch.unsqueeze(self.saved_lstm[user][2], dim=0)), dim=0)
-        return output, (ctxt_vector, h_state, c_state)
-
-    def update_state(self, ctxt_vectors, h_states, c_states):
-        ctxt_vectors = ctxt_vectors.data
-        h_states = torch.transpose(h_states.data, 0, 1)
-        c_states = torch.transpose(c_states.data, 0, 1)
-        for usr, ctxt_v, h_state, c_state in zip(
-            self.users_ge_num_steps[: self.mb_size], ctxt_vectors, h_states, c_states
-        ):
-            self.saved_lstm[usr] = (ctxt_v, h_state, c_state)
-
-
-class TieredTransformerBatcher(OnlineLMBatcher):
-    def __init__(
-        self,
-        filepaths,
-        sentence_length,
-        context_model_dim,
-        skipsos,
-        jagged,
-        bidir,
-        context_input_dimension,
-        shift_window=500,
-        batch_size=100,
-        num_steps=5,
-        delimiter=" ",
-        skiprows=0,
-    ):
-        super().__init__(
-            filepaths,
-            sentence_length,
-            skipsos,
-            jagged,
-            bidir,
-            batch_size=batch_size,
-            num_steps=num_steps,
-            delimiter=delimiter,
-            skiprows=skiprows,
-        )
-        # the list of users whose saved log lines are greater than or equal to the self.num_steps
-        self.saved_ctxt = {}
-        self.context_model_dim = context_model_dim
-        self.context_input_dimension = context_input_dimension
-        self.shift_window = shift_window
-        self.stay_cuda = []
-
-    def init_saved_model(self, user):
-        self.saved_ctxt[user] = [torch.zeros(self.context_model_dim), torch.tensor([]), 0]
-
-    def gen_datadict(self, batch, endx, endt, model_info):
-        ctxt_vector = model_info[0]
-        history = model_info[1]
-        history_length = model_info[2]
-        datadict = {
-            "line": batch[:, :, 0],
-            "second": batch[:, :, 1],
-            "day": batch[:, :, 2],
-            "user": batch[:, :, 3],
-            "red": batch[:, :, 4],
-            "input": batch[:, :, 5 + self.jagged + self.skipsos : endx],
-            "target": batch[:, :, 6 + self.jagged + self.skipsos : endt],
-            "context_vector": ctxt_vector,
-            "history": history,
-            "history_length": history_length,
+        split_batch = {
+            "X": X,
+            "Y": Y,
+            "L": L,
+            "M": M,
         }
-        if self.using_cuda:
-            datadict["input"] = datadict["input"].cuda()
-            datadict["target"] = datadict["target"].cuda()
-            datadict["context_vector"] = datadict["context_vector"].cuda()
-            datadict["history"] = datadict["history"].cuda()
-        return datadict
 
-    def load_lines(self):
-        output = []
-        hist_lst = []
-        hist_lengths = []
-        hist_dimension = 0
-        ctxt_vector = torch.tensor([])
-        history = torch.tensor([])
-        self.current_batch_usr = self.users_ge_num_steps[: self.mb_size]
-        for user in self.current_batch_usr:
-            output.append(self.user_logs[user][0 : self.num_steps])
+        # Grab evaluation data
+        split_batch["user"] = batch["user"]
+        split_batch["second"] = batch["second"]
+        split_batch["red_flag"] = batch["red"]
+
+        return split_batch
+
+    def get_batch_data(self):
+        batch_data = []
+        # Loop over users that have enough lines loaded to be used in a batch
+        for user in self.batch_ready_users_list[: self.mb_size]:
+            # Add user's lines to the batch
+            batch_data.append(self.user_logs[user][0 : self.num_steps])
+            # Update user's saved lines
             self.user_logs[user] = self.user_logs[user][self.num_steps :]
-            ctxt_vector = torch.cat(
-                (ctxt_vector, torch.unsqueeze(self.saved_ctxt[user][0], dim=0)), dim=0
-            )
+            # Remove user from list if it now doesn't have enough lines left to be used in another batch
             if len(self.user_logs[user]) < self.num_steps:
-                self.users_ge_num_steps.remove(user)
-            hist_lst.append(torch.unsqueeze(self.saved_ctxt[user][1], dim=0))
-            hist_lengths.append(self.saved_ctxt[user][2])
-            hist_dimension = max(self.saved_ctxt[user][1].shape[-1], hist_dimension)
-        max_length = max(hist_lengths)
-        for idx, hist in enumerate(hist_lst):
-            device = hist.device
-            if hist_lengths[idx] == max_length:
-                hist_lst[idx] = hist
-            elif hist_lengths[idx] == 0:
-                hist_lst[idx] = torch.zeros(1, max_length, hist_dimension).to(device)
-            else:
-                hist_lst[idx] = torch.cat(
-                    (torch.zeros(1, max_length - hist_lengths[idx], hist_dimension).to(device), hist), dim=1
-                )
-        history = torch.cat((hist_lst), dim=0)
+                self.batch_ready_users_list.remove(user)
+        return batch_data
 
-        return output, (ctxt_vector, history, hist_lengths)
 
-    def update_state(self, ctxt_vectors, ctxt_history):
-        ctxt_vectors = ctxt_vectors.data
-        ctxt_history = ctxt_history.data
-        remove_usr = []
-        for usr, ctxt_v, history in zip(self.current_batch_usr, ctxt_vectors, ctxt_history):
-            self.saved_ctxt[usr] = [
-                ctxt_v.cpu().detach(),
-                history[-self.shift_window :].cpu().detach(),
-                history[-self.shift_window :].shape[0],
-            ]
-            remove_usr.append(usr)
+# def char_tokens_to_text(tokens):
+#     characters = [chr(t + 30) for t in tokens]
+#     string = "".join(characters)
+#     return characters, string
+
+# def translate_line(string, pad_len):
+#     """
+#     :param string:
+#     :param pad_len:
+#     :return:
+#     """
+#     return "0 " + " ".join([str(ord(c) - 30) for c in string]) + " 1 " + " ".join(["0"] * pad_len) + "\n"
