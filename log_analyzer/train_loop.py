@@ -182,9 +182,9 @@ def init_from_config_classes(
             bidirectional,
             skip_sos,
             jagged,
-            data_config.sentence_length,
+            model_config.window_size,
             trainer_config.train_val_split,
-            shuffle_train_data,
+            shuffle_train_data=False,
         )
     else:
         raise RuntimeError("Invalid model type.")
@@ -211,19 +211,19 @@ def init_from_config_classes(
 
 def init_model(model_config: ModelConfig, bidirectional) -> LogModel:
     """Initialises a new model based on the model config."""
-    if type(model_config) == TieredLSTMConfig:
+    if isinstance(model_config, TieredLSTMConfig):
         # TieredLSTMConfig is a type of LSTMConfig, so check for tiered first
         return TieredLSTM(model_config, bidirectional)
-    elif type(model_config) == LSTMConfig:
+    elif isinstance(model_config, LSTMConfig):
         model = BidLSTM(model_config) if bidirectional else FwdLSTM(model_config)
         return model
-    elif type(model_config) == TieredTransformerConfig:
+    elif isinstance(model_config, TieredTransformerConfig):
         # TieredTransformerConfig is a type of TransformerConfig, so check for tiered first
         return TieredTransformer(model_config)
-    elif type(model_config) == LoglineTransformerConfig:
+    elif isinstance(model_config, LoglineTransformerConfig):
         # LoglineTransformerConfig is a type of TransformerConfig, so check for Logline first
         return LoglineTransformer(model_config)
-    elif type(model_config) == TransformerConfig:
+    elif isinstance(model_config, TransformerConfig):
         return Transformer(model_config)
     else:
         raise RuntimeError("Invalid model config type.")

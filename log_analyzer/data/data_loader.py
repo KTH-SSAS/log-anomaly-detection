@@ -1,6 +1,7 @@
 """Data loading functions."""
 
 import os.path as path
+import numpy as np
 from functools import partial
 
 import torch
@@ -156,13 +157,13 @@ class MapLoglineDataset(LogDataset, Dataset):
         self.loglines.extend(iterator)
 
     def __getitem__(self, index):
-        start = max(0, index-self.window_size)
-        lines = self.loglines[start:index]
-        parsed_lines = [parse_line(line, self.jag, self.bidir, self.skipsos) for line in lines]
+        start_index = index * self.window_size
+        end_index = max(start_index + self.window_size, len(self.loglines))
+        parsed_lines = [parse_line(line, self.jag, self.bidir, self.skipsos) for line in self.loglines[start_index:end_index]]
         return parsed_lines
 
     def __len__(self):
-        return len(self.loglines)
+        return int(np.ceil(len(self.loglines) / self.window_size))     
 
 
 class LogDataLoader(DataLoader):
@@ -172,8 +173,11 @@ class LogDataLoader(DataLoader):
     Provides a function to split the batch provided by the data loader.
     """
 
-    def __init__(self, dataset, batch_size, shuffle, collate_fn):
-        super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
+    def __init__(self, dataset, batch_size, shuffle, collate_fn=None, batch_sampler=None):
+        if batch_sampler is not None:
+            super().__init__(dataset, collate_fn=collate_fn, batch_sampler=batch_sampler)
+        else:
+            super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn, batch_sampler=batch_sampler)
         self.using_cuda = Application.instance().using_cuda
 
     def split_batch(self, batch: dict):
@@ -299,37 +303,13 @@ def create_data_loaders(filepath, batch_size, bidir, skipsos, jagged, max_len, s
             data_handlers.append(LogDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate))
     return data_handlers
 
-def create_data_loaders_linelevel(filepath, batch_size, bidir, skipsos, jagged, max_len, shuffle=False, dataset_split=None):
+def create_data_loaders_linelevel(filepath, batch_size, bidir, skipsos, jagged, window_size, shuffle=False, dataset_split=None):
     """Creates and returns 2 data loaders.
 
     If dataset_split is not provided the second data loader is instead
     set to None.
     """
-
-    def collate_fn(data, jagged=False):
-        """Pads the input fields to the length of the longest sequence in the
-        batch."""
-        batch = {}
-
-        for key in data[0]:
-            batch[key] = []
-
-        for sample in data:
-            for key in sample:
-                batch[key].append(sample[key])
-
-        if jagged:
-            fields_to_pad = ["input", "target", "mask"]
-            for key in fields_to_pad:
-                batch[key] = pad_sequence(batch[key], batch_first=True, padding_value=0)
-
-        for key in batch:
-            if isinstance(batch[key], list):
-                batch[key] = torch.stack(batch[key])
-
-        return batch
-
-    dataset = MapLoglineDataset(filepath, bidir, skipsos, jagged, max_len)
+    dataset = MapLoglineDataset(filepath, bidir, skipsos, jagged, window_size=window_size)
 
     # Split the dataset according to the split list
     if dataset_split is not None:
@@ -349,13 +329,25 @@ def create_data_loaders_linelevel(filepath, batch_size, bidir, skipsos, jagged, 
         # Return just a single dataset
         datasets = [dataset, None]
 
-    collate = partial(collate_fn, jagged=jagged)
+
     data_handlers = []
     for dataset in datasets:
         if dataset is None:
             data_handlers.append(None)
         else:
-            data_handlers.append(LogDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate))
+            # Create a batch_sampler to split the dataset into batch_size chunks.
+            # For each batch one sequence (of length window_size) is loaded from each chunk
+            chunk_size = int(np.ceil(len(dataset) / batch_size)) # Ceil because we want exactly batch_size chunks, even if the last is smaller
+            batch_indices = []
+            # e.g. if chunk_size is 10 and batch_size is 2, indices will be [0, 10, 1, 11, 2, 12, 3, 13, ...]
+            for i in range(chunk_size):
+                for j in range(batch_size):
+                    index = j * batch_size + i
+                    if index <= len(dataset):
+                        batch_indices.append(j * batch_size + i)
+            batch_indices = torch.tensor(batch_indices)
+            batch_sampler = torch.utils.data.BatchSampler(torch.utils.data.SequentialSampler(batch_indices), batch_size, False)
+            data_handlers.append(LogDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, batch_sampler=batch_sampler))
     return data_handlers
 
 def load_data(
@@ -389,17 +381,17 @@ def load_data_linelevel(
     bidir,
     skipsos,
     jagged,
-    sentence_length,
+    window_size,
     train_val_split=[1, 0],
-    shuffle_train_data=True,
+    shuffle_train_data=False,
 ):
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
     train_loader, val_loader = create_data_loaders_linelevel(
-        filepaths_train, batch_size, bidir, skipsos, jagged, sentence_length, shuffle_train_data, train_val_split
+        filepaths_train, batch_size, bidir, skipsos, jagged, window_size=window_size, shuffle=False, dataset_split=train_val_split
     )
     test_loader, _ = create_data_loaders_linelevel(
-        filepaths_eval, batch_size, bidir, skipsos, jagged, sentence_length, shuffle=False, dataset_split=None
+        filepaths_eval, batch_size, bidir, skipsos, jagged, window_size=window_size, shuffle=False, dataset_split=None
     )
 
     return train_loader, val_loader, test_loader
