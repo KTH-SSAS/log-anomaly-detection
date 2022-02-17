@@ -6,9 +6,9 @@ from log_analyzer.tokenizer.tokenizer_neo import LANLTokenizer, LANLVocab
 
 @pytest.fixture()
 def redteam_file(tmp_path):
-    redteam_file = "data/tokenization_test_data/redteam.txt"
+    red_file = "data/tokenization_test_data/redteam.txt"
 
-    with open(redteam_file) as f:
+    with open(red_file) as f:
         outfile = tmp_path / "redteam.txt"
         outfile.write_text(f.read())
 
@@ -17,7 +17,7 @@ def redteam_file(tmp_path):
 
 @pytest.fixture()
 def auth_file(tmp_path):
-    filename = "data/tokenization_test_data/auth_head.txt"
+    filename = "data/tokenization_test_data/auth_head_1M.txt"
 
     with open(filename) as f:
         outfile = tmp_path / "auth.txt"
@@ -78,7 +78,7 @@ def counts_file(tmp_path, single_line_test_file):
 
     outfile = tmp_path / "countsfile.json"
 
-    counts = count_fields(single_line_test_file, outfile_path=outfile, fields_to_exclude=[0])
+    counts = count_fields(single_line_test_file, outfile_path=outfile, fields_to_exclude=[0], normalized=False)
 
     assert list(counts.keys()) == field_names[1:]
 

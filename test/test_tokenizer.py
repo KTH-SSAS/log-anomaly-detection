@@ -1,17 +1,13 @@
-import json
-from cmath import log
-
 import numpy as np
 import pytest
-import torch
 
 from log_analyzer.data.log_file_utils import count_fields
 from log_analyzer.tokenizer.tokenizer_neo import LANLTokenizer, LANLVocab
 
 
-def test_counter(log_file):
+def test_counter(processed_log_file):
 
-    counts = count_fields(log_file, fields_to_exclude=[0])
+    counts = count_fields(processed_log_file, fields_to_exclude=[0], has_red=True)
     assert counts["src_user"]["U22"] == 8
     assert counts["dst_user"]["U22"] == 8
     assert counts["src_domain"]["DOM1"] == 97
@@ -28,7 +24,7 @@ def test_counter(log_file):
 def test_tokenizer(tokenizer: LANLTokenizer, line):
 
     indexes = tokenizer.tokenize(line)
-    expected = np.array([6, 9, 12, 15, 18, 21, 24, 27, 30, 33])
+    expected = np.array([24, 25, 26, 27, 28, 29, 30, 31, 32, 33])
     assert (indexes == expected).all()
 
 
@@ -36,8 +32,8 @@ def test_counts2vocab(counts_file):
 
     vocab = LANLVocab.counts2vocab(counts_file, "vocab.json", 0)
 
-    assert vocab["special_tokens"]["[PAD]"] == 0
-    assert "U24" in vocab["src_user"]
+    assert vocab.special_tokens["[PAD]"] == 0
+    assert "U24" in vocab.vocab["src_user"]
 
 
 def test_dataloader(tokenizer):
@@ -76,28 +72,17 @@ def test_mask_tokens(tokenizer, seed, num_masked_positions, expected_num_mask_to
     assert True
 
 
-def test_new_dataloader(tokenizer, processed_log_file):
-    from torch.utils.data import DataLoader
 
-    from log_analyzer.data.data_loader import collate_fn
-    from log_analyzer.data.loader_neo import IterableLANLDataset
-
-    np.random.seed(5)
-    ds = IterableLANLDataset(processed_log_file, task=2, tokenizer=tokenizer)
-    batch_size = 10
-    num_fields = 10
-    dl = DataLoader(ds, collate_fn=collate_fn, batch_size=batch_size)
-
-    for batch in dl:
-        assert batch["input"].shape == torch.Size((batch_size, num_fields))
-        assert not torch.all(batch["red"])
-
-        pass
-
-
-def test_log_processing(auth_file):
+def test_log_processing(tmp_path, auth_file, redteam_file):
+    """Test auth processing"""
     from log_analyzer.data.log_file_utils import process_logfiles_for_training
+
+    outfile = tmp_path / "out"
+    outfile.mkdir()
 
     process_logfiles_for_training(
         auth_file,
+        redteam_file,
+        outfile,
+        [0]
     )
