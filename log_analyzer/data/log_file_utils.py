@@ -4,7 +4,10 @@ import os
 import tempfile
 from argparse import ArgumentParser
 from collections import OrderedDict
+
+from numpy import inf
 from log_analyzer.tokenizer.tokenizer_neo import LANLVocab
+from glob import glob
 
 SECONDS_PER_DAY = 86400
 
@@ -40,8 +43,8 @@ class LANLReader:
         self.file_pointer = file_pointer
 
         if self.has_red:
-            self._csv_field_names += "is_red"
-            self.field_names += "is_red"
+            self._csv_field_names.append("is_red")
+            self.field_names.append("is_red")
 
         if normalized:
             self._csv_field_names = self.field_names
@@ -50,7 +53,7 @@ class LANLReader:
         reader = csv.DictReader(self.file_pointer, fieldnames=self._csv_field_names)
         for row in reader:
 
-            if row[self.field_names[-1]] is None:
+            if row[self.field_names[-1]] is None or None in row:
                 raise RuntimeError(f"The number of fields in the data does not match the settings provided.")
 
             data = row
@@ -185,8 +188,9 @@ def count_fields(infile_path, outfile_path=None, fields_to_exclude=None, normali
         infile_path = [infile_path]
 
     for file in infile_path:
+        print(f"Counting fields in {file}...")
         with open(file) as f:
-            reader = LANLReader(f, normalized=normalized, has_red=False)
+            reader = LANLReader(f, normalized=normalized, has_red=has_red)
 
             fields = reader.field_names.copy()
             for f in fields_to_exclude:
@@ -222,7 +226,7 @@ def process_file():
 
 def generate_counts():
     parser = ArgumentParser()
-    parser.add_argument("log_files", type=str, nargs="+", help="Path(s) to log file(s).")
+    parser.add_argument("log_files", type=str, nargs='+', help="Glob pattern of log files to process.")
     parser.add_argument("--not-normalized", action="store_false",
                         help="Add this flag if the log file is not already normalized.")
     parser.add_argument("--no-red", action="store_false",
@@ -230,7 +234,7 @@ def generate_counts():
     parser.add_argument("-o", "--output", help="Output filename.", default="counts.json")
     parser.add_argument("--fields-to-exclude", nargs="+", type=int, help="Indexes of fields to not count.", default=[])
     args = parser.parse_args()
-    #args = parser.parse_args(["data/auth_by_day/8.csv", "data/auth_by_day/7.csv", "--fields-to-exclude", "0", "--no-red", "--not-normalized"])
+    #args = parser.parse_args(["data/train_data/7.csv", "--fields-to-exclude", "0"])
     count_fields(args.log_files, args.output, args.fields_to_exclude, args.not_normalized, args.no_red)
 
 
@@ -238,8 +242,8 @@ def generate_vocab_from_counts():
 
     parser = ArgumentParser()
     parser.add_argument("counts_file", type=str, help="Path to JSON file with field counts.")
-    parser.add_argument("--mode", choices=["fields", "global"])
-    parser.add_argument("--cutoff", type=int,
+    parser.add_argument("mode", choices=["fields", "global"])
+    parser.add_argument("cutoff", type=int,
                         help="If a token occurs less than the cutoff value, it will not be included.")
     parser.add_argument("-o", "--output", type=str, help="Output filename", default="vocab.json")
 
