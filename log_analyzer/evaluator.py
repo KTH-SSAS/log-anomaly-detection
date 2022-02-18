@@ -217,20 +217,12 @@ class Evaluator:
     def add_evaluation_data(self, log_line, predictions, users, losses, seconds, red_flags):
         """Extend the data stored in self.data with the inputs."""
         # Handle input from tiered models
-        if predictions.ndim > 2:
-            log_line = torch.flatten(log_line, end_dim=1)
-            predictions = torch.flatten(predictions, end_dim=1)
-            users = torch.flatten(users, end_dim=1)
-            losses = torch.flatten(losses, end_dim=1)
-            seconds = torch.flatten(seconds, end_dim=1)
-            red_flags = torch.flatten(red_flags, end_dim=1)
-        log_line = log_line.cpu().detach().flatten()
-        predictions = predictions.cpu().detach().flatten()
-        losses = losses.cpu().detach()
-        seconds = seconds.cpu().detach()
-        red_flags = red_flags.cpu().detach()
+        users = users.cpu().detach().flatten()
+        losses = losses.cpu().detach().flatten()
+        seconds = seconds.cpu().detach().flatten()
+        red_flags = red_flags.cpu().detach().flatten()
         # Check that there's enough space left for all the entries
-        if len(self.data["losses"]) < self.index["losses"] + len(log_line):
+        if len(self.data["losses"]) < self.index["losses"] + len(losses):
             # Adding entries 1'050'000 at a time provides a nice balance of efficiency and memory usage.
             # Most days have just over 7 million log lines, so incrementing with 1'000'000 is inefficient
             self.data["users"] = np.concatenate((self.data["users"], np.zeros(1050000, float)))
