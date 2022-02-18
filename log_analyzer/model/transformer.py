@@ -7,7 +7,7 @@ from torch import Tensor, nn
 
 from log_analyzer.application import Application
 from log_analyzer.config.model_config import TieredTransformerConfig, TransformerConfig
-from log_analyzer.model.lstm import LogModel, TieredLogModel
+from log_analyzer.model.lstm import LogLineLogModel, LogModel, TieredLogModel
 from log_analyzer.model.model_util import initialize_weights
 
 
@@ -303,13 +303,14 @@ class TieredTransformer(TieredLogModel):
         max_length = torch.max(self.saved_context_history_lengths[torch.tensor(users)])
         self.saved_context_histories[torch.tensor(users), -max_length:, :] = context_history[:, -max_length:, :]
 
-class LoglineTransformer(LogModel):
+class LoglineTransformer(LogLineLogModel):
     """Transformer that works on the logline level - each "token" input is a single log line.
     
     Output: predicted embedding value for the next logline."""
 
     def __init__(self, config: TransformerConfig):
         super().__init__(config)
+        
         self.config: TransformerConfig = config
         self.name = "Logline Transformer"
         self.src_mask = None
@@ -356,8 +357,6 @@ class LoglineTransformer(LogModel):
 
         loss = None
         if targets is not None:
-            targets = self.word_embedding(targets)
-            targets = self.sentence_embedding(targets)
             # Compute and return loss if targets is given
             loss, _ = self.compute_loss(logits, targets, lengths, mask)
 

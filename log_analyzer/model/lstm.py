@@ -81,6 +81,27 @@ class TieredLogModel(LogModel):
         loss /= len(Y)
         return loss, line_losses_list
 
+class LogLineLogModel(LogModel):
+    """Superclass for logline-level language models ("sentence-embedding" models)."""
+
+    def __init__(self, config: Config):
+        super().__init__(config)
+        self.criterion = nn.MSELoss(reduction="none")
+
+    def compute_loss(self, output: torch.Tensor, Y, lengths, mask: torch.Tensor):
+        """Computes the loss for the given model output and ground truth."""
+        Y = self.word_embedding(Y)
+        Y = self.sentence_embedding(Y)
+        embedding_losses = self.criterion(output, Y)
+        if mask is not None:
+            embedding_losses = embedding_losses * mask
+        line_losses = torch.mean(embedding_losses, dim=2)
+        sequence_losses = torch.mean(line_losses, dim=1)
+        loss = torch.mean(sequence_losses, dim=0)
+
+        # Return the loss, as well as extra details like loss per line
+        return loss, line_losses
+
 
 class LSTMLanguageModel(LogModel):
     """Superclass for non-tiered LSTM log-data language models."""
