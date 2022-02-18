@@ -145,25 +145,35 @@ class IterableLogDataset(LogDataset, IterableDataset):
 
 class MapLoglineDataset(LogDataset, Dataset):
     """Provides data via __getitem__, allowing arbitrary data entries to be
-    accessed via index."""
+    accessed via index.
+    
+    Provides sequences of loglines of length window_size"""
 
     def __init__(self, filepaths, bidirectional, skipsos, jagged, delimiter=" ", window_size=100) -> None:
         super().__init__(filepaths, bidirectional, skipsos, jagged, delimiter)
 
-        self.loglines = []
+        self.log_sequences = []
         self.window_size = window_size
         iterator = parse_multiple_files(self.filepaths, jagged, bidirectional, skipsos, raw_lines=True)
 
-        self.loglines.extend(iterator)
+        sequence = []
+        sequence_length = 0
+        for line in iterator:
+            sequence.append(line)
+            sequence_length += 1
+            if sequence_length == window_size:
+                self.log_sequences.append(sequence)
+                sequence = []
+                sequence_length = 0
 
     def __getitem__(self, index):
-        start_index = index * self.window_size
-        end_index = max(start_index + self.window_size, len(self.loglines))
-        parsed_lines = [parse_line(line, self.jag, self.bidir, self.skipsos) for line in self.loglines[start_index:end_index]]
-        return parsed_lines
+        sequence = self.log_sequences[index]
+        parser = partial(parse_line, jag=self.jag, bidir=self.bidir, skipsos=self.skipsos)
+        parsed_sequence = list(map(parser, sequence))
+        return parsed_sequence
 
     def __len__(self):
-        return int(np.ceil(len(self.loglines) / self.window_size))     
+        return len(self.log_sequences)
 
 
 class LogDataLoader(DataLoader):
@@ -309,6 +319,37 @@ def create_data_loaders_linelevel(filepath, batch_size, bidir, skipsos, jagged, 
     If dataset_split is not provided the second data loader is instead
     set to None.
     """
+    
+    def collate_fn(data, jagged=False):
+        """Pads the input fields to the length of the longest sequence in the
+        batch."""
+        batch = {}
+
+        for key in data[0][0]:
+            batch[key] = []
+            for sequence in data:
+                batch[key].append([])
+
+        for idx, sequence in enumerate(data):
+            for sample in sequence:
+                for key in sample:
+                    batch[key][idx].append(sample[key])
+
+        if jagged:
+            fields_to_pad = ["input", "target", "mask"]
+            for key in fields_to_pad:
+                batch[key] = pad_sequence(batch[key], batch_first=True, padding_value=0)
+
+        for key in batch:
+            for sequence_index in range(len(batch[key])):
+                if isinstance(batch[key][sequence_index], list):
+                    batch[key][sequence_index] = torch.stack(batch[key][sequence_index])
+            if isinstance(batch[key], list):
+                batch[key] = torch.stack(batch[key])
+                
+
+        return batch
+
     dataset = MapLoglineDataset(filepath, bidir, skipsos, jagged, window_size=window_size)
 
     # Split the dataset according to the split list
@@ -329,25 +370,12 @@ def create_data_loaders_linelevel(filepath, batch_size, bidir, skipsos, jagged, 
         # Return just a single dataset
         datasets = [dataset, None]
 
-
+    collate = partial(collate_fn, jagged=jagged)
     data_handlers = []
     for dataset in datasets:
         if dataset is None:
             data_handlers.append(None)
-        else:
-            # Create a batch_sampler to split the dataset into batch_size chunks.
-            # For each batch one sequence (of length window_size) is loaded from each chunk
-            chunk_size = int(np.ceil(len(dataset) / batch_size)) # Ceil because we want exactly batch_size chunks, even if the last is smaller
-            batch_indices = []
-            # e.g. if chunk_size is 10 and batch_size is 2, indices will be [0, 10, 1, 11, 2, 12, 3, 13, ...]
-            for i in range(chunk_size):
-                for j in range(batch_size):
-                    index = j * batch_size + i
-                    if index <= len(dataset):
-                        batch_indices.append(j * batch_size + i)
-            batch_indices = torch.tensor(batch_indices)
-            batch_sampler = torch.utils.data.BatchSampler(torch.utils.data.SequentialSampler(batch_indices), batch_size, False)
-            data_handlers.append(LogDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, batch_sampler=batch_sampler))
+            data_handlers.append(LogDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate))
     return data_handlers
 
 def load_data(
