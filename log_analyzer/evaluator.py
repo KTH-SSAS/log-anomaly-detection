@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 import wandb
 from log_analyzer.application import Application
-from log_analyzer.model.lstm import LogModel, LSTMLanguageModel
+from log_analyzer.model.lstm import LogLineLogModel, LogModel, LSTMLanguageModel
 from log_analyzer.tokenizer.tokenizer import Char_tokenizer
 
 
@@ -144,14 +144,21 @@ class Evaluator:
 
         # Save the results if desired
         if store_eval_data:
-            preds = torch.argmax(output, dim=-1)
+            if isinstance(self.model, LogLineLogModel):
+                # Logline logmodels do not produce predictions over a discrete space that can/should be argmaxed
+                # The predictions are instead placed in the continuous sentence-embedding space
+                # Therefore we cannot track token-accuracy, and we thus do not pass Y or preds to add_evaluation_data()
+                Y = None
+                preds = None
+            else:
+                preds = torch.argmax(output, dim=-1)
             self.add_evaluation_data(
-                Y,
-                preds,
                 users,
                 line_losses,
                 seconds,
                 red_flags,
+                log_line=Y,
+                predictions=preds,
             )
             self.test_loss += loss
             self.test_count += 1
@@ -214,7 +221,7 @@ class Evaluator:
                 wandb.run.summary[key] = evaluator_metrics[key]
         return evaluator_metrics
 
-    def add_evaluation_data(self, log_line, predictions, users, losses, seconds, red_flags):
+    def add_evaluation_data(self, users, losses, seconds, red_flags, log_line=None, predictions=None):
         """Extend the data stored in self.data with the inputs."""
         # Handle input from tiered models
         users = users.cpu().detach().flatten()
@@ -240,13 +247,16 @@ class Evaluator:
         # Update the metatag, i.e. data is prepared and normalised data is ready
         self.data_is_prepared = False
         # Update token accuracy including this batch
-        batch_token_accuracy = metrics.accuracy_score(log_line, predictions)
-        new_token_count = self.token_count + len(log_line)
-        new_token_accuracy = (
-            self.token_accuracy * self.token_count + batch_token_accuracy * len(log_line)
-        ) / new_token_count
-        self.token_count = new_token_count
-        self.token_accuracy = new_token_accuracy
+        if log_line is not None and predictions is not None:
+            log_line = log_line.cpu().detach().flatten()
+            predictions = predictions.cpu().detach().flatten()
+            batch_token_accuracy = metrics.accuracy_score(log_line, predictions)
+            new_token_count = self.token_count + len(log_line)
+            new_token_accuracy = (
+                self.token_accuracy * self.token_count + batch_token_accuracy * len(log_line)
+            ) / new_token_count
+            self.token_count = new_token_count
+            self.token_accuracy = new_token_accuracy
 
     def reset_evaluation_data(self):
         """Delete the stored evaluation data."""
