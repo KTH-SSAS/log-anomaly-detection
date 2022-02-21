@@ -14,6 +14,7 @@ SECONDS_PER_DAY = 86400
 
 class LANLReader:
     """Reader class for parsing LANL log data."""
+
     def __init__(self, file_pointer, normalized=True, has_red=False) -> None:
         self.field_names = [
             "time",
@@ -124,15 +125,16 @@ def split_by_day(log_filename, out_dir, keep_days=None):
         out_file.close()
 
 
-def count_days():
+def count_events_per_day(redfile):
     """Count the number of red team events in the redteam file by day."""
-    with open("data/tokenization_test_data/redteam.txt", encoding="utf8") as f:
+    with open(redfile, encoding="utf8") as f:
         day_counts = {}
         for line in f:
             fields = line.split(",")
             sec = fields[0]
             day = sec2day(sec)
 
+            #print(f"{day} : {line}")
             try:
                 day_counts[day] += 1
             except KeyError:
@@ -152,7 +154,7 @@ def split_user_and_domain(infile_path, outfile_path):
             writer.writerow(entry)
 
 
-def add_redteam_to_log(filename_in, filename_out, readteam_file, normalized=False):
+def add_redteam_to_log(day, filename_in, filename_out, readteam_file, normalized=False):
     """Adds redteam activity to a LANL log file as new field.
 
     The field is appended to each line.
@@ -161,14 +163,16 @@ def add_redteam_to_log(filename_in, filename_out, readteam_file, normalized=Fals
     with open(readteam_file, encoding="utf8") as f:
         redteam_events = f.readlines()
 
-    redteam_events = [l for l in redteam_events if sec2day(l.split(",", maxsplit=1)[0]) == 8]
+    redteam_events = [l for l in redteam_events if sec2day(l.split(",", maxsplit=1)[0]) == day]
 
     with open(filename_out, "w", encoding="utf8") as outfile, open(filename_in, "r", encoding="utf8") as infile:
         reader = LANLReader(infile, normalized=normalized)
         writer = csv.DictWriter(outfile, reader.field_names + ["is_red"])
         for line in reader:
 
-            red_style_line = ",".join((line["time"], line["src_user"], line["src_domain"], line["dst_domain"])) + "\n"
+            red_style_line = (
+                f"""{line['time']},{line['src_user']}@{line['src_domain']},{line['src_pc']},{line['dst_pc']}\n"""
+            )
 
             if red_style_line in redteam_events:
                 line["is_red"] = "1"
@@ -180,7 +184,7 @@ def add_redteam_to_log(filename_in, filename_out, readteam_file, normalized=Fals
 
 def process_logfiles_for_training(auth_file, red_file, output_dir, days_to_keep):
     """
-    Process auth.txt into normalized log files split into days. 
+    Process auth.txt into normalized log files split into days.
     """
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
@@ -191,7 +195,7 @@ def process_logfiles_for_training(auth_file, red_file, output_dir, days_to_keep)
         for day in days_to_keep:
             infile = os.path.join(tmpdir, f"{day}.csv")
             outfile = os.path.join(output_dir, f"{day}.csv")
-            add_redteam_to_log(infile, outfile, red_file)
+            add_redteam_to_log(day, infile, outfile, red_file)
 
 
 def count_fields(infile_path, outfile_path=None, fields_to_exclude=None, normalized=True, has_red=False):
@@ -272,3 +276,8 @@ def generate_vocab_from_counts():
         LANLVocab.counts2vocab(args.counts_file, args.output, args.cutoff)
     elif args.mode == "global":
         raise NotImplementedError("Globally unique vocab is not implemented.")
+
+
+# count_days("/home/jakob/lanl/redteam.txt")
+# day = 6
+# add_redteam_to_log(day, f"/home/jakob/lanl/{day}.csv", f"{day}.csv", "/home/jakob/lanl/redteam.txt", normalized=True)
