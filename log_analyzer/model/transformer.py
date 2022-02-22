@@ -218,7 +218,7 @@ class TieredTransformer(TieredLogModel):
         users = [user.item() for user in users]
 
         # Get the state for the users in the batch
-        context_history, history_length = self.get_batch_data(users)
+        context_history, history_length = self.get_batch_data(users, src.device)
 
         # Get the number of steps in the batch
         self.num_steps = src.shape[0]
@@ -254,14 +254,14 @@ class TieredTransformer(TieredLogModel):
             loss, _ = self.compute_loss(token_output, targets, lengths, mask)
         return token_output, loss
 
-    def get_batch_data(self, users):
+    def get_batch_data(self, users, device):
         """Given a list of users, fetch the relevant history and model data for
         each user."""
         history = self.saved_context_histories[torch.tensor(users)]
         history_lengths = self.saved_context_history_lengths[torch.tensor(users)]
         # Crop the length of history returned to max history_length amongst users in this batch
         max_length = torch.max(history_lengths)
-        return history[:, -max_length:, :], history_lengths
+        return history[:, -max_length:, :].to(device), history_lengths
 
     def update_state(self, users, context_history):
         """Given one batch of history/model data output by the model, update
