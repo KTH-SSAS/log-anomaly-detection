@@ -241,12 +241,14 @@ class TieredTransformer(TieredLogModel):
                                             tgt = tgt_input,
                                             tgt_mask = tgt_mask)
             tf_hidden_mean = torch.unsqueeze(torch.mean(tf_hidden, dim = 1), dim=1) * math.sqrt(self.model_dim)
-            context_history = torch.cat([context_history, tf_hidden_mean], dim =1)[:, -self.shift_window:, :]
+            context_history = torch.cat([context_history, tf_hidden_mean], dim =1)
+            history_history_ind = context_history.shape[1] - self.shift_window
+            context_history = context_history[:, history_history_ind:, :]
             logits = tf_hidden @ self.word_embedding.weight.t()
             token_output[idx][: logits.shape[0], : logits.shape[1], : logits.shape[2]] = logits
-            history_length = torch.min(history_length + 1, torch.ones(history_length.shape, dtype=int)*self.shift_window)
+            history_length = torch.min(history_length + 1, torch.ones(history_length.shape, dtype=torch.int16) * self.shift_window )
         # Update context state
-        self.update_state(users, context_history)
+        self.update_state(users, context_history, history_length)
 
         loss = None
         if targets is not None:
@@ -263,13 +265,10 @@ class TieredTransformer(TieredLogModel):
         max_length = torch.max(history_lengths)
         return history[:, -max_length:, :].to(device), history_lengths
 
-    def update_state(self, users, context_history):
+    def update_state(self, users, context_history, history_length):
         """Given one batch of history/model data output by the model, update
         the stored state for future use."""
         context_history = context_history.detach().cpu()
-        for user in users:
-            self.saved_context_history_lengths[user] = min(
-                self.saved_context_history_lengths[user] + self.num_steps, self.shift_window
-            )
+        self.saved_context_history_lengths[torch.tensor(users)] = history_length
         max_length = torch.max(self.saved_context_history_lengths[torch.tensor(users)])
         self.saved_context_histories[torch.tensor(users), -max_length:, :] = context_history[:, -max_length:, :]
