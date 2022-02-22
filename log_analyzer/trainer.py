@@ -1,42 +1,30 @@
-from abc import ABC, abstractmethod
 from typing import Optional
 
 import torch
-import torch.nn as nn
 from torch.cuda.amp.grad_scaler import GradScaler
 
 import log_analyzer.model.early_stopping as early_stopping
 from log_analyzer.application import Application
-from log_analyzer.config.model_config import LSTMConfig, TransformerConfig
 from log_analyzer.config.trainer_config import TrainerConfig
-from log_analyzer.evaluator import Evaluator
-from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel
-from log_analyzer.model.transformer import Transformer
-
-# TODO name this something more descriptive, it might be used as a wrapper
-# around both transformer/LSTM
+from log_analyzer.model.lstm import LogModel
 
 
-class Trainer(ABC):
-    @property
-    @abstractmethod
-    def model(self) -> LogModel:
-        pass
-
-    def __init__(self, config: TrainerConfig, checkpoint_dir):
+class Trainer:
+    def __init__(self, config: TrainerConfig, model: LogModel, checkpoint_dir):
 
         self.config = config
 
+        self.model = model
+
         # Check GPU
-        self.cuda = Application.instance().using_cuda
+        self.using_cuda = Application.instance().using_cuda
 
         self.checkpoint_dir = checkpoint_dir
 
-        if self.cuda:
+        if self.using_cuda:
             self.model.cuda()
 
         # Create settings for training.
-        self.criterion = nn.CrossEntropyLoss(reduction="none", ignore_index=0)
         self._EarlyStopping = early_stopping.EarlyStopping(patience=config.early_stop_patience, path=checkpoint_dir)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=config.learning_rate)
         self.scheduler = torch.optim.lr_scheduler.StepLR(
@@ -51,28 +39,10 @@ class Trainer(ABC):
         else:
             self.scaler = None
 
-        # Create evaluator
-        self.evaluator = Evaluator()
-
     def early_stopping(self, val_loss):
         """Performs early stopping check after validation, if enabled."""
         if self.config.early_stopping:
             self._EarlyStopping(val_loss, self.model)
-
-    def compute_loss(self, output: torch.Tensor, Y, lengths, mask: torch.Tensor):
-        """Computes the loss for the given model output and ground truth."""
-        targets = Y
-        if lengths is not None:
-            token_losses = self.criterion(output.transpose(1, 2), targets)
-            masked_losses = token_losses * mask
-            line_losses = torch.sum(masked_losses, dim=1)
-        else:
-            token_losses = self.criterion(output.transpose(1, 2), Y)
-            line_losses = torch.mean(token_losses, dim=1)
-        loss = torch.mean(line_losses, dim=0)
-
-        # Return the loss, as well as extra details like loss per line
-        return loss, line_losses, targets
 
     def optimizer_step(self, loss: torch.Tensor):
         """Performs one step of optimization on the given loss."""
@@ -86,130 +56,41 @@ class Trainer(ABC):
         if self.use_scheduler:
             self.scheduler.step()
 
-    def split_batch(self, batch: dict):
-        """Splits a batch into variables containing relevant data."""
-        X = batch["input"]
-        Y = batch["target"]
-
-        # Optional fields
-        L = batch.get("length")
-        M = batch.get("mask")
-
-        if self.cuda:
-            X = X.cuda()
-            Y = Y.cuda()
-            if M is not None:
-                M = M.cuda()
-
-        return X, Y, L, M
-
-    def train_step(self, batch):
+    def train_step(self, split_batch, validation=False):
         """Defines a single training step.
 
         Feeds data through the model, computes the loss and makes an
         optimization step.
+
+        split_batch: should contain X, Y, L, M
+            X: input
+            Y: target
+            L: sequence lengths
+            M: sequence masks
+
+        validation: if set to True no backprop will be performed
         """
+        X = split_batch["X"]
+        Y = split_batch["Y"]
+        L = split_batch["L"]
+        M = split_batch["M"]
 
-        self.model.train()
-        self.optimizer.zero_grad()
-
-        # Split the batch into input, ground truth, etc.
-        X, Y, L, M = self.split_batch(batch)
+        if not validation:
+            self.model.train()
+            self.optimizer.zero_grad()
+        else:
+            self.model.eval()
 
         if self.config.mixed_precision:
             with torch.cuda.amp.autocast():
-                # Apply the model to input to produce the output
-                output, *_ = self.model(X, lengths=L, mask=M)
-
-                # Compute the loss for the output
-                loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
+                # Apply the model to input to produce the output, provide targets to receive loss
+                _, loss = self.model(X, lengths=L, mask=M, targets=Y)
         else:
-            # Apply the model to input to produce the output
-            output, *_ = self.model(X, lengths=L, mask=M)
-
-            # Compute the loss for the output
-            loss, *_ = self.compute_loss(output, Y, lengths=L, mask=M)
+            # Apply the model to input to produce the output, provide targets to receive loss
+            _, loss = self.model(X, lengths=L, mask=M, targets=Y)
 
         # Take an optimization step based on the loss
-        self.optimizer_step(loss)
+        if not validation:
+            self.optimizer_step(loss)
 
         return loss, self._EarlyStopping.early_stop
-
-    def eval_step(self, batch, store_eval_data=False):
-        """Defines a single evaluation step.
-
-        Feeds data through the model and computes the loss.
-        """
-        # TODO add more metrics, like perplexity.
-        self.model.eval()
-
-        # Split the batch into input, ground truth, etc.
-        X, Y, L, M = self.split_batch(batch)
-
-        # Apply the model to input to produce the output
-        output, *_ = self.model(X, lengths=L, mask=M)
-
-        # Compute the loss for the output
-        loss, line_losses, targets = self.compute_loss(output, Y, lengths=L, mask=M)
-
-        # Save the results if desired
-        if store_eval_data:
-            preds = torch.argmax(output, dim=-1)
-            self.evaluator.add_evaluation_data(
-                targets,
-                preds,
-                batch["user"],
-                line_losses,
-                batch["second"],
-                batch["red"],
-            )
-            self.evaluator.test_loss += loss
-            self.evaluator.test_count += 1
-
-        # Return both the loss and the output token probabilities
-        return loss, output
-
-
-class LSTMTrainer(Trainer):
-    """Trainer class for forward and bidirectional LSTM model."""
-
-    @property
-    def model(self):
-        if self.lstm is None:
-            raise RuntimeError("Model not intialized!")
-        return self.lstm
-
-    def __init__(
-        self,
-        config: TrainerConfig,
-        lstm_config: LSTMConfig,
-        bidirectional,
-        checkpoint_dir,
-    ):
-
-        model = BidLSTM if bidirectional else FwdLSTM
-        # Create a model
-        self.lstm = model(lstm_config)
-
-        super().__init__(config, checkpoint_dir)
-
-
-class TransformerTrainer(Trainer):
-    """Trainer class for Transformer model."""
-
-    @property
-    def model(self):
-        if self.transformer is None:
-            raise RuntimeError("Model not initialized!")
-        return self.transformer
-
-    def __init__(
-        self,
-        config: TrainerConfig,
-        transformer_config: TransformerConfig,
-        checkpoint_dir,
-    ):
-        # Create a model
-        self.transformer = Transformer(transformer_config)
-
-        super().__init__(config, checkpoint_dir)

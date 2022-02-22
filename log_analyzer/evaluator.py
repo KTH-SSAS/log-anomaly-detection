@@ -2,11 +2,13 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 from sklearn import metrics
 from tqdm import tqdm
 
 import wandb
-from log_analyzer.model.lstm import LSTMLanguageModel
+from log_analyzer.application import Application
+from log_analyzer.model.lstm import LogModel, LSTMLanguageModel
 from log_analyzer.tokenizer.tokenizer import Char_tokenizer
 
 
@@ -102,15 +104,126 @@ def create_attention_matrix(
 
 
 class Evaluator:
-    def __init__(self):
+    def __init__(self, model: LogModel, checkpoint_dir):
         """Creates an Evaluator instance that provides methods for model
         evaluation."""
+        self.model = model
         self.data_is_prepared = False
-        self.data_is_normalized = False
         self.reset_evaluation_data()
+        self.use_wandb = Application.instance().wandb_initialized
+        self.checkpoint_dir = checkpoint_dir
+
+    @torch.no_grad()
+    def eval_step(self, split_batch, store_eval_data=False):
+        """Defines a single evaluation step.
+
+        Feeds data through the model and computes the loss.
+
+        split_batch: should contain X, Y, L, M
+            X: input
+            Y: target
+            L: sequence lengths
+            M: sequence masks
+        """
+        X = split_batch["X"]
+        Y = split_batch["Y"]
+        L = split_batch["L"]
+        M = split_batch["M"]
+
+        users = split_batch["user"]
+        seconds = split_batch["second"]
+        red_flags = split_batch["red_flag"]
+
+        self.model.eval()
+
+        # Apply the model to input to produce the output
+        output, _ = self.model(X, lengths=L, mask=M)
+
+        # Compute the loss for the output
+        loss, line_losses = self.model.compute_loss(output, Y, lengths=L, mask=M)
+
+        # Save the results if desired
+        if store_eval_data:
+            preds = torch.argmax(output, dim=-1)
+            self.add_evaluation_data(
+                Y,
+                preds,
+                users,
+                line_losses,
+                seconds,
+                red_flags,
+            )
+            self.test_loss += loss
+            self.test_count += 1
+
+        # Return both the loss and the output token probabilities
+        return loss, output
+
+    def run_all(self):
+        r"""Performs standard evaluation on the model. Assumes the model has been trained
+        and the evaluator has been populated with evaluation data (see eval_step)"""
+        if not self.data_is_prepared:
+            self.prepare_evaluation_data()
+        # Get generic metrics
+        evaluator_metrics = self.get_metrics()
+
+        # get line losses plot
+        self.plot_line_loss_percentiles(
+            percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False
+        )
+        if self.use_wandb:
+            wandb.log({"Aggregate line losses": wandb.Image(plt)})
+        plt.clf()
+
+        # get roc curve
+        _, roc_plot = self.plot_roc_curve()
+        if self.use_wandb:
+            wandb.log({"ROC Curve": roc_plot})
+
+        # get pr curve
+        AP_score, pr_plot = self.plot_pr_curve()
+        if self.use_wandb:
+            wandb.log({"PR Curve": pr_plot})
+        evaluator_metrics["eval/AP"] = AP_score
+
+        # get normalised line losses plot
+        self.plot_line_loss_percentiles(
+            percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False, normalised=True
+        )
+        if self.use_wandb:
+            wandb.log({"Aggregate line losses (normalised)": wandb.Image(plt)})
+        plt.clf()
+
+        # get normalised roc curve
+        evaluator_metrics["eval/AUC_(normalised)"], roc_plot = self.plot_roc_curve(
+            title="ROC (normalised)", normalised=True
+        )
+        if self.use_wandb:
+            wandb.log({"ROC Curve (normalised)": roc_plot})
+
+        # get normalised pr curve
+        evaluator_metrics["eval/AP_(normalised)"], pr_plot = self.plot_pr_curve(
+            title="PR Curve (normalised)", normalised=True
+        )
+        if self.use_wandb:
+            wandb.log({"PR Curve": pr_plot})
+
+        # Log the evaluation results
+        if self.use_wandb and wandb.run is not None:
+            for key in evaluator_metrics:
+                wandb.run.summary[key] = evaluator_metrics[key]
+        return evaluator_metrics
 
     def add_evaluation_data(self, log_line, predictions, users, losses, seconds, red_flags):
         """Extend the data stored in self.data with the inputs."""
+        # Handle input from tiered models
+        if predictions.ndim > 2:
+            log_line = torch.flatten(log_line, end_dim=1)
+            predictions = torch.flatten(predictions, end_dim=1)
+            users = torch.flatten(users, end_dim=1)
+            losses = torch.flatten(losses, end_dim=1)
+            seconds = torch.flatten(seconds, end_dim=1)
+            red_flags = torch.flatten(red_flags, end_dim=1)
         log_line = log_line.cpu().detach().flatten()
         predictions = predictions.cpu().detach().flatten()
         losses = losses.cpu().detach()
@@ -118,6 +231,8 @@ class Evaluator:
         red_flags = red_flags.cpu().detach()
         # Check that there's enough space left for all the entries
         if len(self.data["losses"]) < self.index["losses"] + len(log_line):
+            # Adding entries 1'050'000 at a time provides a nice balance of efficiency and memory usage.
+            # Most days have just over 7 million log lines, so incrementing with 1'000'000 is inefficient
             self.data["users"] = np.concatenate((self.data["users"], np.zeros(1050000, float)))
             self.data["losses"] = np.concatenate((self.data["losses"], np.zeros(1050000, float)))
             self.data["seconds"] = np.concatenate((self.data["seconds"], np.zeros(1050000, int)))
@@ -130,7 +245,9 @@ class Evaluator:
             self.data[key][self.index[key] : self.index[key] + len(new_data)] = new_data
             self.index[key] += len(new_data)
 
-        # Compute the token accuracy for this batch
+        # Update the metatag, i.e. data is prepared and normalised data is ready
+        self.data_is_prepared = False
+        # Update token accuracy including this batch
         batch_token_accuracy = metrics.accuracy_score(log_line, predictions)
         new_token_count = self.token_count + len(log_line)
         new_token_accuracy = (
@@ -166,6 +283,9 @@ class Evaluator:
         2. Sorting the data (by second) if it is not sorted
         """
         for key in self.data:
+            # Ignore normalised_losses
+            if key == "normalised_losses":
+                continue
             self.data[key] = self.data[key][: self.index[key]]
         # Check if the data is sorted
         if not np.all(np.diff(self.data["seconds"]) >= 0):
@@ -176,17 +296,17 @@ class Evaluator:
         # Compute final test loss
         self.test_loss /= max(self.test_count, 1)
         self.test_count = 1
+        # Prepared the normalised losses
+        self._normalise_losses()
+
         self.data_is_prepared = True
 
-    def normalize_losses(self):
+    def _normalise_losses(self):
         """Performs user-level anomaly score normalization by subtracting the
         average anomaly score of the user from each event (log line).
 
         Mainly relevant to word tokenization
         """
-        # Do not re-normalize data
-        if self.data_is_normalized:
-            return
         # Loop over every user
         average_losses = np.ones_like(self.data["losses"])
         for user in tqdm(np.unique(self.data["users"])):
@@ -195,8 +315,7 @@ class Evaluator:
             average_loss = np.average(self.data["losses"][user_indices])
             average_losses[user_indices] = average_loss
         # Apply the normalization
-        self.data["losses"] -= average_losses
-        self.data_is_normalized = True
+        self.data["normalised_losses"] = self.data["losses"] - average_losses
 
     def get_metrics(self):
         """Computes and returns all metrics."""
@@ -205,6 +324,7 @@ class Evaluator:
             "eval/token_accuracy": self.get_token_accuracy(),
             "eval/token_perplexity": self.get_token_perplexity(),
             "eval/AUC": self.get_auc_score(),
+            "eval/AP": self.get_ap_score(),
         }
         return metrics
 
@@ -232,13 +352,15 @@ class Evaluator:
         perplexity = np.exp(average_loss)
         return perplexity
 
-    def get_auc_score(self, fp_rate=None, tp_rate=None):
+    def get_auc_score(self, fp_rate=None, tp_rate=None, normalised=False):
         """Computes AUC score (area under the ROC curve)"""
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
         # Compute fp and tp rates if not supplied
         if fp_rate is None or tp_rate is None:
-            fp_rate, tp_rate, _ = metrics.roc_curve(self.data["red_flags"], self.data["losses"], pos_label=1)
+            # Get the relevant data - normalised or not
+            losses = self.data["normalised_losses"] if normalised else self.data["losses"]
+            fp_rate, tp_rate, _ = metrics.roc_curve(self.data["red_flags"], losses, pos_label=1)
         auc_score = metrics.auc(fp_rate, tp_rate)
         return auc_score
 
@@ -248,8 +370,9 @@ class Evaluator:
         smoothing=1,
         colors=["darkorange", "gold"],
         ylim=(-1, -1),
-        outliers=60,
+        outliers=10,
         legend=True,
+        normalised=False,
     ):
         """Computes and plots the given (default 75/95/99) percentiles of
         anomaly score (loss) by line for each segment.
@@ -268,6 +391,9 @@ class Evaluator:
         if smoothing <= 0:
             smoothing = 1
 
+        # Get the relevant data - normalised or not
+        losses = self.data["normalised_losses"] if normalised else self.data["losses"]
+
         plotting_data = [[] for _ in percentiles]
         # Create a list of losses for each segment
         seconds = np.unique(self.data["seconds"])
@@ -275,23 +401,23 @@ class Evaluator:
         for idx in tqdm(range(len(segments))):
             segment_start = np.searchsorted(self.data["seconds"], segments[idx])
             if idx == len(segments) - 1:
-                segment_end = len(self.data["losses"])
+                segment_end = len(losses)
             else:
                 segment_end = np.searchsorted(self.data["seconds"], segments[idx + 1])
-            segment_losses = self.data["losses"][segment_start:segment_end]
+            segment_losses = losses[segment_start:segment_end]
             for perc_idx, p in enumerate(percentiles):
                 percentile_data = np.percentile(segment_losses, p)
                 plotting_data[perc_idx].append(percentile_data)
 
         # Extract all red team events
         red_seconds = self.data["seconds"][self.data["red_flags"] != 0]
-        red_losses = self.data["losses"][self.data["red_flags"] != 0]
+        red_losses = losses[self.data["red_flags"] != 0]
 
         if outliers > 0:
             # Extract the top X ('outliers' per hour of data) outlier non-red
             # team events
             outlier_count = int(len(seconds) * outliers // 3600)
-            blue_losses = self.data["losses"][self.data["red_flags"] == 0]
+            blue_losses = losses[self.data["red_flags"] == 0]
             blue_seconds = self.data["seconds"][self.data["red_flags"] == 0]
             # Negate the list so we can pick the highest values (i.e. the
             # lowest -ve values)
@@ -325,12 +451,7 @@ class Evaluator:
             plt.legend()
         plt.title("Aggregate line losses by time")
 
-    def plot_roc_curve(
-        self,
-        color="orange",
-        title="ROC",
-        use_wandb=False,
-    ):
+    def plot_roc_curve(self, title="ROC", normalised=False):
         """Plots the ROC (Receiver Operating Characteristic) curve, i.e. TP-FP
         tradeoff. Also returns the corresponding auc score.
 
@@ -342,7 +463,11 @@ class Evaluator:
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
         auc_score = self.get_auc_score()
-        full_fp_rate, full_tp_rate, _ = metrics.roc_curve(self.data["red_flags"], self.data["losses"], pos_label=1)
+
+        # Get the relevant data - normalised or not
+        losses = self.data["normalised_losses"] if normalised else self.data["losses"]
+
+        full_fp_rate, full_tp_rate, _ = metrics.roc_curve(self.data["red_flags"], losses, pos_label=1)
         # Scale fp_rate, tp_rate down to contain <10'000 values
         # E.g. if original length is 1'000'000, only take every 100th value
         step_size = (len(full_fp_rate) // 10000) + 1
@@ -354,7 +479,7 @@ class Evaluator:
             tp_rate = np.append(tp_rate, full_tp_rate[-1])
         # Erase the full fp and tp lists
         full_fp_rate = full_tp_rate = []
-        if use_wandb:
+        if self.use_wandb:
             # ROC Curve is to be uploaded to wandb, so plot using a "fixed"
             # version of their plot.roc_curve function
             table = wandb.Table(
@@ -381,7 +506,7 @@ class Evaluator:
             plt.plot(
                 fp_rate,
                 tp_rate,
-                color=color,
+                color="orange",
                 lw=2,
                 label=f"ROC curve (area = {auc_score:.2f})",
             )
@@ -391,16 +516,27 @@ class Evaluator:
             plt.legend()
             return auc_score, plt
 
-    def plot_pr_curve(self, color="orange", title="Precision-Recall Curve", use_wandb=False):
+    def get_ap_score(self, normalised=False):
+        """Computes AP score (average precision)"""
+        if not self.data_is_prepared:
+            self.prepare_evaluation_data()
+        # Get the relevant data - normalised or not
+        losses = self.data["normalised_losses"] if normalised else self.data["losses"]
+        ap_score = metrics.average_precision_score(self.data["red_flags"], losses)
+        return ap_score
+
+    def plot_pr_curve(self, title="Precision-Recall Curve", normalised=False):
         """Plots the Precision-Recall curve, and returns the corresponding auc
         score."""
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
-        full_precision, full_recall, _ = metrics.precision_recall_curve(
-            self.data["red_flags"], self.data["losses"], pos_label=1
-        )
+
+        # Get the relevant data - normalised or not
+        losses = self.data["normalised_losses"] if normalised else self.data["losses"]
+
+        full_precision, full_recall, _ = metrics.precision_recall_curve(self.data["red_flags"], losses, pos_label=1)
         # Get average precision score as a summary score for PR
-        AP_score = metrics.average_precision_score(self.data["red_flags"], self.data["losses"])
+        AP_score = metrics.average_precision_score(self.data["red_flags"], losses)
 
         # Scale precision, recall down to contain <10'000 values
         # E.g. if original length is 1'000'000, only take every 100th value
@@ -419,7 +555,7 @@ class Evaluator:
         precision = list(map(lambda x: round(x, 5), precision))
         recall = list(map(lambda x: round(x, 5), recall))
 
-        if use_wandb:
+        if self.use_wandb:
             # PR Curve is to be uploaded to wandb, so plot using a "fixed"
             # version of their plot.pr_curve function
             table = wandb.Table(
@@ -444,7 +580,7 @@ class Evaluator:
             plt.plot(
                 recall,
                 precision,
-                color=color,
+                color="orange",
                 lw=2,
                 label=f"Intrusion events",
             )
