@@ -162,7 +162,7 @@ class Transformer(TransformerLanguageModel):
         if self.tiered:
             return logits, tf_hidden, loss
         return logits, loss
-        
+
 class TieredTransformer(TieredLogModel):
     def __init__(self, config: TieredTransformerConfig):
         super().__init__(config)
@@ -190,7 +190,7 @@ class TieredTransformer(TieredLogModel):
         self.context_model_dim = config.context_config.model_dim
         self.context_input_dimension = config.input_dim
         self.shift_window = config.shift_window
-        self.n_users = 20000
+        self.n_users = 1200
         self.saved_context_histories = torch.zeros([self.n_users, self.shift_window, self.model_dim])
         self.saved_context_history_lengths = torch.zeros([self.n_users], dtype=torch.int16)
 
