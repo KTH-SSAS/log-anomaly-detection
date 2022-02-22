@@ -109,10 +109,7 @@ class TransformerLanguageModel(LogModel):
 
     def get_mask(self, src: torch.Tensor):
         # batch size, sequence length, embedded dimension
-        if isinstance(self, ContextTransformer):
-            seq_len = src.shape[1]
-        else:
-            seq_len = src.shape[-1]
+        seq_len = src.shape[-1]
         device = src.device
         if self.src_mask is None or self.src_mask.shape[-1] != seq_len:
             mask = _generate_square_subsequent_mask(seq_len).to(device)
@@ -240,7 +237,7 @@ class TieredTransformer(TieredLogModel):
             tgt_input = self.pos_encoder(embedding_tgt_input)
             
             tf_hidden = self.transformer_model(src = src_input,
-                                            src_key_padding_mask =src_pad_mask, 
+                                            src_key_padding_mask = src_pad_mask, 
                                             tgt = tgt_input,
                                             tgt_mask = tgt_mask)
             tf_hidden_mean = torch.unsqueeze(torch.mean(tf_hidden, dim = 1), dim=1) * math.sqrt(self.model_dim)
