@@ -1,7 +1,6 @@
 """Data loading functions."""
 
 import os.path as path
-import numpy as np
 from functools import partial
 
 import torch
@@ -143,37 +142,77 @@ class IterableLogDataset(LogDataset, IterableDataset):
     def __iter__(self):
         return parse_multiple_files(self.filepaths, self.jag, self.bidir, self.skipsos)
 
+
 class MapLoglineDataset(LogDataset, Dataset):
     """Provides data via __getitem__, allowing arbitrary data entries to be
     accessed via index.
-    
-    Provides sequences of loglines of length window_size"""
+
+    Provides sequences of loglines of length window_size
+    """
 
     def __init__(self, filepaths, bidirectional, skipsos, jagged, delimiter=" ", window_size=100) -> None:
         super().__init__(filepaths, bidirectional, skipsos, jagged, delimiter)
 
-        self.log_sequences = []
         self.window_size = window_size
+
+        self.loglines = []
+        self.skipsos = True
+        self.skipeos = True
         iterator = parse_multiple_files(self.filepaths, jagged, bidirectional, skipsos, raw_lines=True)
 
-        sequence = []
-        sequence_length = 0
-        for line in iterator:
-            sequence.append(line)
-            sequence_length += 1
-            if sequence_length == window_size:
-                self.log_sequences.append(sequence)
-                sequence = []
-                sequence_length = 0
+        self.loglines.extend(iterator)
+        self.length = len(self.loglines) // self.window_size
 
     def __getitem__(self, index):
-        sequence = self.log_sequences[index]
-        parser = partial(parse_line, jag=self.jag, bidir=self.bidir, skipsos=self.skipsos)
-        parsed_sequence = list(map(parser, sequence))
+        start_index = index * self.window_size
+        end_index = start_index + self.window_size + 1  # Add 1 line that will be the target for the last input
+        # Ensure end_index doesn't go past the size of loglines, even though we drop the last incomplete batch (see length above)
+        end_index = min(end_index, len(self.loglines))
+        sequence = self.loglines[start_index:end_index]
+        parsed_sequence = self.parse_lines(sequence)
         return parsed_sequence
 
     def __len__(self):
-        return len(self.log_sequences)
+        return self.length
+
+    def parse_lines(self, lines):
+        datadict = {
+            "line": [],
+            "second": [],
+            "day": [],
+            "user": [],
+            "red": [],
+            "input": [],
+            "target": [],
+        }
+
+        metadata_offset = 5
+        offset = int(self.skipsos)
+        input_start = metadata_offset + offset
+
+        this_sequence_len = len(lines)
+
+        for idx, line in enumerate(lines):
+            split_line = line.strip().split(self.delimiter)
+            split_line = [int(x) for x in split_line]
+            data = torch.LongTensor(split_line)
+
+            length = data.shape[0] - metadata_offset - int(self.skipeos) - int(self.skipsos)
+            input_end = input_start + length
+
+            # The last line in the input is only used as the target for the 2nd to last line, not as input
+            if idx < this_sequence_len - 1:
+                datadict["line"].append(data[0])
+                datadict["second"].append(data[1])
+                datadict["day"].append(data[2])
+                datadict["user"].append(data[3])
+                datadict["red"].append(data[4])
+                datadict["input"].append(data[input_start:input_end])
+            # The first line processed is not the target of anything (in this sequence)
+            if idx > 0:
+                datadict["target"].append(data[input_start:input_end])
+
+        return datadict
 
 
 class LogDataLoader(DataLoader):
@@ -187,7 +226,9 @@ class LogDataLoader(DataLoader):
         if batch_sampler is not None:
             super().__init__(dataset, collate_fn=collate_fn, batch_sampler=batch_sampler)
         else:
-            super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn, batch_sampler=batch_sampler)
+            super().__init__(
+                dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn, batch_sampler=batch_sampler
+            )
         self.using_cuda = Application.instance().using_cuda
 
     def split_batch(self, batch: dict):
@@ -313,27 +354,27 @@ def create_data_loaders(filepath, batch_size, bidir, skipsos, jagged, max_len, s
             data_handlers.append(LogDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate))
     return data_handlers
 
-def create_data_loaders_linelevel(filepath, batch_size, bidir, skipsos, jagged, window_size, shuffle=False, dataset_split=None):
+
+def create_data_loaders_linelevel(
+    filepath, batch_size, bidir, skipsos, jagged, window_size, shuffle=False, dataset_split=None
+):
     """Creates and returns 2 data loaders.
 
     If dataset_split is not provided the second data loader is instead
     set to None.
     """
-    
+
     def collate_fn(data, jagged=False):
         """Pads the input fields to the length of the longest sequence in the
         batch."""
         batch = {}
 
-        for key in data[0][0]:
+        for key in data[0]:
             batch[key] = []
-            for sequence in data:
-                batch[key].append([])
 
-        for idx, sequence in enumerate(data):
-            for sample in sequence:
-                for key in sample:
-                    batch[key][idx].append(sample[key])
+        for sample in data:
+            for key in sample:
+                batch[key].append(sample[key])
 
         if jagged:
             fields_to_pad = ["input", "target", "mask"]
@@ -346,7 +387,6 @@ def create_data_loaders_linelevel(filepath, batch_size, bidir, skipsos, jagged, 
                     batch[key][sequence_index] = torch.stack(batch[key][sequence_index])
             if isinstance(batch[key], list):
                 batch[key] = torch.stack(batch[key])
-                
 
         return batch
 
@@ -375,8 +415,10 @@ def create_data_loaders_linelevel(filepath, batch_size, bidir, skipsos, jagged, 
     for dataset in datasets:
         if dataset is None:
             data_handlers.append(None)
+        else:
             data_handlers.append(LogDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate))
     return data_handlers
+
 
 def load_data(
     data_folder,
@@ -401,6 +443,7 @@ def load_data(
 
     return train_loader, val_loader, test_loader
 
+
 def load_data_linelevel(
     data_folder,
     train_files,
@@ -416,13 +459,21 @@ def load_data_linelevel(
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
     train_loader, val_loader = create_data_loaders_linelevel(
-        filepaths_train, batch_size, bidir, skipsos, jagged, window_size=window_size, shuffle=False, dataset_split=train_val_split
+        filepaths_train,
+        batch_size,
+        bidir,
+        skipsos,
+        jagged,
+        window_size=window_size,
+        shuffle=False,
+        dataset_split=train_val_split,
     )
     test_loader, _ = create_data_loaders_linelevel(
         filepaths_eval, batch_size, bidir, skipsos, jagged, window_size=window_size, shuffle=False, dataset_split=None
     )
 
     return train_loader, val_loader, test_loader
+
 
 class TieredLogDataLoader:
     """For use with tiered language models.
