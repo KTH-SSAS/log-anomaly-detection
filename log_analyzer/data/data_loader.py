@@ -161,13 +161,14 @@ class MapLoglineDataset(LogDataset, Dataset):
         iterator = parse_multiple_files(self.filepaths, jagged, bidirectional, skipsos, raw_lines=True)
 
         self.loglines.extend(iterator)
-        self.length = len(self.loglines) // self.window_size
+        # Length explanation: -1 because we cannot use the last line as input (since it wouldn't have a target)
+        # Divide by window size and floor since we can't/don't want to pass on incomplete sequences
+        self.length = (len(self.loglines) - 1) // self.window_size
 
     def __getitem__(self, index):
         start_index = index * self.window_size
         end_index = start_index + self.window_size + 1  # Add 1 line that will be the target for the last input
         # Ensure end_index doesn't go past the size of loglines, even though we drop the last incomplete batch (see length above)
-        end_index = min(end_index, len(self.loglines))
         sequence = self.loglines[start_index:end_index]
         parsed_sequence = self.parse_lines(sequence)
         return parsed_sequence
@@ -227,7 +228,7 @@ class LogDataLoader(DataLoader):
             super().__init__(dataset, collate_fn=collate_fn, batch_sampler=batch_sampler)
         else:
             super().__init__(
-                dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn, batch_sampler=batch_sampler
+                dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn
             )
         self.using_cuda = Application.instance().using_cuda
 
