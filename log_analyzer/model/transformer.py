@@ -369,7 +369,7 @@ class LoglineTransformer(LogLineLogModel):
         # line_embeddings: (batch size, sequence_length, embedded dimension)
 
         # Add positional encoding to the line embeddings
-        #line_embeddings = self.pos_encoder(line_embeddings)
+        line_embeddings = self.pos_encoder(line_embeddings)
 
         if mask is None:
             pad_mask = None
