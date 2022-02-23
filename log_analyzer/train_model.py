@@ -3,10 +3,10 @@ import os
 import random
 from argparse import ArgumentParser
 
+import numpy as np
 import torch
 
 import wandb
-import numpy as np
 from log_analyzer.application import Application
 from log_analyzer.train_loop import eval_model, init_from_args, train_model
 
@@ -31,7 +31,9 @@ data/data_examples/raw_day_split,
 def prepare_args():
     parser = ArgumentParser()
     parser.add_argument(
-        "--model-type", choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer", "logline-transformer"], required=True
+        "--model-type",
+        choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer", "logline-transformer"],
+        required=True,
     )
     parser.add_argument("--model-config", type=str, help="Model configuration file.", required=True)
     parser.add_argument("--data-config", type=str, help="Data description file.", required=True)
@@ -55,11 +57,13 @@ def prepare_args():
     args = parser.parse_args()
     return args
 
+
 def set_seeds(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     return seed
+
 
 def main():
     # Initialize seeds

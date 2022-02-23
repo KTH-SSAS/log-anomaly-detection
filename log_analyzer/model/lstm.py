@@ -1,5 +1,6 @@
 # LSTM log language model
 
+from abc import abstractmethod
 from typing import Dict, Optional, Tuple, Type
 
 import torch
@@ -31,7 +32,7 @@ class LogModel(nn.Module):
     def __init__(self, config: Config):
         super().__init__()
         self.config: Config = config
-        self.criterion = nn.CrossEntropyLoss(reduction="none", ignore_index=0)
+        self.criterion: nn.modules.loss._Loss = nn.CrossEntropyLoss(reduction="none", ignore_index=0)
         # Parameter setting
         self.tiered: bool = False
 
@@ -81,12 +82,24 @@ class TieredLogModel(LogModel):
         loss /= len(Y)
         return loss, line_losses_list
 
+
 class LogLineLogModel(LogModel):
-    """Superclass for logline-level language models ("sentence-embedding" models)."""
+    """Superclass for logline-level language models ("sentence-embedding"
+    models)."""
 
     def __init__(self, config: Config):
         super().__init__(config)
         self.criterion = nn.MSELoss(reduction="none")
+
+    @property
+    @abstractmethod
+    def word_embedding(self):
+        pass
+
+    @property
+    @abstractmethod
+    def sentence_embedding(self):
+        pass
 
     def compute_loss(self, output: torch.Tensor, Y, lengths, mask: torch.Tensor):
         """Computes the loss for the given model output and ground truth."""

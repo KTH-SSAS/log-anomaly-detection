@@ -11,12 +11,12 @@ import log_analyzer.data.data_loader as data_utils
 import wandb
 from log_analyzer.application import Application
 from log_analyzer.config.model_config import (
+    LoglineTransformerConfig,
     LSTMConfig,
     ModelConfig,
     TieredLSTMConfig,
     TieredTransformerConfig,
     TransformerConfig,
-    LoglineTransformerConfig,
 )
 from log_analyzer.config.trainer_config import DataConfig, TrainerConfig
 from log_analyzer.evaluator import Evaluator
@@ -173,7 +173,7 @@ def init_from_config_classes(
             trainer_config.train_val_split,
             shuffle_train_data,
         )
-    elif model_type in (LOGLINE_TRANSFORMER):
+    elif model_type in (LOGLINE_TRANSFORMER) and isinstance(model_config, LoglineTransformerConfig):
         train_loader, val_loader, test_loader = data_utils.load_data_linelevel(
             data_folder,
             train_days,
