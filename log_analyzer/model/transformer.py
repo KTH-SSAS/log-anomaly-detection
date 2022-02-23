@@ -1,12 +1,12 @@
 """Code related to Transformer language model."""
-from functools import partial
 import math
+from functools import partial
 
 import torch
 from torch import Tensor, nn
 
 from log_analyzer.application import Application
-from log_analyzer.config.model_config import TieredTransformerConfig, TransformerConfig
+from log_analyzer.config.model_config import LoglineTransformerConfig, TieredTransformerConfig, TransformerConfig
 from log_analyzer.model.lstm import LogLineLogModel, LogModel, TieredLogModel
 from log_analyzer.model.model_util import initialize_weights
 
@@ -303,15 +303,22 @@ class TieredTransformer(TieredLogModel):
         max_length = torch.max(self.saved_context_history_lengths[torch.tensor(users)])
         self.saved_context_histories[torch.tensor(users), -max_length:, :] = context_history[:, -max_length:, :]
 
+
 class LoglineTransformer(LogLineLogModel):
     """Transformer that works on the logline level - each "token" input is a single log line.
-    
+
+    The type of sentence embedding used is defined in the config. Valid options are currently:
+    "mean": embeds words to the full model_dim, then takes the element-wise mean of the words in the log line.
+                   in this case loss is computed in the embedding space (since mean is not reversible)
+    "concatenate": embeds words to model_dim/sentence_length dimensions, then concatenates them to form sentence embedding.
+                   in this case loss is computed for each word prediction (since concatenation is reversible)
+
     Output: predicted embedding value for the next logline."""
 
-    def __init__(self, config: TransformerConfig):
+    def __init__(self, config: LoglineTransformerConfig):
         super().__init__(config)
-        
-        self.config: TransformerConfig = config
+
+        self.config: LoglineTransformerConfig = config
         self.name = "Logline Transformer"
         self.src_mask = None
 
@@ -323,17 +330,31 @@ class LoglineTransformer(LogLineLogModel):
         self.vocab_size = config.vocab_size
         self.bidirectional = False
 
-        self.word_embedding = nn.Embedding(self.vocab_size, self.model_dim)
-        self.sentence_embedding = partial(torch.mean, dim=2)
+        # Check if we have pretrained embedding weights to use
+        if self.config.embeddings_path not in ("", None):
+            embedding_weights = torch.load(self.config.embeddings_path)
+            embedding_weights = embedding_weights["word_embedding.weight"]
+            # Load the pretrained embedding weights, and freeze them
+            self._word_embedding = nn.Embedding.from_pretrained(embedding_weights, freeze=True)
+        else:
+            # Normal, learnable embeddings
+            self._word_embedding = nn.Embedding(self.vocab_size, self.model_dim)
 
+        self._sentence_embedding = partial(torch.mean, dim=2)
 
-        self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout) # Update to relative positional encoding
+        self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout, max_len=100)
         encoder_layers = nn.TransformerEncoderLayer(
             self.model_dim, self.attention_heads, self.feedforward_dim, dropout=self.dropout, batch_first=True
-        ) # Update to RelPartiallearnableDecoderLayer
+        )
         self.transformer_encoder: nn.TransformerEncoder = nn.TransformerEncoder(encoder_layers, self.layers)
 
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
+
+    def word_embedding(self, src):
+        return self._word_embedding(src)
+
+    def sentence_embedding(self, src):
+        return self._sentence_embedding(src)
 
     def forward(self, src: Tensor, lengths=None, mask=None, targets=None):
         # src: (batch, sequence, log_line)
@@ -342,8 +363,13 @@ class LoglineTransformer(LogLineLogModel):
         # Apply word embedding to each log line in each sequence in each batch
         word_embeddings = self.word_embedding(src)
         # word_embeddings: (batch size, sequence length, logline length, embedded dimension)
-        line_embeddings = self.sentence_embedding(word_embeddings) # Logline embeddings - average of word tokens in the line
+        line_embeddings = self.sentence_embedding(
+            word_embeddings
+        )  # Logline embeddings - average of word tokens in the line
         # line_embeddings: (batch size, sequence_length, embedded dimension)
+
+        # Add positional encoding to the line embeddings
+        #line_embeddings = self.pos_encoder(line_embeddings)
 
         if mask is None:
             pad_mask = None
@@ -353,7 +379,7 @@ class LoglineTransformer(LogLineLogModel):
         # word embedding encoder and decoder share weights
         # @ is shorthand for matrix multiplication
         # logits = tf_hidden @ self.word_embedding.weight.t()
-        logits = tf_hidden # Compute loss directly in embedding space
+        logits = tf_hidden  # Compute loss directly in embedding space
 
         loss = None
         if targets is not None:

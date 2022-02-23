@@ -73,8 +73,11 @@ class TieredTransformerConfig(TransformerConfig):
 
         return cls.init_from_dict(data)
 
+
 @dataclass
 class LoglineTransformerConfig(TransformerConfig):
     """Configuration class for Logline Transformer models."""
 
     window_size: int
+    sentence_embedding: str
+    embeddings_path: str

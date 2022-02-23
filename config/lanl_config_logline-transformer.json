@@ -6,5 +6,7 @@
 	"vocab_size": 28199,
 	"dropout": 0.25,
 	"sequence_length": null,
-	"window_size": 100
+	"window_size": 100,
+	"sentence_embedding": "mean",
+	"embeddings_path": "runs/embeddings_three.pt"
 }
