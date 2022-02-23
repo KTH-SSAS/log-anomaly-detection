@@ -214,16 +214,19 @@ def count_fields(infile_path, outfile_path=None, fields_to_exclude=None, normali
             for f in fields_to_exclude:
                 del fields[f]
 
-            for field in fields:
-                counts[field] = {}
-
             for line in reader:
                 for k in fields:
+                    try:
+                        field_counts = counts[k]
+                    except KeyError:
+                        counts[k] = {}
+                        field_counts = counts[k]
+
                     v = line[k]
                     try:
-                        counts[k][v] += 1
+                        field_counts[v] += 1
                     except KeyError:
-                        counts[k][v] = 1
+                        field_counts[v] = 1
 
         if outfile_path is not None:
             with open(outfile_path, "w", encoding="utf8") as f:
@@ -254,7 +257,7 @@ def generate_counts():
         "--no-red", action="store_false", help="Add this flag if the log file does not have red team events added."
     )
     parser.add_argument("-o", "--output", help="Output filename.", default="counts.json")
-    parser.add_argument("--fields-to-exclude", nargs="+", type=int, help="Indexes of fields to not count.", default=[])
+    parser.add_argument("--fields-to-exclude", nargs="+", type=int, help="Indexes of fields to not count.", default=[0, -1])
     args = parser.parse_args()
     # args = parser.parse_args(["data/train_data/7.csv", "--fields-to-exclude", "0"])
     count_fields(args.log_files, args.output, args.fields_to_exclude, args.not_normalized, args.no_red)
