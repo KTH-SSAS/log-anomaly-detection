@@ -140,7 +140,7 @@ class Evaluator:
         output, _ = self.model(X, lengths=L, mask=M)
 
         # Compute the loss for the output
-        loss, line_losses = self.model.compute_loss(output, Y, lengths=L, mask=M)
+        loss, line_losses = self.model.compute_loss(output, Y, lengths=L)
 
         # Save the results if desired
         if store_eval_data:
@@ -242,7 +242,8 @@ class Evaluator:
             ["users", "losses", "seconds", "red_flags"],
             [users, losses, seconds, red_flags],
         ):
-            self.data[key][self.index[key] : self.index[key] + len(new_data)] = new_data
+            self.data[key][self.index[key] : self.index[key] + len(new_data)] = new_data.squeeze()
+
             self.index[key] += len(new_data)
 
         # Update the metatag, i.e. data is prepared and normalised data is ready
@@ -366,9 +367,9 @@ class Evaluator:
 
     def plot_line_loss_percentiles(
         self,
-        percentiles=[75, 95, 99],
+        percentiles=(75, 95, 99),
         smoothing=1,
-        colors=["darkorange", "gold"],
+        colors=("darkorange", "gold"),
         ylim=(-1, -1),
         outliers=10,
         legend=True,

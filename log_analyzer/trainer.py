@@ -3,7 +3,7 @@ from typing import Optional
 import torch
 from torch.cuda.amp.grad_scaler import GradScaler
 
-import log_analyzer.model.early_stopping as early_stopping
+from log_analyzer.model import early_stopping
 from log_analyzer.application import Application
 from log_analyzer.config.trainer_config import TrainerConfig
 from log_analyzer.model.lstm import LogModel
