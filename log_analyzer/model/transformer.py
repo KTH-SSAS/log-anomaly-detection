@@ -330,12 +330,19 @@ class LoglineTransformer(LogLineLogModel):
         self.vocab_size = config.vocab_size
         self.bidirectional = False
 
+        self.using_cuda = Application.instance().using_cuda
+
         # Check if we have pretrained embedding weights to use
         if self.config.embeddings_path not in ("", None):
             embedding_weights = torch.load(self.config.embeddings_path)
             embedding_weights = embedding_weights["word_embedding.weight"]
             # Load the pretrained embedding weights, and freeze them
             self._word_embedding = nn.Embedding.from_pretrained(embedding_weights, freeze=True)
+            # Move the word embeddings to the correct device - pretrained might be from CPU or GPU!
+            if self.using_cuda:
+                self._word_embedding.cuda()
+            else:
+                self._word_embedding.cpu()
         else:
             # Normal, learnable embeddings
             self._word_embedding = nn.Embedding(self.vocab_size, self.model_dim)
