@@ -2,7 +2,7 @@ import json
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
-from typing import Iterable
+from typing import Iterable, List
 
 import numpy as np
 
@@ -20,23 +20,45 @@ class Tokenizer(ABC):
 
     pad_idx: int
     pad_token: str
+    add_sos: bool
+    add_eos: bool
 
     @abstractmethod
-    def tokenize(self, line):
+    def tokenize(self, line, add_sos=False, add_eos=False):
         ...
 
     @abstractmethod
-    def encode(self, tokens):
+    def encode(self, tokens, add_sos, add_eos):
         ...
 
     @abstractmethod
     def decode(self, indexes):
         ...
 
+    @abstractmethod
+    def mask_tokens(self, indexes):
+        ...
+
+    @abstractmethod
+    def user_idx(self, user):
+        ...
+
+    @abstractmethod
+    @property
+    def num_users(self):
+        ...
+
+    @abstractmethod
+    @property
+    def vocab_size(self):
+        ...
+
 
 class CharTokenizer(Tokenizer):
-    def __init__(self) -> None:
+    def __init__(self, vocab) -> None:
         special_tokens = [PAD_TOKEN, SOS_TOKEN, EOS_TOKEN, MSK_TOKEN, CLS_TOKEN]
+
+        self.jagged = True
 
         self.special_tokens = {}
         for i, t in enumerate(special_tokens):
@@ -46,22 +68,70 @@ class CharTokenizer(Tokenizer):
         self.pad_token = PAD_TOKEN
         self.pad_idx = self.special_tokens[PAD_TOKEN]
 
-    def encode(self, tokens):
-        return [str(ord(c) + self.offset) for c in tokens]
+        self.eos_idx = self.special_tokens[EOS_TOKEN]
+        self.sos_idx = self.special_tokens[SOS_TOKEN]
+
+        self.users = vocab.vocab["src_user"]
+
+        self._num_users = vocab.num_users
+
+    @property
+    def vocab_size(self):
+        """There are 126 printable ASCII characters."""
+        return 126
+
+    @property
+    def sequence_length(self):
+        return None
+
+    def encode(self, tokens, add_sos, add_eos):
+
+        input_length = len(tokens)
+        total_length = input_length + int(add_sos) + int(add_eos)
+
+        indexes = np.zeros(total_length, dtype=np.int64)
+
+        iterator = range(int(add_sos), input_length - int(add_eos))
+
+        if add_sos:
+            indexes[0] = self.sos_idx
+
+        for i in iterator:
+            indexes[i] = ord(tokens[i]) + self.offset
+
+        if add_eos:
+            indexes[-1] = self.eos_idx
+
+        return indexes
 
     def decode(self, indexes):
 
         return [str(chr(i - self.offset)) for i in indexes]
 
-    def tokenize(self, line):
-        return self.encode(line)
+    def tokenize(self, line=False, add_sos=False, add_eos=False):
+
+        if isinstance(line, list):
+            line = "".join(line)
+
+        return self.encode(line, add_sos, add_eos)
+
+    def mask_tokens(self, indexes):
+        pass
+
+    @property
+    def num_users(self):
+        return self._num_users
+
+    def user_idx(self, user):
+        return self.users[user]
 
 
 class FieldVocab(ABC):
 
-    vocab: dict
     special_tokens: dict
     size: int
+    num_users: int
+    vocab: dict
 
     @abstractmethod
     def __init__(self, vocab_file: str) -> None:
@@ -109,8 +179,8 @@ class LANLVocab(FieldVocab):
 
         # Vocab size including special tokens
         self.size = 0
-        for mapping in self.vocab.items():
-            self.size += len(mapping)
+        for token_set in self.vocab.values():
+            self.size += len(token_set)
 
         self.special_tokens = self.vocab["special_tokens"]
         del self.vocab["special_tokens"]
@@ -134,6 +204,22 @@ class LANLVocab(FieldVocab):
         for i, field in enumerate(self.field_names):
             self.field_vocab_min[i] = min(self.vocab[field].values())
 
+        self._eos_idx = self.special_tokens[EOS_TOKEN]
+        self._sos_idx = self.special_tokens[SOS_TOKEN]
+
+    @property
+    def num_users(self):
+        """Count the OOV token as a user, but not the mask token."""
+        return len(self.vocab["src_user"]) - 1
+
+    @property
+    def eos_idx(self):
+        return self._eos_idx
+
+    @property
+    def sos_idx(self):
+        return self._sos_idx
+
     def token2idx(self, token, field) -> int:
         """Returns the index of the given token for a given field."""
         try:
@@ -141,10 +227,10 @@ class LANLVocab(FieldVocab):
         except KeyError:
             return self.oov_tokens[self.field_indexes[field]]
 
-    def idx2token(self, idx) -> int:
+    def idx2token(self, idx) -> str:
         """Returns a token that maps to the given index."""
 
-        def search(query, dictionary):
+        def search(query, dictionary: dict):
             for k, i in dictionary.items():
                 if i == query:
                     return True, k
@@ -205,17 +291,27 @@ class LANLVocab(FieldVocab):
         vocab.move_to_end(MSK_TOKEN)
         vocab.move_to_end(OOV_TOKEN)
         vocab.move_to_end("special_tokens")
+
+        print(f"Generated vocab with {index} words.")
+
         with open(outfile, "w") as f:
             json.dump(vocab, f, indent=" ")
 
         return cls(outfile)
 
 
-class LANLTokenizer:
+class LANLTokenizer(Tokenizer):
+    """Tokenizer for LANL data."""
+
     def __init__(self, vocab: LANLVocab) -> None:
         self.vocab = vocab
         self.delimiter = ","
         self.num_fields = len(self.field_names)
+        self.jagged = False
+
+    @property
+    def sequence_length(self):
+        return self.num_fields
 
     @property
     def num_special_tokens(self):
@@ -229,28 +325,50 @@ class LANLTokenizer:
     def field_names(self):
         return self.vocab.field_names
 
-    def tokenize(self, line):
+    @property
+    def num_users(self):
+        return self.vocab.num_users
+
+    def user_idx(self, user):
+        return self.vocab.token2idx(user, "src_user")
+
+    def tokenize(self, line, add_sos=False, add_eos=False):
 
         if isinstance(line, str):
             tokens = line.split(",")
         else:
             tokens = line
 
-        return self.encode(tokens)
+        return self.encode(tokens, add_sos, add_eos)
 
-    def encode(self, tokens):
+    def encode(self, tokens, add_sos, add_eos):
 
         if len(tokens) != len(self.field_names):
             raise RuntimeError("Number of fields in input does not match number of fields in vocabulary.")
 
-        indexes = np.zeros(self.num_fields, dtype=np.int64)
-        for i, field in enumerate(self.field_names):
+        total_length = self.num_fields + int(add_sos) + int(add_eos)
+
+        indexes = np.zeros(total_length, dtype=np.int64)
+
+        iterator = range(int(add_sos), self.num_fields - int(add_eos))
+
+        if add_sos:
+            indexes[0] = self.vocab.sos_idx
+
+        for i in iterator:
+            field = self.field_names[i]
             indexes[i] = self.vocab.token2idx(tokens[i], field)
+
+        if add_eos:
+            indexes[-1] = self.vocab.eos_idx
 
         return indexes
 
-    def decode(self, indexes: Iterable[int]):
+    def decode(self, indexes: Iterable[int]) -> List[str]:
         return [self.vocab.idx2token(i) for i in indexes]
+
+    def detokenize(self, indexes) -> str:
+        return ",".join(self.decode(indexes))
 
     def mask_tokens(self, tokens: list, percentage_to_mask=0.15, p_preserve=0.1, p_random=0.1):
         """Replace a percentage of the tokens with mask tokens.
