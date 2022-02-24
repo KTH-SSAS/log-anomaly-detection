@@ -2,12 +2,20 @@
 
 import os.path as path
 from functools import partial
+from typing import Dict, List
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 from log_analyzer.application import Application
+from log_analyzer.tokenizer.tokenizer_neo import LANLTokenizer, Tokenizer
+
+AUTOREGRESSIVE_LM = "lm"
+BIDIR_LSTM_LM = "bidir-lm"
+MASKED_LM = "masked-lm"
+
+SECONDS_PER_DAY = 86400
 
 DEFAULT_HEADERS = [
     "line_number",
@@ -20,91 +28,78 @@ DEFAULT_HEADERS = [
 ]
 
 
-def get_mask(lens, max_len=None):
-    """For masking output of language model for jagged sequences for correct
-    gradient update. Sequence length of 0 will output nan for that row of mask
-    so don't do this.
-
-    :param lens: (int) sequence length for this sequence
-    :param max_len: (int) Number of predicted tokens in longest sequence in batch. Defaults to lens if not provided
-    :return: A numpy array mask of length max_len. There are lens[i] values of 1/lens followed by max_len - lens zeros
-    """
-
-    num_tokens = lens if max_len is None else max_len
-
-    mask_template = torch.arange(num_tokens, dtype=torch.float)
-    if Application.instance().using_cuda:
-        mask_template = mask_template.cuda()
-
-    return (mask_template < lens) / lens
-
-
-def parse_line(line, jag, bidir, skipsos, delimiter=" "):
-    skipeos = True
-    split_line = line.strip().split(delimiter)
-    split_line = [int(x) for x in split_line]
-    data = torch.LongTensor(split_line)
-
-    metadata_offset = 5
-
-    if jag:
-        length = data[metadata_offset].item()
+def tokens_to_add(task):
+    if task == BIDIR_LSTM_LM:
+        add_sos = True
+        add_eos = True
+    elif task == AUTOREGRESSIVE_LM:
+        add_sos = False
+        add_eos = False
     else:
-        length = data.shape[0] - metadata_offset - int(skipeos) - int(skipsos)
+        add_sos = False
+        add_eos = False
 
-    offset = int(jag) + int(skipsos)
+    return add_sos, add_eos
 
-    input_start = metadata_offset + offset
-    input_end = input_start + length
 
-    target_start = input_start + 1
-    target_end = input_end + 1
+def prepare_datadict(line: str, task: str, tokenizer: Tokenizer) -> dict:
 
-    if bidir:
-        input_end += 1
-        target_end -= 1
+    fields = line.strip().split(",")
+    second = int(fields[0])
+    user = tokenizer.user_idx(fields[1])
+
+    add_sos, add_eos = tokens_to_add(task)
+
+    # Remove timestamp and red team flag from input
+    to_tokenize = line[len(fields[0]) + 1 : -3]
+    tokenized_line = tokenizer.tokenize(to_tokenize, add_sos, add_eos)
+
+    day = int(second) // SECONDS_PER_DAY
 
     datadict = {
-        "line": data[0],
-        "second": data[1],
-        "day": data[2],
-        "user": data[3],
-        "red": data[4],
-        "input": data[input_start:input_end],
-        "target": data[target_start:target_end],
+        "second": torch.LongTensor([second]),
+        "day": torch.LongTensor([day]),
+        "red": torch.BoolTensor([int(fields[-1])]),
+        "user": torch.LongTensor([user]),
     }
 
-    if jag:  # Input is variable length
-        length = datadict["input"].shape[0]
-        datadict["length"] = torch.LongTensor([length])
-        datadict["mask"] = get_mask(length - 2 * bidir)
-        assert length <= datadict["input"].shape[-1], "Sequence found greater than num_tokens_predicted"
-        assert length > 0, (
-            "Sequence lengths must be greater than zero."
-            f'Found zero length sequence in datadict["lengths"]: {datadict["lengths"]}'
-        )
+    if task == AUTOREGRESSIVE_LM:
+        # Shift the input by one
+        data_in = tokenized_line[:-1]
+        label = tokenized_line[1:]
+    elif task == BIDIR_LSTM_LM:
+        # Remove first and last token of label since they are not
+        # predicted from two directions
+        data_in = tokenized_line
+        label = tokenized_line[1:-1]
+    elif task == MASKED_LM:
+        # Add mask tokens to input
+        data_in, label, _ = tokenizer.mask_tokens(tokenized_line)
+    else:
+        raise RuntimeError("Invalid Task")
+
+    datadict["input"] = torch.LongTensor(data_in)
+    datadict["target"] = torch.LongTensor(label)
+    datadict["length"] = torch.LongTensor([data_in.shape[0]])
 
     return datadict
 
 
-def parse_multiple_files(filepaths, jag, bidir, skipsos, raw_lines=False):
+def parse_multiple_files(filepaths: List[str]):
     for datafile in filepaths:
-        with open(datafile, "r") as f:
+        """Only permit ASCII characters."""
+        with open(datafile, "r", encoding="ascii") as f:
             for line in f:
-                if raw_lines:
-                    yield line
-                else:
-                    yield parse_line(line, jag, bidir, skipsos)
+                yield line
 
 
 class LogDataset:
-    def __init__(self, filepaths, bidirectional, skipsos, jagged, delimiter=" ") -> None:
-        super().__init__()
-        self.delimiter = delimiter
+    """Base log dataset class."""
 
-        self.skipsos = skipsos
-        self.jag = jagged
-        self.bidir = bidirectional
+    def __init__(self, filepaths, tokenizer: Tokenizer, task) -> None:
+        super().__init__()
+        self.tokenizer: Tokenizer = tokenizer
+        self.task = task
 
         if isinstance(filepaths, str):
             filepaths = [filepaths]
@@ -115,17 +110,16 @@ class MapLogDataset(LogDataset, Dataset):
     """Provides data via __getitem__, allowing arbitrary data entries to be
     accessed via index."""
 
-    def __init__(self, filepaths, bidirectional, skipsos, jagged, delimiter=" ") -> None:
-        super().__init__(filepaths, bidirectional, skipsos, jagged, delimiter)
+    def __init__(self, filepaths, tokenizer, task) -> None:
+        super().__init__(filepaths, tokenizer, task)
 
         self.loglines = []
-        iterator = parse_multiple_files(self.filepaths, jagged, bidirectional, skipsos, raw_lines=True)
-
+        iterator = parse_multiple_files(self.filepaths)
         self.loglines.extend(iterator)
 
     def __getitem__(self, index):
         log_line = self.loglines[index]
-        parsed_line = parse_line(log_line, self.jag, self.bidir, self.skipsos)
+        parsed_line = prepare_datadict(log_line, self.task, self.tokenizer)
         return parsed_line
 
     def __len__(self):
@@ -136,11 +130,12 @@ class IterableLogDataset(LogDataset, IterableDataset):
     """Provides data via __iter__, allowing data to be accessed in order
     only."""
 
-    def __init__(self, filepaths, bidirectional, skipsos, jagged, delimiter=" ") -> None:
-        super().__init__(filepaths, bidirectional, skipsos, jagged, delimiter)
+    def __init__(self, filepaths, tokenizer, task) -> None:
+        super().__init__(filepaths, tokenizer, task)
 
     def __iter__(self):
-        return parse_multiple_files(self.filepaths, self.jag, self.bidir, self.skipsos)
+        for line in parse_multiple_files(self.filepaths):
+            yield prepare_datadict(line, self.task, self.tokenizer)
 
 
 class LogDataLoader(DataLoader):
@@ -189,19 +184,15 @@ def load_data_tiered(
     train_files,
     test_files,
     batch_size,
-    bidir,
-    skipsos,
-    jagged,
-    sentence_length,
+    tokenizer: Tokenizer,
+    task,
     num_steps,
 ):
     def create_tiered_data_loader(filepath):
         data_handler = TieredLogDataLoader(
             filepath,
-            sentence_length,
-            skipsos,
-            jagged,
-            bidir,
+            tokenizer,
+            task,
             batch_size=batch_size,
             num_steps=num_steps,
             delimiter=" ",
@@ -215,14 +206,14 @@ def load_data_tiered(
     return train_loader, test_loader
 
 
-def create_data_loaders(filepath, batch_size, bidir, skipsos, jagged, max_len, shuffle=False, dataset_split=None):
+def create_data_loaders(filepath, batch_size, tokenizer, task, shuffle=False, dataset_split=None):
     """Creates and returns 2 data loaders.
 
     If dataset_split is not provided the second data loader is instead
     set to None.
     """
 
-    def collate_fn(data, jagged=False):
+    def collate_fn(data, jagged=False, pad_idx=0):
         """Pads the input fields to the length of the longest sequence in the
         batch."""
         batch = {}
@@ -235,20 +226,22 @@ def create_data_loaders(filepath, batch_size, bidir, skipsos, jagged, max_len, s
                 batch[key].append(sample[key])
 
         if jagged:
-            fields_to_pad = ["input", "target", "mask"]
+            fields_to_pad = ["input", "target"]
             for key in fields_to_pad:
-                batch[key] = pad_sequence(batch[key], batch_first=True, padding_value=0)
+                batch[key] = pad_sequence(batch[key], batch_first=True, padding_value=pad_idx)
 
-        for key in batch:
-            if isinstance(batch[key], list):
-                batch[key] = torch.stack(batch[key])
+            batch["mask"] = batch["input"] != pad_idx
+
+        for key, value in batch.items():
+            if isinstance(value, list):
+                batch[key] = torch.stack(value)
 
         return batch
 
     if shuffle or dataset_split is not None:
-        dataset = MapLogDataset(filepath, bidir, skipsos, jagged, max_len)
+        dataset = MapLogDataset(filepath, tokenizer, task)
     else:
-        dataset = IterableLogDataset(filepath, bidir, skipsos, jagged, max_len)
+        dataset = IterableLogDataset(filepath, tokenizer, task)
 
     # Split the dataset according to the split list
     if dataset_split is not None:
@@ -266,15 +259,16 @@ def create_data_loaders(filepath, batch_size, bidir, skipsos, jagged, max_len, s
         datasets = torch.utils.data.random_split(dataset, dataset_split)
     else:
         # Return just a single dataset
-        datasets = [dataset, None]
+        datasets = (dataset, None)
 
-    collate = partial(collate_fn, jagged=jagged)
-    data_handlers = []
-    for dataset in datasets:
-        if dataset is None:
-            data_handlers.append(None)
-        else:
-            data_handlers.append(LogDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate))
+    collate = partial(collate_fn, jagged=tokenizer.jagged)
+    data_handlers = [
+        LogDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate)
+        if dataset is not None
+        else None
+        for dataset in datasets
+    ]
+
     return data_handlers
 
 
@@ -283,21 +277,17 @@ def load_data(
     train_files,
     test_files,
     batch_size,
-    bidir,
-    skipsos,
-    jagged,
-    sentence_length,
-    train_val_split=[1, 0],
+    tokenizer: Tokenizer,
+    task,
+    train_val_split=(1, 0),
     shuffle_train_data=True,
 ):
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
     train_loader, val_loader = create_data_loaders(
-        filepaths_train, batch_size, bidir, skipsos, jagged, sentence_length, shuffle_train_data, train_val_split
+        filepaths_train, batch_size, tokenizer, task, shuffle_train_data, train_val_split
     )
-    test_loader, _ = create_data_loaders(
-        filepaths_eval, batch_size, bidir, skipsos, jagged, sentence_length, shuffle=False, dataset_split=None
-    )
+    test_loader, _ = create_data_loaders(filepaths_eval, batch_size, tokenizer, task, shuffle=False, dataset_split=None)
 
     return train_loader, val_loader, test_loader
 
@@ -311,26 +301,22 @@ class TieredLogDataLoader:
     def __init__(
         self,
         filepaths,
-        sentence_length,
-        skipsos,
-        jagged,
-        bidir,
+        tokenizer: LANLTokenizer,
+        task,
         batch_size=100,
         num_steps=5,
         delimiter=" ",
     ):
-        self.sentence_length = sentence_length
-        self.jagged = jagged
-        self.skipsos = skipsos
-        self.bidir = bidir
+        self.tokenizer: LANLTokenizer = tokenizer
+        self.task = task
         self.delimiter = delimiter  # delimiter for input file
         self.mb_size = batch_size  # the number of users in a batch
         self.num_steps = num_steps  # The number of log lines for each user in a batch
-        self.user_logs = {}
+        self.user_logs: Dict[str, dict] = {}
         self.staggler_num_steps = 1
         # the list of users who are ready to be included in the next batch
         # (i.e. whose # of saved log lines are greater than or equal to the self.num_steps)
-        self.batch_ready_users_list = []
+        self.batch_ready_users_list: List[int] = []
         self.filepaths = filepaths
         self.using_cuda = Application.instance().using_cuda
 
@@ -347,7 +333,7 @@ class TieredLogDataLoader:
             self.skip_file = False
 
             # Feed one file at a time to parse_multiple_files so we can keep track of flush more easily
-            file_reader = parse_multiple_files([datafile], self.jagged, self.bidir, self.skipsos)
+            file_reader = parse_multiple_files([datafile])
 
             while True:
                 batch_data = []
@@ -355,11 +341,11 @@ class TieredLogDataLoader:
                     # Skip the rest of the current file, because it is flush and
                     # we're currently training (see train_loop.py)
                     break
-                while batch_data == []:
+                while not batch_data:
                     if not self.flush:
                         try:
                             # Get the next line
-                            datadict = next(file_reader)
+                            datadict = prepare_datadict(next(file_reader), self.task, self.tokenizer)
                             user = datadict["user"].item()
                             if user not in self.user_logs:
                                 self.user_logs[user] = []
@@ -385,7 +371,7 @@ class TieredLogDataLoader:
                         self.mb_size = self.num_steps * self.mb_size
                         self.num_steps = self.staggler_num_steps
 
-                if batch_data == []:
+                if not batch_data:
                     break
 
                 # Create the batch by collating the datadicts. Also, if jagged, pad
@@ -415,9 +401,9 @@ class TieredLogDataLoader:
         # Each of the sequence entries (input, target, mask) are of shape [num_steps, batchsize, sequence], e.g. [3, 64, sequence]
         # Where sequence varies (if self.jagged=True).
 
-        if self.jagged:
+        if self.tokenizer.jagged:
             # First pad within each num_step so that we get a uniform sequence_length within each num_step
-            fields_to_pad = ["input", "target", "mask"]
+            fields_to_pad = ["input", "target"]
             for key in fields_to_pad:
                 for step in range(self.num_steps):
                     batch[key][step] = pad_sequence(batch[key][step], batch_first=True, padding_value=0)
@@ -429,13 +415,16 @@ class TieredLogDataLoader:
                 batch[key] = pad_sequence(batch[key], batch_first=True, padding_value=0)
                 # Reverse the transposition of batchsize and sequence_length - batch[key] is now a tensor
                 batch[key] = batch[key].transpose(1, 2)
+
+            batch["mask"] = batch["input"] != self.tokenizer.pad_idx
+
         # Convert the remaining python lists to tensors
-        for key in batch:
+        for key, value in batch.items():
             for step in range(self.num_steps):
-                if isinstance(batch[key][step], list):
-                    batch[key][step] = torch.stack(batch[key][step])
-            if isinstance(batch[key], list):
-                batch[key] = torch.stack(batch[key])
+                if isinstance(value[step], list):
+                    value[step] = torch.stack(value[step])
+            if isinstance(value, list):
+                batch[key] = torch.stack(value)
 
         return batch
 
