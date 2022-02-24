@@ -5,9 +5,7 @@ import tempfile
 from argparse import ArgumentParser
 from collections import OrderedDict
 
-from numpy import inf
 from log_analyzer.tokenizer.tokenizer_neo import LANLVocab
-from glob import glob
 
 SECONDS_PER_DAY = 86400
 
@@ -71,13 +69,13 @@ class LANLReader:
 
 
 def sec2day(seconds):
-    "Seconds to number of whole days."
+    """Seconds to number of whole days."""
     day = int(seconds) // SECONDS_PER_DAY
     return day
 
 
 def day2sec(day):
-    "Day to number of seconds."
+    """Day to number of seconds."""
     return day * SECONDS_PER_DAY
 
 
@@ -134,7 +132,7 @@ def count_events_per_day(redfile):
             sec = fields[0]
             day = sec2day(sec)
 
-            #print(f"{day} : {line}")
+            # print(f"{day} : {line}")
             try:
                 day_counts[day] += 1
             except KeyError:
@@ -183,9 +181,7 @@ def add_redteam_to_log(day, filename_in, filename_out, readteam_file, normalized
 
 
 def process_logfiles_for_training(auth_file, red_file, output_dir, days_to_keep):
-    """
-    Process auth.txt into normalized log files split into days.
-    """
+    """Process auth.txt into normalized log files split into days."""
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
 
@@ -236,7 +232,7 @@ def count_fields(infile_path, outfile_path=None, fields_to_exclude=None, normali
 
 
 def process_file():
-    """CLI tool to process auth.txt"""
+    """CLI tool to process auth.txt."""
     parser = ArgumentParser()
     parser.add_argument("auth_file", type=str, help="Path to auth.txt.")
     parser.add_argument("redteam_file", type=str, help="Path to file with redteam events.")
@@ -257,14 +253,16 @@ def generate_counts():
         "--no-red", action="store_false", help="Add this flag if the log file does not have red team events added."
     )
     parser.add_argument("-o", "--output", help="Output filename.", default="counts.json")
-    parser.add_argument("--fields-to-exclude", nargs="+", type=int, help="Indexes of fields to not count.", default=[0, -1])
+    parser.add_argument(
+        "--fields-to-exclude", nargs="+", type=int, help="Indexes of fields to not count.", default=[0, -1]
+    )
     args = parser.parse_args()
     # args = parser.parse_args(["data/train_data/7.csv", "--fields-to-exclude", "0"])
     count_fields(args.log_files, args.output, args.fields_to_exclude, args.not_normalized, args.no_red)
 
 
 def generate_vocab_from_counts():
-    """Generate vocab"""
+    """Generate vocab."""
     parser = ArgumentParser()
     parser.add_argument("counts_file", type=str, help="Path to JSON file with field counts.")
     parser.add_argument("mode", choices=["fields", "global"])
