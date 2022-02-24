@@ -30,21 +30,20 @@ class LogModel(nn.Module):
 
     def __init__(self, config: Config):
         super().__init__()
+
         self.config: Config = config
         self.criterion = nn.CrossEntropyLoss(reduction="none", ignore_index=0)
         # Parameter setting
         self.tiered: bool = False
 
-    def compute_loss(self, output: torch.Tensor, Y, lengths, mask: torch.Tensor):
+    def compute_loss(self, output: torch.Tensor, Y):
         """Computes the loss for the given model output and ground truth."""
         token_losses = self.criterion(output.transpose(1, 2), Y)
-        if mask is not None:
-            token_losses = token_losses * mask
         line_losses = torch.mean(token_losses, dim=1)
         loss = torch.mean(line_losses, dim=0)
 
         # Return the loss, as well as extra details like loss per line
-        return loss, line_losses
+        return loss, line_losses.unsqueeze(-1)
 
 
 class TieredLogModel(LogModel):
@@ -55,26 +54,19 @@ class TieredLogModel(LogModel):
         # Parameter setting
         self.tiered: bool = True
 
-    def compute_loss(self, output: Tensor, Y: Tensor, lengths, mask):
+    def compute_loss(self, output: Tensor, Y: Tensor):
         """Computes the loss for the given model output and ground truth."""
         loss = torch.tensor(0.0)
         line_losses_list = torch.empty(output.shape[:-2], dtype=torch.float)
         if Application.instance().using_cuda:
             line_losses_list = line_losses_list.cuda()
-        if lengths is not None:
-            max_length = int(torch.max(lengths))
         # output (num_steps x batch x length x embedding dimension)  Y
         # (num_steps x batch x length)
         for i, (step_output, step_y) in enumerate(zip(output, Y)):
             # On notebook, I checked it with forward LSTM and word
             # tokenization. Further checks have to be done...
-            if lengths is not None:
-                token_losses = self.criterion(step_output.transpose(1, 2), step_y[:, :max_length])
-                masked_losses = token_losses * mask[i][:, :max_length]
-                line_losses = torch.sum(masked_losses, dim=1)
-            else:
-                token_losses = self.criterion(step_output.transpose(1, 2), step_y)
-                line_losses = torch.mean(token_losses, dim=1)
+            token_losses = self.criterion(step_output.transpose(1, 2), step_y)
+            line_losses = torch.mean(token_losses, dim=1)
             line_losses_list[i] = line_losses
             step_loss = torch.mean(line_losses, dim=0)
             loss += step_loss.cpu()
@@ -158,7 +150,7 @@ class LSTMLanguageModel(LogModel):
                 lengths = lengths.squeeze(1)
             lstm_in = pack_padded_sequence(lstm_in, lengths.cpu(), enforce_sorted=False, batch_first=True)
 
-        lstm_out, (hx, cx) = self.stacked_lstm(lstm_in)
+        lstm_out, (hx, _) = self.stacked_lstm(lstm_in)
 
         if lengths is not None:
             lstm_out, _ = pad_packed_sequence(lstm_out, batch_first=True)
@@ -193,7 +185,7 @@ class FwdLSTM(LSTMLanguageModel):
         loss = None
         if targets is not None:
             # Compute and return loss if targets is given
-            loss, _ = self.compute_loss(token_output, targets, lengths, mask)
+            loss, _ = self.compute_loss(token_output, targets)
 
         if self.tiered:
             return token_output, (lstm_out, hx), loss
@@ -246,7 +238,7 @@ class BidLSTM(LSTMLanguageModel):
         loss = None
         if targets is not None:
             # Compute and return loss if targets is given
-            loss, _ = self.compute_loss(token_output, targets, lengths, mask)
+            loss, _ = self.compute_loss(token_output, targets)
 
         if self.tiered:
             return token_output, (lstm_out, hx), loss
@@ -288,6 +280,8 @@ class TieredLSTM(TieredLogModel):
     """Tiered-LSTM model, combines a standard forward or bidirectional LSTM
     model for log-level analysis and a context LSTM for propagation of high-
     level context information."""
+
+    config: TieredLSTMConfig
 
     def __init__(self, config: TieredLSTMConfig, bidirectional):
 
@@ -395,7 +389,7 @@ class TieredLSTM(TieredLogModel):
         loss = None
         if targets is not None:
             # Compute and return loss if targets is given
-            loss, _ = self.compute_loss(token_output, targets, lengths, mask)
+            loss, _ = self.compute_loss(token_output, targets)
 
         return token_output, loss
 
