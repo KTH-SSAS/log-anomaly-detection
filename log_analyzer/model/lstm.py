@@ -90,6 +90,7 @@ class LogLineLogModel(LogModel):
     def __init__(self, config: Config):
         super().__init__(config)
         self.criterion = nn.MSELoss(reduction="none")
+        # self.criterion = nn.CosineEmbeddingLoss(reduction="none")
 
     @property
     @abstractmethod
@@ -101,14 +102,21 @@ class LogLineLogModel(LogModel):
     def sentence_embedding(self):
         pass
 
-    def compute_loss(self, output: torch.Tensor, Y, lengths, mask: torch.Tensor):
+    def compute_loss(self, output: torch.Tensor, Y: torch.Tensor, lengths, mask: torch.Tensor):
         """Computes the loss for the given model output and ground truth."""
         Y = self.word_embedding(Y)
         Y = self.sentence_embedding(Y)
-        embedding_losses = self.criterion(output, Y)
+        if isinstance(self.criterion, nn.CosineEmbeddingLoss):
+            criterion_output = output.view(-1, output.shape[2])
+            criterion_Y = Y.view(-1, Y.shape[2])
+            targets = torch.ones((Y.shape[0]*Y.shape[1])).to(output.device)
+            embedding_losses = self.criterion(criterion_output, criterion_Y, targets)
+            embedding_losses = embedding_losses.view(Y.shape[0], Y.shape[1])
+        else:
+            embedding_losses = self.criterion(output, Y)
         if mask is not None:
             embedding_losses = embedding_losses * mask
-        line_losses = torch.mean(embedding_losses, dim=2)
+        line_losses = torch.mean(embedding_losses, dim=2) if len(embedding_losses.shape) > 2 else embedding_losses
         sequence_losses = torch.mean(line_losses, dim=1)
         loss = torch.mean(sequence_losses, dim=0)
 
