@@ -22,10 +22,13 @@ def test_counter(processed_log_file):
     ],
 )
 def test_tokenizer(tokenizer: LANLTokenizer, line):
-
+    expected_detokenized = "U24,DOM1,U24,DOM1,C2198,TGT,?,?,TGS,Success"
     indexes = tokenizer.tokenize(line)
     expected = np.array([24, 25, 26, 27, 28, 29, 30, 31, 32, 33])
     assert (indexes == expected).all()
+
+    detokenized_line = tokenizer.detokenize(indexes)
+    assert detokenized_line == expected_detokenized
 
 
 def test_counts2vocab(counts_file):
@@ -36,9 +39,6 @@ def test_counts2vocab(counts_file):
     assert "U24" in vocab.vocab["src_user"]
 
 
-def test_dataloader(tokenizer):
-
-    assert True
 
 
 @pytest.mark.parametrize(
@@ -72,17 +72,11 @@ def test_mask_tokens(tokenizer, seed, num_masked_positions, expected_num_mask_to
     assert True
 
 
-
 def test_log_processing(tmp_path, auth_file, redteam_file):
-    """Test auth processing"""
+    """Test auth processing."""
     from log_analyzer.data.log_file_utils import process_logfiles_for_training
 
     outfile = tmp_path / "out"
     outfile.mkdir()
 
-    process_logfiles_for_training(
-        auth_file,
-        redteam_file,
-        outfile,
-        [0]
-    )
+    process_logfiles_for_training(auth_file, redteam_file, outfile, [0])

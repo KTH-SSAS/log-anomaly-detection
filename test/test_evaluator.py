@@ -25,7 +25,7 @@ def test_evaluator(tmpdir, model_type):
 
     assert metrics["eval/token_accuracy"] >= 0 and metrics["eval/token_accuracy"] <= 1
     assert metrics["eval/token_perplexity"] >= 1
-    assert metrics["eval/AUC"] >= 0 and metrics["eval/AUC"] <= 1
+    # assert metrics["eval/AUC"] >= 0 and metrics["eval/AUC"] <= 1
 
     # Run through complete evaluator functionality
     evaluator.run_all()
