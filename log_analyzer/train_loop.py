@@ -17,10 +17,11 @@ from log_analyzer.config.model_config import (
     TieredTransformerConfig,
     TransformerConfig,
 )
-from log_analyzer.config.trainer_config import DataConfig, TrainerConfig
+from log_analyzer.config.trainer_config import TrainerConfig
 from log_analyzer.evaluator import Evaluator
 from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel, TieredLSTM
 from log_analyzer.model.transformer import TieredTransformer, Transformer
+from log_analyzer.tokenizer.tokenizer_neo import CharTokenizer, LANLTokenizer, LANLVocab, Tokenizer
 from log_analyzer.trainer import Trainer
 
 try:
@@ -41,22 +42,38 @@ LOGGING_FREQUENCY = 10  # How often to log results. Set to 1 to log everything.
 VALIDATION_FREQUENCY = 10  # Number of times to do validation per epoch. Set to 1 to only validate after each epoch.
 
 
-def calculate_max_input_length(data_length, bidirectional, skip_sos):
+def get_task(model: str, bidirectional: str):
+    """Return the language modeling task for the given model, since it varies
+    depending on its directionality."""
+    if bidirectional and (model == TRANSFORMER or model == TIERED_TRANSFORMER):
+        return data_utils.MASKED_LM
+    elif bidirectional and (model == LSTM or model == TIERED_LSTM):
+        return data_utils.BIDIR_LSTM_LM
+    else:
+        return data_utils.AUTOREGRESSIVE_LM
+
+
+def calculate_max_input_length(task, tokenizer):
     """Maximum input length to model."""
-    return data_length - 1 - int(skip_sos) + int(bidirectional)
+    add_sos, add_eos = data_utils.tokens_to_add(task)
+    seq_len = tokenizer.sequence_length
+    if seq_len is None:
+        return None
+    seq_len -= 1 if task == data_utils.AUTOREGRESSIVE_LM else 0
+    return int(add_sos) + seq_len + int(add_eos)
 
 
 def get_model_config(filename, model_type) -> ModelConfig:
     if model_type == TIERED_LSTM:
         return TieredLSTMConfig.init_from_file(filename)
-    elif model_type == LSTM:
+    if model_type == LSTM:
         return LSTMConfig.init_from_file(filename)
-    elif model_type == TRANSFORMER:
+    if model_type == TRANSFORMER:
         return TransformerConfig.init_from_file(filename)
-    elif model_type == TIERED_TRANSFORMER:
+    if model_type == TIERED_TRANSFORMER:
         return TieredTransformerConfig.init_from_file(filename)
-    else:
-        raise RuntimeError("Invalid model type.")
+
+    raise RuntimeError("Invalid model type.")
 
 
 def create_identifier_string(model_name, comment=""):
@@ -71,9 +88,10 @@ def init_from_args(args):
         args.model_type,
         args.bidirectional,
         args.model_config,
-        args.data_config,
+        args.tokenization,
         args.trainer_config,
         args.data_folder,
+        vocab_file=args.vocab_file,
     )
 
 
@@ -81,23 +99,24 @@ def init_from_config_files(
     model_type: str,
     bidirectional,
     model_config_file: str,
-    data_config_file: str,
+    tokenization: str,
     trainer_config_file: str,
     data_folder: str,
     base_logdir="runs",
+    vocab_file=None,
 ):
     """Creates a model plus trainer given the specifications in args."""
     model_config = get_model_config(model_config_file, model_type)
-    data_config = DataConfig.init_from_file(data_config_file)
     trainer_config = TrainerConfig.init_from_file(trainer_config_file)
     return init_from_config_classes(
         model_type,
         bidirectional,
         model_config,
         trainer_config,
-        data_config,
+        tokenization,
         data_folder,
         base_logdir,
+        vocab_file=vocab_file,
     )
 
 
@@ -106,9 +125,10 @@ def init_from_config_classes(
     bidirectional,
     model_config: ModelConfig,
     trainer_config: TrainerConfig,
-    data_config: DataConfig,
+    tokenization: str,
     data_folder,
     base_logdir="runs",
+    vocab_file=None,
 ):
     """Creates a model plus trainer given the specifications in args."""
     if not os.path.isdir(base_logdir):
@@ -121,27 +141,29 @@ def init_from_config_classes(
     skip_sos = not bidirectional
 
     shuffle_train_data = trainer_config.shuffle_train_data
-    tokenization_type = data_config.tokenization
-    if tokenization_type == "char":
-        jagged = True
-    elif tokenization_type == "word":
-        jagged = False
+
+    vocab = LANLVocab(vocab_file)
+
+    tokenizer: Tokenizer
+    if tokenization == "char":
+        tokenizer = CharTokenizer(vocab)
+    elif tokenization == "word":
+        if vocab_file is None:
+            raise RuntimeError("Word tokenization set, but there's no vocabulary!")
+        tokenizer = LANLTokenizer(vocab)
     else:
         raise RuntimeError("Invalid tokenization.")
 
-    # Settings for dataloader.
-    max_input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skip_sos)
+    task = get_task(model_type, bidirectional)
 
     train_days = trainer_config.train_files
     test_days = trainer_config.test_files
 
-    if data_config.tokenization == "word":
-        if model_config.sequence_length is not None and model_config.sequence_length != max_input_length:
-            raise RuntimeError(
-                "Sequence length from model configuration does not match sequence length from data file."
-            )
-        else:
-            model_config.sequence_length = max_input_length
+    model_config.vocab_size = tokenizer.vocab_size
+    model_config.sequence_length = calculate_max_input_length(task, tokenizer)
+
+    if isinstance(model_config, TieredTransformerConfig):
+        model_config.number_of_users = tokenizer.num_users
 
     if model_type in (TIERED_LSTM, TIERED_TRANSFORMER):
         val_loader = None
@@ -150,10 +172,8 @@ def init_from_config_classes(
             train_days,
             test_days,
             trainer_config.batch_size,
-            bidirectional,
-            skip_sos,
-            jagged,
-            max_input_length,
+            tokenizer,
+            task,
             num_steps=3,
         )
     elif model_type in (LSTM, TRANSFORMER):
@@ -162,10 +182,8 @@ def init_from_config_classes(
             train_days,
             test_days,
             trainer_config.batch_size,
-            bidirectional,
-            skip_sos,
-            jagged,
-            data_config.sentence_length,
+            tokenizer,
+            task,
             trainer_config.train_val_split,
             shuffle_train_data,
         )
@@ -183,10 +201,9 @@ def init_from_config_classes(
 
     if Application.instance().wandb_initialized:
         wandb.config.update(model_config)
-        wandb.config.update(data_config)
         wandb.config.update(trainer_config)
 
-    Application.artifact_name = f"{model_type}-{data_config.tokenization}"
+    Application.artifact_name = f"{model_type}-{tokenization}"
     Application.artifact_name += "-bidir" if bidirectional else ""
 
     return lm_trainer, lm_evaluator, train_loader, val_loader, test_loader
@@ -194,19 +211,19 @@ def init_from_config_classes(
 
 def init_model(model_config: ModelConfig, bidirectional) -> LogModel:
     """Initialises a new model based on the model config."""
-    if type(model_config) == TieredLSTMConfig:
+    if isinstance(model_config, TieredLSTMConfig):
         # TieredLSTMConfig is a type of LSTMConfig, so check for tiered first
         return TieredLSTM(model_config, bidirectional)
-    elif type(model_config) == LSTMConfig:
+    if isinstance(model_config, LSTMConfig):
         model = BidLSTM(model_config) if bidirectional else FwdLSTM(model_config)
         return model
-    elif type(model_config) == TieredTransformerConfig:
+    if isinstance(model_config, TieredTransformerConfig):
         # TieredTransformerConfig is a type of TransformerConfig, so check for tiered first
         return TieredTransformer(model_config)
-    elif type(model_config) == TransformerConfig:
+    if isinstance(model_config, TransformerConfig):
         return Transformer(model_config)
-    else:
-        raise RuntimeError("Invalid model config type.")
+
+    raise RuntimeError("Invalid model config type.")
 
 
 def wandb_log(iteration, frequency, data: dict):
@@ -267,18 +284,21 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
         # Count iteration continuously up through each epoch
         for epoch_iteration, batch in enumerate(tqdm(train_loader, desc="Training")):
             # epoch_iteration = iterations in this epoch (used to determine when to run validation)
-            iteration += 1  # Total iterations in training (cumulative)
             # Split the batch
             split_batch = train_loader.split_batch(batch)
             if lm_trainer.model.tiered:
                 if train_loader.flush is False:
                     loss, done = lm_trainer.train_step(split_batch)
                 else:
-                    logger.info(f"Due to flush, skipping the rest of the current file.")
+                    if iteration == 0:
+                        raise Exception("Flush happened before any training could be done.")
+
+                    logger.info("Due to flush, skipping the rest of the current file.")
                     train_loader.skip_file = True
                     continue
             else:
                 loss, done = lm_trainer.train_step(split_batch)
+            iteration += 1  # Total iterations in training (cumulative)
             train_losses.append(loss.item())
             wandb_log(
                 epoch_iteration,
