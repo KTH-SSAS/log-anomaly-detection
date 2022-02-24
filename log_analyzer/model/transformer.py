@@ -342,13 +342,22 @@ class LoglineTransformer(LogLineLogModel):
 
         self._sentence_embedding = partial(torch.mean, dim=2)
 
-        self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout, max_len=100)
+        self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout, max_len=self.config.window_size)
         encoder_layers = nn.TransformerEncoderLayer(
             self.model_dim, self.attention_heads, self.feedforward_dim, dropout=self.dropout, batch_first=True
         )
         self.transformer_encoder: nn.TransformerEncoder = nn.TransformerEncoder(encoder_layers, self.layers)
 
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
+
+    def get_mask(self, src: torch.Tensor):
+        # batch size, sequence length, embedded dimension
+        seq_len = src.shape[1]
+        device = src.device
+        if self.src_mask is None or self.src_mask.shape[1] != seq_len:
+            mask = _generate_square_subsequent_mask(seq_len).to(device)
+            self.src_mask = mask
+        return self.src_mask
 
     def word_embedding(self, src):
         return self._word_embedding(src)
@@ -358,8 +367,12 @@ class LoglineTransformer(LogLineLogModel):
 
     def forward(self, src: Tensor, lengths=None, mask=None, targets=None):
         # src: (batch, sequence, log_line)
-        # Step 1: perform sentence embedding by getting the element-wise average embedding of tokens in the line
-        # Step 2: Apply transformer across this logline sequence
+        # Step 1: Use sentence embedding to summarise each logline as a single token
+        # Step 2: Apply transformer across this sequence of logline tokens
+
+        # Prepare mask
+        self.src_mask = self.get_mask(src)
+
         # Apply word embedding to each log line in each sequence in each batch
         word_embeddings = self.word_embedding(src)
         # word_embeddings: (batch size, sequence length, logline length, embedded dimension)
