@@ -6,7 +6,7 @@ from log_analyzer.tokenizer.tokenizer_neo import LANLTokenizer, LANLVocab
 
 @pytest.fixture()
 def redteam_file(tmp_path):
-    red_file = "data/tokenization_test_data/redteam.txt"
+    red_file = "data/test_data/redteam.txt"
 
     with open(red_file) as f:
         outfile = tmp_path / "redteam.txt"
@@ -17,7 +17,7 @@ def redteam_file(tmp_path):
 
 @pytest.fixture()
 def auth_file(tmp_path):
-    filename = "data/tokenization_test_data/auth_head_1M.txt"
+    filename = "data/test_data/auth_head.txt"
 
     with open(filename) as f:
         outfile = tmp_path / "auth.txt"
@@ -28,7 +28,7 @@ def auth_file(tmp_path):
 
 @pytest.fixture()
 def raw_log_file(tmp_path):
-    filename = "data/tokenization_test_data/8_head.csv"
+    filename = "data/test_data/raw_8_head.csv"
 
     log_dir = tmp_path / "raw_logs"
     log_dir.mkdir()
@@ -47,7 +47,7 @@ def processed_log_file(tmp_path, redteam_file, raw_log_file):
     out_dir.mkdir()
     outfile = out_dir / "8.csv"
 
-    add_redteam_to_log(raw_log_file, outfile, redteam_file)
+    add_redteam_to_log(8, raw_log_file, outfile, redteam_file)
 
     return outfile
 
