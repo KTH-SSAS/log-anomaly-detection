@@ -53,7 +53,7 @@ def get_task(model: str, bidirectional: str):
         return data_utils.AUTOREGRESSIVE_LM
 
 
-def calculate_max_input_length(task, tokenizer):
+def calculate_max_input_length(task, tokenizer: Tokenizer):
     """Maximum input length to model."""
     add_sos, add_eos = data_utils.tokens_to_add(task)
     seq_len = tokenizer.sequence_length

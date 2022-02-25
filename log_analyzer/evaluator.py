@@ -140,7 +140,7 @@ class Evaluator:
         output, _ = self.model(X, lengths=L, mask=M)
 
         # Compute the loss for the output
-        loss, line_losses = self.model.compute_loss(output, Y, lengths=L)
+        loss, line_losses = self.model.compute_loss(output, Y)
 
         # Save the results if desired
         if store_eval_data:

@@ -68,6 +68,17 @@ class TieredTransformerConfig(TransformerConfig):
     _number_of_users: Optional[int] = field(init=False, default=None)
 
     @property
+    def vocab_size(self) -> int:
+        if self._vocab_size is None:
+            raise RuntimeError("Vocab size was not set!")
+        return self._vocab_size
+
+    @vocab_size.setter
+    def vocab_size(self, value):
+        self._vocab_size = value
+        self.context_config.vocab_size = value
+
+    @property
     def number_of_users(self) -> int:
         if self._number_of_users is None:
             raise RuntimeError("Number of users was not set!")
