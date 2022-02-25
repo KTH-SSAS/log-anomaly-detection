@@ -39,8 +39,6 @@ def test_counts2vocab(counts_file):
     assert "U24" in vocab.vocab["src_user"]
 
 
-
-
 @pytest.mark.parametrize(
     "seed,num_masked_positions,expected_num_mask_tokens",
     [(6, 5, 5), (7, 5, 4), (8, 5, 3)],

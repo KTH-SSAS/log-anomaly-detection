@@ -15,6 +15,10 @@ def test_evaluator(tmpdir, model_type):
     args = utils.set_args(bidir, model_type, token_level)
     args["base_logdir"] = os.path.join(tmpdir, "runs")
 
+    if model_type == "tiered-lstm":
+        # Reduce batch size to not immediately flush.
+        args["trainer_config"].batch_size = 10
+
     trainer, evaluator, train_loader, val_loader, test_loader = init_from_config_classes(**args)
     _ = train_model(trainer, train_loader, val_loader)
     _ = eval_model(evaluator, test_loader, store_eval_data=True)
