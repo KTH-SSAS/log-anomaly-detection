@@ -36,21 +36,26 @@ class Tokenizer(ABC):
         ...
 
     @abstractmethod
-    def mask_tokens(self, indexes):
+    def mask_tokens(self, tokens: list, percentage_to_mask=0.15, p_preserve=0.1, p_random=0.1):
         ...
 
     @abstractmethod
     def user_idx(self, user):
         ...
 
-    @abstractmethod
     @property
-    def num_users(self):
+    @abstractmethod
+    def num_users(self) -> int:
         ...
 
-    @abstractmethod
     @property
-    def vocab_size(self):
+    @abstractmethod
+    def vocab_size(self) -> int:
+        ...
+
+    @property
+    @abstractmethod
+    def sequence_length(self):
         ...
 
 
@@ -70,6 +75,7 @@ class CharTokenizer(Tokenizer):
 
         self.eos_idx = self.special_tokens[EOS_TOKEN]
         self.sos_idx = self.special_tokens[SOS_TOKEN]
+        self.mask_idx = self.special_tokens[MSK_TOKEN]
 
         self.users = vocab.vocab["src_user"]
 
@@ -78,7 +84,7 @@ class CharTokenizer(Tokenizer):
     @property
     def vocab_size(self):
         """There are 126 printable ASCII characters."""
-        return 126
+        return 126 + self.offset
 
     @property
     def sequence_length(self):
@@ -115,8 +121,59 @@ class CharTokenizer(Tokenizer):
 
         return self.encode(line, add_sos, add_eos)
 
-    def mask_tokens(self, indexes):
-        pass
+    def mask_tokens(self, tokens: list, percentage_to_mask=0.15, p_preserve=0.1, p_random=0.1):
+        """Replace a percentage of the tokens with mask tokens.
+
+        to_mask :       0110101010 <- 5 mask bits set to mask those tokens
+        mask2mask:      0100101010 <- 1 mask bit cleared to preserve that token
+        mask2random:    0000000010 <- 1 mask bit remains to set that token to a random token
+        """
+
+        masked_tokens = np.array(tokens, dtype=np.int64)
+
+        # Unmasked tokens are used as labels
+        labels = np.array(tokens, dtype=np.int64)
+        length = len(tokens)
+
+        # Positions in the sequence that will be masked
+        to_mask = np.random.rand(length) < percentage_to_mask
+
+        # Ensure that at least one token is masked
+        if np.sum(to_mask) == 0:
+            token_to_mask = np.random.randint(length)
+            masked_tokens[token_to_mask] = self.mask_idx
+            sample_weights = np.zeros(labels.shape, dtype=np.bool_)
+            sample_weights[token_to_mask] = 1
+            return masked_tokens, labels, sample_weights
+
+        # Leave 10% of tokens unmasked
+        inp_mask_2mask = to_mask & (np.random.rand(length) < 1 - p_preserve)
+
+        # Use the mask token for the right field (if different mask tokens are used)
+        masked_tokens[inp_mask_2mask] = self.mask_idx
+
+        # Set 10% of tokens to a random token
+        inp_mask_2random = inp_mask_2mask & (np.random.rand(length) < p_random)
+
+        masked_tokens[inp_mask_2random] = np.random.randint(
+            self.offset,
+            high=self.vocab_size,
+            size=(inp_mask_2random.sum(),),
+        )
+
+        # Set targets to -1 by default
+        labels_mask = -1 * np.ones(length, dtype=int)
+        labels_mask[to_mask] = masked_tokens[to_mask]
+
+        # Sample weights is a mask that shows which positions in the sequence were selected
+        # to be masked.
+        sample_weights = np.ones(labels_mask.shape, dtype=np.bool_)
+        sample_weights[labels_mask == -1] = 0
+
+        # Only consider masked positions in label
+        labels *= sample_weights
+
+        return masked_tokens, labels, sample_weights
 
     @property
     def num_users(self):
@@ -370,7 +427,7 @@ class LANLTokenizer(Tokenizer):
     def detokenize(self, indexes) -> str:
         return ",".join(self.decode(indexes))
 
-    def mask_tokens(self, tokens: list, percentage_to_mask=0.15, p_preserve=0.1, p_random=0.1):
+    def mask_tokens(self, tokens: list, percentage_to_mask=0.2, p_preserve=0.1, p_random=0.1):
         """Replace a percentage of the tokens with mask tokens.
 
         to_mask :       0110101010 <- 5 mask bits set to mask those tokens
@@ -429,5 +486,8 @@ class LANLTokenizer(Tokenizer):
         # to be masked.
         sample_weights = np.ones(labels_mask.shape, dtype=np.bool_)
         sample_weights[labels_mask == -1] = 0
+
+        # Only consider masked positions in label
+        labels *= sample_weights
 
         return masked_tokens, labels, sample_weights
