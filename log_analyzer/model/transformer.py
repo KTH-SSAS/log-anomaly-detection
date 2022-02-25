@@ -1,5 +1,6 @@
 """Code related to Transformer language model."""
 import math
+from abc import abstractmethod
 
 import torch
 from torch import Tensor, nn
@@ -111,15 +112,19 @@ class TransformerLanguageModel(LogModel):
             self.src_mask = mask
         return self.src_mask
 
+    @abstractmethod
+    def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None, targets=None):
+        ...
+
 
 class Transformer(TransformerLanguageModel):
     """Container module with an encoder, a recurrent or transformer module, and
     a decoder."""
 
-    def __init__(self, config: TransformerConfig):
+    def __init__(self, config: TransformerConfig, bidirectional):
         self.name = "Transformer"
         super().__init__(config)
-        self.bidirectional = False  # TODO: Change this when we make a bidirectional model.
+        self.bidirectional = bidirectional
         self.word_embedding = nn.Embedding(self.vocab_size, self.model_dim)
         if isinstance(config, TieredTransformerConfig):
             self.reduce_dimension = nn.Linear(config.input_dim, self.model_dim)
@@ -127,20 +132,23 @@ class Transformer(TransformerLanguageModel):
                 self.reduce_dimension = self.reduce_dimension.cuda()
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
-    def forward(self, sequences, context_vector=None, lengths=None, mask=None, targets=None):
+    def forward(self, sequences, lengths=None, context_vectors=None, mask=None, targets=None):
         # batch size, sequence length, embedded dimension
         # lengths is currently ignored, added for compatibility with LSTM-training code
-        # TODO: compatibility with character level encoding
 
-        self.src_mask = self.get_mask(sequences)
+        if not self.bidirectional:
+            self.src_mask = self.get_mask(sequences)
+        else:
+            self.src_mask = None
+
         word_embeddings = self.word_embedding(sequences) * math.sqrt(self.config.model_dim)
-        if context_vector is not None:
+        if context_vectors is not None:
             cat_word_embeddings = torch.Tensor([]).to(sequences.device)
             trans_word_embeddings = word_embeddings.transpose(0, 1).to(sequences.device)
             # Output: trans_word_embeddings: (sequence length x batch x embedded dimension)
             for trans_word_embedding in trans_word_embeddings:
                 # trans_word_embedding (batch x embedding)
-                trans_word_embedding = torch.cat((trans_word_embedding, context_vector), dim=-1).unsqueeze(0)
+                trans_word_embedding = torch.cat((trans_word_embedding, context_vectors), dim=-1).unsqueeze(0)
                 # Input: trans_word_embedding (batch x embedded dimension), context_vector (batch x context dimension)
                 # Output: trans_word_embedding: (1 x batch x embedded dimension + context dimension)
                 cat_word_embeddings = torch.cat((cat_word_embeddings, trans_word_embedding), dim=0)
@@ -179,9 +187,9 @@ class ContextTransformer(TransformerLanguageModel):
         self.reduce_dimension = nn.Linear(2 * config.model_dim, config.context_config.model_dim)
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
-    def forward(self, ctx_history):
-        self.src_mask = self.get_mask(ctx_history)
-        ctx_input = self.reduce_dimension(ctx_history)  # ctx_input (batch size, sequence length, 2 * model dimension)
+    def forward(self, sequences, _lengths: Tensor = None, _context_vectors=None, _length=None, _mask=None):
+        self.src_mask = self.get_mask(sequences)
+        ctx_input = self.reduce_dimension(sequences)  # ctx_input (batch size, sequence length, 2 * model dimension)
         ctx_embeddings = ctx_input * math.sqrt(
             self.config.model_dim * 2
         )  # ctx_embeddings (batch size, sequence length, model dimension)
@@ -194,12 +202,15 @@ class ContextTransformer(TransformerLanguageModel):
 
 
 class TieredTransformer(TieredLogModel):
-    def __init__(self, config: TieredTransformerConfig):
+
+    num_steps: int
+
+    def __init__(self, config: TieredTransformerConfig, bidirectional):
         super().__init__(config)
         self.name = "Tiered_Transformer"
         self.config: TieredTransformerConfig = config
         self.src_mask = None
-        self.log_transformer = Transformer(config)
+        self.log_transformer = Transformer(config, bidirectional)
         self.log_transformer.tiered = True
         self.context_transformer = ContextTransformer(config)
         self.shift_window = config.shift_window
@@ -215,14 +226,13 @@ class TieredTransformer(TieredLogModel):
 
         self.using_cuda = Application.instance().using_cuda
 
-    def forward(self, sequences: Tensor, lengths=None, mask=None, targets=None):
+    def forward(self, sequences: Tensor, lengths=None, context_vectors=None, mask=None, targets=None):
         # sequences (num of series, batch size, sequence length, embedded dimension)
-        # TODO: compatibility with character level encoding
         # Split the input into users list and sequences
         users, sequences = sequences
 
         # Get the state for the users in the batch
-        context_vector, context_history, history_length = self.get_batch_data(users)
+        context_vector, context_history, _ = self.get_batch_data(users)
 
         # Get the number of steps in the batch
         self.num_steps = sequences.shape[0]
@@ -241,29 +251,29 @@ class TieredTransformer(TieredLogModel):
                 context_vector = torch.zeros(batch_size, self.config.context_config.model_dim).to(device)
 
             ################ Low level transformer ############################################
-            idx_mask = None if mask == None else mask[idx]
+            idx_mask = None if mask is None else mask[idx]
             logits, tf_hidden, _ = self.log_transformer(
                 batch, context_vector=context_vector, mask=idx_mask
             )  # (batch size, sequence length, model dimension)
             token_output[idx][: logits.shape[0], : logits.shape[1], : logits.shape[2]] = logits
 
             ################ Process the output of the low level transformer ##################
-            mean_hidden = torch.mean(
-                tf_hidden, dim=1
-            )  # mean_hidden: Mean of a low level output. (batch size, model dimension) TODO: remove this mean and see performance improvement.
+            mean_hidden = torch.mean(tf_hidden, dim=1)
+            # mean_hidden: Mean of a low level output. (batch size, model dimension)
             final_hidden = tf_hidden[:, -1, :]  # final_hidden: The last token step output of the low level output
             context_input = torch.cat(
                 (mean_hidden, final_hidden), dim=1
             )  # cat_input: concatenation of mean_hidden and final_hidden (batch size, 2 * model dimension)
-            unsqueezed_context_input = torch.unsqueeze(
-                context_input, dim=1
-            )  # synthetic_input: unsqueeze to concatenate with the history of a specific user. (batch size, 1, 2 * model dimension)
+            unsqueezed_context_input = torch.unsqueeze(context_input, dim=1)
+            # synthetic_input: unsqueeze to concatenate with the history of a specific user.
+            # (batch size, 1, 2 * model dimension)
 
             if len(context_history.shape) == 2:
                 context_history = unsqueezed_context_input
             else:
                 context_history = torch.cat((unsqueezed_context_input, context_history), dim=1)
-            # ctx_history: concatination to generate a sequence of low level outputs (batch size, history length, 2 * model dimension)
+            # ctx_history: concatination to generate a sequence of low level outputs
+            # (batch size, history length, 2 * model dimension)
             context_history = context_history[:, -self.shift_window :, :]
             ################ Context level transformer with history #######################
             context_vector = self.context_transformer(context_history)

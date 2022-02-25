@@ -1,10 +1,10 @@
 # LSTM log language model
 
+from abc import abstractmethod
 from typing import Dict, Optional, Tuple, Type
 
 import torch
-import torch.nn as nn
-from torch import Tensor
+from torch import Tensor, nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 from log_analyzer.application import Application
@@ -45,6 +45,10 @@ class LogModel(nn.Module):
         # Return the loss, as well as extra details like loss per line
         return loss, line_losses.unsqueeze(-1)
 
+    @abstractmethod
+    def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None, targets=None):
+        ...
+
 
 class TieredLogModel(LogModel):
     """Superclass for tiered log-data language models."""
@@ -72,6 +76,10 @@ class TieredLogModel(LogModel):
             loss += step_loss.cpu()
         loss /= len(Y)
         return loss, line_losses_list
+
+    @abstractmethod
+    def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None, targets=None):
+        ...
 
 
 class LSTMLanguageModel(LogModel):
@@ -123,7 +131,7 @@ class LSTMLanguageModel(LogModel):
     def bidirectional(self):
         raise NotImplementedError("Bidirectional property has to be set in child class.")
 
-    def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None):
+    def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None, targets=None):
         """Performs token embedding, context-prepending if model is tiered, and
         runs the LSTM on the input sequences."""
         # batch size, sequence length, embedded dimension
@@ -296,13 +304,15 @@ class TieredLSTM(TieredLogModel):
         event_model_layers = config.layers
 
         # User model state
-        self.context_layers = config.context_layers if type(config.context_layers) is list else [config.context_layers]
+        self.context_layers = (
+            config.context_layers if isinstance(config.context_layers, list) else [config.context_layers]
+        )
         self.context_lstm_input = None
         self.saved_lstm: Dict[int, Tuple[Tensor, Tensor, Tensor]] = {}
 
         # Layers
         self.event_level_lstm = self.model(config)
-        self.event_level_lstm.tiered = True  # TODO make this more elegant
+        self.event_level_lstm.tiered = True
         if bidirectional:
             self.context_input_features = event_model_layers[-1] * 4
         else:
@@ -314,7 +324,7 @@ class TieredLSTM(TieredLogModel):
         # Weight initialization
         initialize_weights(self)
 
-    def forward(self, user_sequences, lengths=None, mask=None, targets=None):
+    def forward(self, sequences, lengths: Tensor = None, _context_vectors=None, _mask=None, targets=None):
         """Forward pass of tiered LSTM model.
 
         1. Applies context LSTM to the saved context information to generate context input for event LSTM.
@@ -325,7 +335,7 @@ class TieredLSTM(TieredLogModel):
         If targets is None then loss is returned as None
         """
         # Split the input into users list and user sequences
-        users, user_sequences = user_sequences
+        users, user_sequences = sequences
         # Convert users list to python list
         users = [user.item() for user in users]
         # Add a state list for any users we haven't seen before
@@ -354,7 +364,7 @@ class TieredLSTM(TieredLogModel):
             token_output = token_output.cuda()
         # number of steps (e.g., 3), number of users (e.g., 64), lengths of
         # sequences (e.g., 10)
-        for idx, sequences in enumerate(user_sequences):
+        for idx, sequence in enumerate(user_sequences):
             length = None if lengths is None else lengths[idx]
             if self.using_cuda and length is not None:
                 length = length.cuda()
@@ -367,7 +377,7 @@ class TieredLSTM(TieredLogModel):
 
             # Apply the event model to get token predictions
             event_model_output, (all_hidden, final_hidden), _ = self.event_level_lstm(
-                sequences, lengths=length, context_vectors=context_vector
+                sequence, lengths=length, context_vectors=context_vector
             )
             if self.event_level_lstm.bidirectional:
                 final_hidden = final_hidden.view(1, final_hidden.shape[1], -1)
@@ -441,7 +451,6 @@ class TieredLSTM(TieredLogModel):
         # Transpose the h and c states to order (batchsize, num_steps, sequence)
         hidden_states = torch.transpose(hidden_states, 0, 1)
         cell_states = torch.transpose(cell_states, 0, 1)
-        context_lstm_inputs = context_lstm_inputs
         for user, context_lstm_input, hidden_state, cell_state in zip(
             users, context_lstm_inputs, hidden_states, cell_states
         ):

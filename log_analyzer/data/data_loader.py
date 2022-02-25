@@ -1,7 +1,7 @@
 """Data loading functions."""
 
-import os.path as path
 from functools import partial
+from os import path
 from typing import Dict, List
 
 import torch
@@ -87,7 +87,7 @@ def prepare_datadict(line: str, task: str, tokenizer: Tokenizer) -> dict:
 
 def parse_multiple_files(filepaths: List[str]):
     for datafile in filepaths:
-        """Only permit ASCII characters."""
+        # Only permit ASCII characters.
         with open(datafile, "r", encoding="ascii") as f:
             for line in f:
                 yield line
@@ -126,12 +126,9 @@ class MapLogDataset(LogDataset, Dataset):
         return len(self.loglines)
 
 
-class IterableLogDataset(LogDataset, IterableDataset):
+class IterableLogDataset(LogDataset, IterableDataset):  # pylint: disable=abstract-method
     """Provides data via __iter__, allowing data to be accessed in order
     only."""
-
-    def __init__(self, filepaths, tokenizer, task) -> None:
-        super().__init__(filepaths, tokenizer, task)
 
     def __iter__(self):
         for line in parse_multiple_files(self.filepaths):
@@ -398,7 +395,8 @@ class TieredLogDataLoader:
                     batch[key][step].append(line_sample[key])
 
         # batch is a dict of the batch entries (input, target, mask, user, day, etc.)
-        # Each of the sequence entries (input, target, mask) are of shape [num_steps, batchsize, sequence], e.g. [3, 64, sequence]
+        # Each of the sequence entries (input, target, mask)
+        # are of shape [num_steps, batchsize, sequence], e.g. [3, 64, sequence]
         # Where sequence varies (if self.jagged=True).
 
         if self.tokenizer.jagged:

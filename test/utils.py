@@ -28,7 +28,8 @@ def set_args(bidir, model_type, token_level):
 
 
 def run_test(args, cuda=False):
-    Application.instance()._use_cuda = cuda  # TODO this is not a great way to do this, but it's quick.
+    # this is not a great way to do this, but it's quick.
+    Application.instance()._use_cuda = cuda  # pylint: disable=protected-access
     trainer, evaluator, train_loader, val_loader, test_loader = init_from_config_classes(**args)
     train_losses = train_model(trainer, train_loader, val_loader)
     test_losses = eval_model(evaluator, test_loader, store_eval_data=False)

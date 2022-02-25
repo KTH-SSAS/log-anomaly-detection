@@ -1,7 +1,7 @@
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.init
+from torch import nn
 
 
 def truncated_normal_(tensor, mean=0, std=1):

@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from log_analyzer.data.log_file_utils import count_fields
+from log_analyzer.data.log_file_utils import count_fields, process_logfiles_for_training
 from log_analyzer.tokenizer.tokenizer_neo import LANLTokenizer, LANLVocab
 
 
@@ -72,7 +72,6 @@ def test_mask_tokens(tokenizer, seed, num_masked_positions, expected_num_mask_to
 
 def test_log_processing(tmp_path, auth_file, redteam_file):
     """Test auth processing."""
-    from log_analyzer.data.log_file_utils import process_logfiles_for_training
 
     outfile = tmp_path / "out"
     outfile.mkdir()

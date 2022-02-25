@@ -2,9 +2,10 @@
 import os
 
 import pytest
-import utils
 
 from log_analyzer.train_loop import eval_model, init_from_config_classes, train_model
+
+from . import utils
 
 
 @pytest.mark.parametrize("model_type", ["lstm", "tiered-lstm", "transformer"])

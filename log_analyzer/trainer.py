@@ -25,7 +25,7 @@ class Trainer:
             self.model.cuda()
 
         # Create settings for training.
-        self._EarlyStopping = early_stopping.EarlyStopping(patience=config.early_stop_patience, path=checkpoint_dir)
+        self.earlystopping = early_stopping.EarlyStopping(patience=config.early_stop_patience, path=checkpoint_dir)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=config.learning_rate)
         self.scheduler = torch.optim.lr_scheduler.StepLR(
             self.optimizer,
@@ -42,7 +42,7 @@ class Trainer:
     def early_stopping(self, val_loss):
         """Performs early stopping check after validation, if enabled."""
         if self.config.early_stopping:
-            self._EarlyStopping(val_loss, self.model)
+            self.earlystopping(val_loss, self.model)
 
     def optimizer_step(self, loss: torch.Tensor):
         """Performs one step of optimization on the given loss."""
@@ -93,4 +93,4 @@ class Trainer:
         if not validation:
             self.optimizer_step(loss)
 
-        return loss, self._EarlyStopping.early_stop
+        return loss, self.earlystopping.early_stop

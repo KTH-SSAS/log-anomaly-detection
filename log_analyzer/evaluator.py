@@ -18,7 +18,6 @@ def create_attention_matrix(
     output_dir,
     lengths=None,
     mask=None,
-    token_map_file=None,
 ):
     """Plot attention matrix over batched input.
 
@@ -112,6 +111,9 @@ class Evaluator:
         self.reset_evaluation_data()
         self.use_wandb = Application.instance().wandb_initialized
         self.checkpoint_dir = checkpoint_dir
+        self.token_count = 0
+        self.token_accuracy = 0
+        self.test_count = 0
 
     @torch.no_grad()
     def eval_step(self, split_batch, store_eval_data=False):
@@ -210,8 +212,8 @@ class Evaluator:
 
         # Log the evaluation results
         if self.use_wandb and wandb.run is not None:
-            for key in evaluator_metrics:
-                wandb.run.summary[key] = evaluator_metrics[key]
+            for key, value in evaluator_metrics.items():
+                wandb.run.summary[key] = value
         return evaluator_metrics
 
     def add_evaluation_data(self, log_line, predictions, users, losses, seconds, red_flags):
@@ -320,14 +322,13 @@ class Evaluator:
 
     def get_metrics(self):
         """Computes and returns all metrics."""
-        metrics = {
+        return {
             "eval/loss": self.get_test_loss(),
             "eval/token_accuracy": self.get_token_accuracy(),
             "eval/token_perplexity": self.get_token_perplexity(),
             "eval/AUC": self.get_auc_score(),
             "eval/AP": self.get_ap_score(),
         }
-        return metrics
 
     def get_test_loss(self):
         """Returns the accuracy of the model token prediction."""
@@ -498,24 +499,24 @@ class Evaluator:
                 },
             )
             return auc_score, wandb_plot
-        else:
-            # Plot using scikit-learn and matplotlib
-            red_flag_count = sum(self.data["red_flags"])
-            non_red_flag_count = len(self.data["red_flags"]) - red_flag_count
-            xlabel = "False Positive Rate"
 
-            plt.plot(
-                fp_rate,
-                tp_rate,
-                color="orange",
-                lw=2,
-                label=f"ROC curve (area = {auc_score:.2f})",
-            )
-            plt.xlabel(xlabel)
-            plt.ylabel("True Positive Rate")
-            plt.title(title)
-            plt.legend()
-            return auc_score, plt
+        # Plot using scikit-learn and matplotlib
+        # red_flag_count = sum(self.data["red_flags"])
+        # non_red_flag_count = len(self.data["red_flags"]) - red_flag_count
+        xlabel = "False Positive Rate"
+
+        plt.plot(
+            fp_rate,
+            tp_rate,
+            color="orange",
+            lw=2,
+            label=f"ROC curve (area = {auc_score:.2f})",
+        )
+        plt.xlabel(xlabel)
+        plt.ylabel("True Positive Rate")
+        plt.title(title)
+        plt.legend()
+        return auc_score, plt
 
     def get_ap_score(self, normalised=False):
         """Computes AP score (average precision)"""
@@ -550,7 +551,7 @@ class Evaluator:
             precision = np.append(precision, full_precision[-1])
             recall = np.append(recall, full_recall[-1])
         # Erase the full fp and tp lists
-        full_precision = full_recall = full_thresh = []
+        full_precision = full_recall = []
 
         # Round to 5 digits
         precision = list(map(lambda x: round(x, 5), precision))
@@ -574,19 +575,19 @@ class Evaluator:
                 },
             )
             return AP_score, wandb_plot
-        else:
-            # Plot using scikit-learn and matplotlib
-            xlabel = "Recall"
-            ylabel = "Precision"
-            plt.plot(
-                recall,
-                precision,
-                color="orange",
-                lw=2,
-                label=f"Intrusion events",
-            )
-            plt.xlabel(xlabel)
-            plt.ylabel(ylabel)
-            plt.title(title)
-            plt.legend()
-            return AP_score, plt
+
+        # Plot using scikit-learn and matplotlib
+        xlabel = "Recall"
+        ylabel = "Precision"
+        plt.plot(
+            recall,
+            precision,
+            color="orange",
+            lw=2,
+            label="Intrusion events",
+        )
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+        plt.title(title)
+        plt.legend()
+        return AP_score, plt
