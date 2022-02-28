@@ -11,9 +11,25 @@ from log_analyzer.model.lstm import LogLineLogModel, LogModel, TieredLogModel
 from log_analyzer.model.model_util import initialize_weights
 
 
-def _generate_square_subsequent_mask(sz):
-    mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
+def _generate_square_subsequent_mask(seq_len):
+    """Generates a standard square subsequent mask for self-attention"""
+    mask = (torch.triu(torch.ones(seq_len, seq_len)) == 1).transpose(0, 1)
     mask = mask.float().masked_fill(mask == 0, float("-inf")).masked_fill(mask == 1, float(0.0))
+    return mask
+
+
+def _generate_subsquare_subsequent_mask(seq_len, window_len):
+    """Generates a sub-square subsequent mask for self-attention where sequence length is larger than
+    the attention window length."""
+    # Initialise mask of ones
+    mask = torch.ones(seq_len, seq_len)
+    # In the last window_len rows, we want to fill in a window_len wide diagonal with 0
+    start_row = seq_len - window_len
+    for row in range(start_row, seq_len):
+        for col in range(row-window_len + 1, row + 1):
+            mask[row, col] = 0
+    # Replace the ones with -inf
+    mask = mask.float().masked_fill(mask == 1, float("-inf"))
     return mask
 
 
@@ -209,7 +225,7 @@ class TieredTransformer(TieredLogModel):
         self.context_model_dim = config.context_config.model_dim
         self.context_input_dimension = config.input_dim
         self.shift_window = config.shift_window
-        self.n_users = 1200
+        self.n_users = 5000
         self.saved_context_vectors = torch.zeros([self.n_users, self.context_model_dim])
         self.saved_context_histories = torch.zeros([self.n_users, self.shift_window, self.context_input_dimension])
         self.saved_context_history_lengths = torch.zeros([self.n_users], dtype=torch.int16)
@@ -329,6 +345,8 @@ class LoglineTransformer(LogLineLogModel):
         self.feedforward_dim = config.feedforward_dim
         self.vocab_size = config.vocab_size
         self.bidirectional = False
+        # Window size for the purposes of pe, etc.
+        self.virtual_window_size = self.config.window_size * 2 - 1
 
         self.using_cuda = Application.instance().using_cuda
 
@@ -349,7 +367,7 @@ class LoglineTransformer(LogLineLogModel):
 
         self._sentence_embedding = partial(torch.mean, dim=2)
 
-        self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout, max_len=self.config.window_size)
+        self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout, max_len=self.virtual_window_size)
         encoder_layers = nn.TransformerEncoderLayer(
             self.model_dim, self.attention_heads, self.feedforward_dim, dropout=self.dropout, batch_first=True
         )
@@ -361,9 +379,22 @@ class LoglineTransformer(LogLineLogModel):
         # batch size, sequence length, embedded dimension
         seq_len = src.shape[1]
         device = src.device
-        if self.src_mask is None or self.src_mask.shape[1] != seq_len:
-            mask = _generate_square_subsequent_mask(seq_len).to(device)
+        # Simple case - input sequences are window_size long, generate standard self-attention mask
+        if self.src_mask is None or self.src_mask.shape[0] != seq_len:
+            if seq_len == self.config.window_size:
+                mask = _generate_square_subsequent_mask(seq_len).to(device)
+            # Sequences contain extra history so that each step can have the full window_size history length.
+            # We must generate an appropriate mask so each step has exactly window_size long history
+            # E.g. , with window_size of 3, this might look like:
+            # 0 0 0 0 0
+            # 0 0 0 0 0
+            # i i i 0 0
+            # 0 i i i 0
+            # 0 0 i i i
+            else:
+                mask = _generate_subsquare_subsequent_mask(seq_len, self.config.window_size).to(device)
             self.src_mask = mask
+            
         return self.src_mask
 
     def word_embedding(self, src):
@@ -396,10 +427,8 @@ class LoglineTransformer(LogLineLogModel):
         else:
             pad_mask = mask == 0
         tf_hidden = self.transformer_encoder(line_embeddings, self.src_mask, src_key_padding_mask=pad_mask)
-        # word embedding encoder and decoder share weights
-        # @ is shorthand for matrix multiplication
-        # logits = tf_hidden @ self.word_embedding.weight.t()
-        logits = tf_hidden  # Compute loss directly in embedding space
+        # Discard all but the last window_size entries
+        logits = tf_hidden[:,-self.config.window_size:,:]  # Compute loss directly in embedding space
 
         loss = None
         if targets is not None:

@@ -80,11 +80,14 @@ def test_data_loader_loglinelevel():
     assert len(data_handler) >= batch_size, "Dataset too small"
     for idx, batch in enumerate(data_handler):
         if idx == len(data_handler) - 1:
-            assert batch["input"].shape[1:] == torch.Size([window_size, input_length])
+            assert batch["input"].shape[1:] == torch.Size([2*window_size-1, input_length])
         else:
-            assert batch["input"].shape == torch.Size([batch_size, window_size, input_length])
+            assert batch["input"].shape == torch.Size([batch_size, 2*window_size-1, input_length])
         for b in range (batch["input"].shape[0]):
+            # Confirm that the targets are equal to the last window-size input.
+            # Note that the first of these window_size inputs won't be present in targets, and likewise
+            # The last target won't be present in the input
             assert batch_equal(
-                batch["input"][b,1:],
+                batch["input"][b,-(window_size-1):],
                 batch["target"][b,:-1],
-            ), "forward-shift"  # Confirm that the targets are equal to the inputs shifted by 1
+            ), "forward-shift"

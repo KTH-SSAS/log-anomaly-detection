@@ -161,14 +161,16 @@ class MapLoglineDataset(LogDataset, Dataset):
         iterator = parse_multiple_files(self.filepaths, jagged, bidirectional, skipsos, raw_lines=True)
 
         self.loglines.extend(iterator)
-        # Length explanation: -1 because we cannot use the last line as input (since it wouldn't have a target)
-        # Divide by window size and floor since we can't/don't want to pass on incomplete sequences
-        self.length = (len(self.loglines) - 1) // self.window_size
+        # Length explanation: Divide by window size and floor since we can't/don't want to pass on incomplete sequences
+        # Subtract one because we lose the first window_size lines because they can't have a history of length window_size
+        self.length = (len(self.loglines) // self.window_size) - 1
 
     def __getitem__(self, index):
+        # Actual input to the model (that will produce an output prediction): window_size
+        # Extra history before the start of this input needed to ensure a full window_size history for every entry: window_size-1
+        # Length of each item: 2*window_size - 1 long
         start_index = index * self.window_size
-        end_index = start_index + self.window_size + 1  # Add 1 line that will be the target for the last input
-        # Ensure end_index doesn't go past the size of loglines, even though we drop the last incomplete batch (see length above)
+        end_index = start_index + 2*self.window_size  # Add 1 line that will be the target for the last input
         sequence = self.loglines[start_index:end_index]
         parsed_sequence = self.parse_lines(sequence)
         return parsed_sequence
@@ -203,14 +205,14 @@ class MapLoglineDataset(LogDataset, Dataset):
 
             # The last line in the input is only used as the target for the 2nd to last line, not as input
             if idx < this_sequence_len - 1:
+                datadict["input"].append(data[input_start:input_end])
+            # The first window_size lines processed are not the target of anything (in this sequence) - only history
+            if idx > self.window_size - 1:
                 datadict["line"].append(data[0])
                 datadict["second"].append(data[1])
                 datadict["day"].append(data[2])
                 datadict["user"].append(data[3])
                 datadict["red"].append(data[4])
-                datadict["input"].append(data[input_start:input_end])
-            # The first line processed is not the target of anything (in this sequence)
-            if idx > 0:
                 datadict["target"].append(data[input_start:input_end])
 
         return datadict
