@@ -3,8 +3,6 @@ import os
 import pytest
 import utils
 
-from log_analyzer.train_loop import init_from_config_classes, train_model
-
 
 @pytest.mark.parametrize("tokenization", ["word", "char"])
 @pytest.mark.parametrize("bidir", [True, False])
@@ -37,4 +35,6 @@ def test_syntax_attention(tmpdir, tokenization, bidir):
     args["model_config"].attention_type = "syntax"
     args["model_config"].attention_dim = 10
     args["base_logdir"] = os.path.join(tmpdir, "runs")
+
+    utils.run_test(args)
     assert True

@@ -9,7 +9,7 @@ from tqdm import tqdm
 import wandb
 from log_analyzer.application import Application
 from log_analyzer.model.lstm import LogModel, LSTMLanguageModel
-from log_analyzer.tokenizer.tokenizer import Char_tokenizer
+from log_analyzer.tokenizer.tokenizer import CharTokenizer
 
 
 def create_attention_matrix(
@@ -88,7 +88,7 @@ def create_attention_matrix(
 
         ax.matshow(matrix.detach().numpy())
         if lengths is not None:
-            string = Char_tokenizer.detokenize_line(seq[: lengths[i] - 1])
+            string = CharTokenizer.detokenize_line(seq[: lengths[i] - 1])
             ax.set_xticks(range(len(string)))
             ax.set_xticklabels(string, fontsize="small")
             ax.set_yticks(range(len(string)))
@@ -140,7 +140,7 @@ class Evaluator:
         output, _ = self.model(X, lengths=L, mask=M)
 
         # Compute the loss for the output
-        loss, line_losses = self.model.compute_loss(output, Y, lengths=L, mask=M)
+        loss, line_losses = self.model.compute_loss(output, Y)
 
         # Save the results if desired
         if store_eval_data:
@@ -242,7 +242,8 @@ class Evaluator:
             ["users", "losses", "seconds", "red_flags"],
             [users, losses, seconds, red_flags],
         ):
-            self.data[key][self.index[key] : self.index[key] + len(new_data)] = new_data
+            self.data[key][self.index[key] : self.index[key] + len(new_data)] = new_data.squeeze()
+
             self.index[key] += len(new_data)
 
         # Update the metatag, i.e. data is prepared and normalised data is ready
@@ -366,9 +367,9 @@ class Evaluator:
 
     def plot_line_loss_percentiles(
         self,
-        percentiles=[75, 95, 99],
+        percentiles=(75, 95, 99),
         smoothing=1,
-        colors=["darkorange", "gold"],
+        colors=("darkorange", "gold"),
         ylim=(-1, -1),
         outliers=10,
         legend=True,

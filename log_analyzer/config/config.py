@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 class Config:
     """Parent class for configs."""
 
-    def __init__(self) -> None:
+    def __init__(self, **kwargs) -> None:
         pass
 
     def save_config(self, filename):

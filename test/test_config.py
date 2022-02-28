@@ -1,7 +1,5 @@
 import os
 
-import pytest
-
 
 def test_save_load_config(tmpdir):
     from log_analyzer.config.trainer_config import TrainerConfig

@@ -1,6 +1,5 @@
 from log_analyzer.application import Application
-from log_analyzer.config.model_config import LSTMConfig, TieredLSTMConfig
-from log_analyzer.config.trainer_config import DataConfig, TrainerConfig
+from log_analyzer.config.trainer_config import TrainerConfig
 from log_analyzer.train_loop import eval_model, get_model_config, init_from_config_classes, train_model
 
 
@@ -11,17 +10,18 @@ def set_args(bidir, model_type, token_level):
 
     args["bidirectional"] = bidir
     args["model_type"] = model_type
+    args["tokenization"] = token_level
+    args["vocab_file"] = "data/vocab_field_cutoff=40.json"
     trainer_config = TrainerConfig.init_from_file("config/lanl_config_trainer.json")
-    trainer_config.train_files = ["0.txt", "1.txt"]
-    trainer_config.test_files = ["2.txt"]
+    trainer_config.train_files = ["6.csv", "7.csv"]
+    trainer_config.test_files = ["8.csv"]
     args["trainer_config"] = trainer_config
 
-    model_config_file = f"config/lanl_config_{model_type}_{token_level}.json"
+    model_config_file = f"config/lanl_config_{model_type}.json"
 
     args["model_config"] = get_model_config(model_config_file, model_type)
 
-    args["data_folder"] = f"data/test_data/{token_level}_day_split"
-    args["data_config"] = DataConfig.init_from_file(f"config/lanl_config_data_{token_level}.json")
+    args["data_folder"] = "data/test_data"
 
     # Return the prepared args
     return args

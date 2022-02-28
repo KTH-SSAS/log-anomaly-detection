@@ -1,0 +1,15 @@
+[MASTER]
+max-line-length=120
+variable-naming-style=any
+generated-members=
+			numpy.*,
+			torch.*,
+			wandb.*
+
+[MESSAGES CONTROL]
+disable=R0913,
+		C0114,
+		C0115,
+		C0116,
+		C0103,
+		R0902
