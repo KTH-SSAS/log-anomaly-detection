@@ -7,9 +7,12 @@ generated-members=
 			wandb.*
 
 [MESSAGES CONTROL]
-disable=R0913,
-		C0114,
-		C0115,
-		C0116,
-		C0103,
-		R0902
+disable=design,
+		missing-module-docstring,
+		missing-class-docstring,
+		missing-function-docstring,
+		invalid-name,
+		max-attributes,
+		consider-using-with,
+		too-many-nested-blocks,
+		duplicate-code

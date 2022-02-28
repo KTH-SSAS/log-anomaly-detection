@@ -1,7 +1,8 @@
 import os
 
 import pytest
-import utils
+
+from . import utils
 
 
 @pytest.mark.parametrize("tokenization", ["word", "char"])

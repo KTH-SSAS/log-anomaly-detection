@@ -1,3 +1,4 @@
+"""Helper functions for model creation and training."""
 import logging
 import os
 import socket
@@ -6,9 +7,9 @@ from datetime import datetime
 import numpy as np
 from tqdm import tqdm
 
-import log_analyzer.application as application
 import log_analyzer.data.data_loader as data_utils
 import wandb
+from log_analyzer import application
 from log_analyzer.application import Application
 from log_analyzer.config.model_config import (
     LSTMConfig,
@@ -29,9 +30,6 @@ try:
 except ImportError:
     print("PyTorch is needed for this application.")
 
-"""
-Helper functions for model creation and training
-"""
 
 LSTM = "lstm"
 TRANSFORMER = "transformer"
@@ -45,12 +43,12 @@ VALIDATION_FREQUENCY = 10  # Number of times to do validation per epoch. Set to 
 def get_task(model: str, bidirectional: str):
     """Return the language modeling task for the given model, since it varies
     depending on its directionality."""
-    if bidirectional and (model == TRANSFORMER or model == TIERED_TRANSFORMER):
+    if bidirectional and model in (TRANSFORMER, TIERED_TRANSFORMER):
         return data_utils.MASKED_LM
-    elif bidirectional and (model == LSTM or model == TIERED_LSTM):
+    if bidirectional and model in (LSTM, TIERED_LSTM):
         return data_utils.BIDIR_LSTM_LM
-    else:
-        return data_utils.AUTOREGRESSIVE_LM
+
+    return data_utils.AUTOREGRESSIVE_LM
 
 
 def calculate_max_input_length(task, tokenizer: Tokenizer):
@@ -77,10 +75,9 @@ def get_model_config(filename, model_type) -> ModelConfig:
 
 
 def create_identifier_string(model_name, comment=""):
-    # TODO have model name be set by config, args or something else
     current_time = datetime.now().strftime("%b%d_%H-%M-%S")
-    id = f"{model_name}_{current_time}_{socket.gethostname()}_{comment}"
-    return id
+    id_string = f"{model_name}_{current_time}_{socket.gethostname()}_{comment}"
+    return id_string
 
 
 def init_from_args(args):
@@ -136,9 +133,6 @@ def init_from_config_classes(
     id_string = create_identifier_string(model_type)
     log_dir = os.path.join(base_logdir, id_string)
     os.mkdir(log_dir)
-
-    # Skip start of sequence token for forward models.
-    skip_sos = not bidirectional
 
     shuffle_train_data = trainer_config.shuffle_train_data
 
@@ -219,9 +213,9 @@ def init_model(model_config: ModelConfig, bidirectional) -> LogModel:
         return model
     if isinstance(model_config, TieredTransformerConfig):
         # TieredTransformerConfig is a type of TransformerConfig, so check for tiered first
-        return TieredTransformer(model_config)
+        return TieredTransformer(model_config, bidirectional)
     if isinstance(model_config, TransformerConfig):
-        return Transformer(model_config)
+        return Transformer(model_config, bidirectional)
 
     raise RuntimeError("Invalid model config type.")
 
@@ -328,7 +322,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
 
     if lm_trainer.config.early_stopping:
         # Save the best performing model version to file
-        lm_trainer._EarlyStopping.save_checkpoint()
+        lm_trainer.earlystopping.save_checkpoint()
 
     # Save the final model version to file
     model_save_path = os.path.join(log_dir, "model.pt")

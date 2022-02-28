@@ -1,14 +1,33 @@
 import pytest
+import torch
 
+from log_analyzer.config.model_config import TransformerConfig
 from log_analyzer.data.log_file_utils import add_redteam_to_log, count_fields
 from log_analyzer.tokenizer.tokenizer_neo import LANLTokenizer, LANLVocab
 
+SEQUENCE_LENGTH = 10
+VOCAB_SIZE = 128
+BATCH_SIZE = 64
+
 
 @pytest.fixture()
-def redteam_file(tmp_path):
+def test_config():
+    config = TransformerConfig(layers=2, feedforward_dim=64, model_dim=64, attention_heads=2, dropout=0.1)
+    config.vocab_size = VOCAB_SIZE
+    config.sequence_length = SEQUENCE_LENGTH
+    return config
+
+
+@pytest.fixture()
+def test_input():
+    return torch.randint(low=0, high=VOCAB_SIZE, size=(BATCH_SIZE, SEQUENCE_LENGTH))
+
+
+@pytest.fixture(name="redteam_file")
+def fixture_redteam_file(tmp_path):
     red_file = "data/test_data/redteam.txt"
 
-    with open(red_file) as f:
+    with open(red_file, encoding="utf8") as f:
         outfile = tmp_path / "redteam.txt"
         outfile.write_text(f.read())
 
@@ -19,21 +38,21 @@ def redteam_file(tmp_path):
 def auth_file(tmp_path):
     filename = "data/test_data/auth_head.txt"
 
-    with open(filename) as f:
+    with open(filename, encoding="utf8") as f:
         outfile = tmp_path / "auth.txt"
         outfile.write_text(f.read())
 
     return outfile
 
 
-@pytest.fixture()
-def raw_log_file(tmp_path):
+@pytest.fixture(name="raw_log_file")
+def fixture_raw_log_file(tmp_path):
     filename = "data/test_data/raw_8_head.csv"
 
     log_dir = tmp_path / "raw_logs"
     log_dir.mkdir()
 
-    with open(filename, "r") as f:
+    with open(filename, "r", encoding="utf8") as f:
         log_file = log_dir / "8.csv"
         log_file.write_text(f.read())
 
@@ -52,16 +71,16 @@ def processed_log_file(tmp_path, redteam_file, raw_log_file):
     return outfile
 
 
-@pytest.fixture()
-def single_line_test_file(tmp_path):
+@pytest.fixture(name="single_line_test_file")
+def fixture_single_line_test_file(tmp_path):
     data = "691200,U24@DOM1,U24@DOM1,C2198,TGT,?,?,TGS,Success\n"
     log = tmp_path / "logfile.csv"
     log.write_text(data)
     return log
 
 
-@pytest.fixture()
-def counts_file(tmp_path, single_line_test_file):
+@pytest.fixture(name="counts_file")
+def fixture_counts_file(tmp_path, single_line_test_file):
     field_names = [
         "time",
         "src_user",
@@ -88,8 +107,8 @@ def counts_file(tmp_path, single_line_test_file):
     return outfile
 
 
-@pytest.fixture()
-def vocab_file(tmp_path, counts_file):
+@pytest.fixture(name="vocab_file")
+def fixture_vocab_file(tmp_path, counts_file):
 
     filename = tmp_path / "vocabfile.json"
 

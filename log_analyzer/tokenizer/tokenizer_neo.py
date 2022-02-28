@@ -211,7 +211,7 @@ class FieldVocab(ABC):
 class GlobalVocab(FieldVocab):
     def __init__(self, vocab_file) -> None:
         super().__init__(vocab_file)
-        with open(vocab_file) as f:
+        with open(vocab_file, encoding="utf8") as f:
             self.vocab = json.load(f)
 
     def token2idx(self, token, _):
@@ -231,7 +231,7 @@ class GlobalVocab(FieldVocab):
 class LANLVocab(FieldVocab):
     def __init__(self, vocab_file) -> None:
         super().__init__(vocab_file)
-        with open(vocab_file) as f:
+        with open(vocab_file, encoding="utf8") as f:
             self.vocab = OrderedDict(json.load(f))
 
         # Vocab size including special tokens
@@ -325,14 +325,14 @@ class LANLVocab(FieldVocab):
             vocab["special_tokens"][t] = index
             index += 1
 
-        with open(counts_file) as f:
+        with open(counts_file, encoding="utf8") as f:
             counts = json.load(f)
 
         # Add one Out-Of-Vocabulary and MASK index for each field
         vocab[MSK_TOKEN] = []
         vocab[OOV_TOKEN] = []
         for t in [OOV_TOKEN, MSK_TOKEN]:
-            for i, _ in enumerate(counts):
+            for _ in counts:
                 vocab[t].append(index)
                 index += 1
 
@@ -351,7 +351,7 @@ class LANLVocab(FieldVocab):
 
         print(f"Generated vocab with {index} words.")
 
-        with open(outfile, "w") as f:
+        with open(outfile, "w", encoding="utf8") as f:
             json.dump(vocab, f, indent=" ")
 
         return cls(outfile)

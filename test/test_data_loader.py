@@ -27,8 +27,7 @@ def test_data_loader_char(shuffle, task):
             # Confirm that the targets are equal to the inputs shifted
             # by 1
             all(
-                batch["input"][i, 1 : x_length[i] - int(bidirectional)]
-                == batch["target"][i, : x_length[i] - 1 - int(bidirectional)]
+                x[i, 1 : x_length[i] - int(bidirectional)] == batch["target"][i, : x_length[i] - 1 - int(bidirectional)]
             )
 
 
@@ -49,10 +48,11 @@ def test_data_loader_word(shuffle, task):
         assert x.shape == torch.Size([batch_size, expected_input_length]), (
             "bidirectional" if bidirectional else "forward"
         )
+        # Confirm that the targets are equal to the inputs shifted by 1
         assert batch_equal(
             batch["input"][:, 1 : batch["input"].shape[1] - int(bidirectional)],
             batch["target"][:, : batch["target"].shape[1] - int(not bidirectional)],
-        ), f"{'bidir' if bidirectional else 'forward'}-shift"  # Confirm that the targets are equal to the inputs shifted by 1
+        ), f"{'bidir' if bidirectional else 'forward'}-shift"
 
 
 def test_data_loader_tiered():

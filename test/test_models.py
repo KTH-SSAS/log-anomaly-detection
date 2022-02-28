@@ -3,7 +3,8 @@ import os
 
 import pytest
 import torch.cuda
-import utils
+
+from . import utils
 
 
 @pytest.mark.parametrize("tokenization", ["word", "char"])

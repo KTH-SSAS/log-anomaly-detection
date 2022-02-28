@@ -95,7 +95,7 @@ class TieredTransformerConfig(TransformerConfig):
 
     @classmethod
     def init_from_file(cls, filename):
-        with open(filename, "r") as f:
+        with open(filename, "r", encoding="utf8") as f:
             data: dict = json.load(f)
 
         data["context_config"] = TransformerConfig(

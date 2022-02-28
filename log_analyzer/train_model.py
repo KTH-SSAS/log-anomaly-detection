@@ -10,23 +10,6 @@ import wandb
 from log_analyzer.application import Application
 from log_analyzer.train_loop import eval_model, init_from_args, train_model
 
-"""
-Entrypoint script for training
-Example:
-train_model.py
---model-type
-lstm,
---model-config,
-config/lanl_char_config_model.json,
---trainer-config,
-config/config_trainer.json,
---data-config,
-config/lanl_char_config_data.json,
---data-folder,
-data/data_examples/raw_day_split,
---bidir
-"""
-
 
 def prepare_args():
     parser = ArgumentParser()
@@ -49,7 +32,8 @@ def prepare_args():
     parser.add_argument(
         "--no-eval-model",
         action="store_true",
-        help="Including this option will skip running the model through standard evaluation and returning appropriate metrics and plots.",
+        help="Including this option will skip running the model through standard"
+        "evaluation and returning appropriate metrics and plots.",
     )
     parser.add_argument(
         "--wandb-sync", action="store_true", help="Including this option will sync the wandb data with the cloud."
