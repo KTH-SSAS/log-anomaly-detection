@@ -62,7 +62,7 @@ def test_mask_tokens(tokenizer, seed, num_masked_positions, expected_num_mask_to
     assert sum(sample_weights) == num_masked_positions
 
     # Label is equal to original tokens
-    assert all(labels == tokens)
+    assert all(labels == sample_weights * tokens)
 
     mask_indexes = tokenizer.vocab.mask_tokens
     num_mask_tokens = len([1 for i in masked_tokens if i in mask_indexes])
