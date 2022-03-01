@@ -253,7 +253,7 @@ class TieredTransformer(TieredLogModel):
             ################ Low level transformer ############################################
             idx_mask = None if mask is None else mask[idx]
             logits, tf_hidden, _ = self.log_transformer(
-                batch, context_vector=context_vector, mask=idx_mask
+                batch, context_vectors=context_vector, mask=idx_mask
             )  # (batch size, sequence length, model dimension)
             token_output[idx][: logits.shape[0], : logits.shape[1], : logits.shape[2]] = logits
 

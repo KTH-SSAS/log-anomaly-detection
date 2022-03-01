@@ -324,7 +324,7 @@ class TieredLSTM(TieredLogModel):
         # Weight initialization
         initialize_weights(self)
 
-    def forward(self, sequences, lengths: Tensor = None, _context_vectors=None, _mask=None, targets=None):
+    def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None, targets=None):
         """Forward pass of tiered LSTM model.
 
         1. Applies context LSTM to the saved context information to generate context input for event LSTM.
