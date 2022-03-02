@@ -1,9 +1,9 @@
 {
 	"train_files": [
-		"7.txt"
+		"7.csv"
 	],
 	"test_files": [
-		"8.txt"
+		"8.csv"
 	],
 	"batch_size": 64,
 	"epochs": 1,

@@ -1,4 +1,5 @@
 """Helper functions for model creation and training."""
+import json
 import logging
 import os
 import socket
@@ -89,6 +90,7 @@ def init_from_args(args):
         args.trainer_config,
         args.data_folder,
         vocab_file=args.vocab_file,
+        user_file=args.user_file,
     )
 
 
@@ -101,6 +103,7 @@ def init_from_config_files(
     data_folder: str,
     base_logdir="runs",
     vocab_file=None,
+    user_file=None,
 ):
     """Creates a model plus trainer given the specifications in args."""
     model_config = get_model_config(model_config_file, model_type)
@@ -114,6 +117,7 @@ def init_from_config_files(
         data_folder,
         base_logdir,
         vocab_file=vocab_file,
+        user_file=user_file,
     )
 
 
@@ -126,6 +130,7 @@ def init_from_config_classes(
     data_folder,
     base_logdir="runs",
     vocab_file=None,
+    user_file=None,
 ):
     """Creates a model plus trainer given the specifications in args."""
     if not os.path.isdir(base_logdir):
@@ -136,15 +141,23 @@ def init_from_config_classes(
 
     shuffle_train_data = trainer_config.shuffle_train_data
 
+    if user_file is not None:
+        with open(user_file, encoding="utf8") as f:
+            users = json.load(f)
+    else:
+        if "tiered" in model_type:
+            raise Exception("Tiered models need a list of users.")
+        users = None
+
     vocab = LANLVocab(vocab_file)
 
     tokenizer: Tokenizer
     if tokenization == "char":
-        tokenizer = CharTokenizer(vocab)
+        tokenizer = CharTokenizer(vocab, users)
     elif tokenization == "word":
         if vocab_file is None:
             raise RuntimeError("Word tokenization set, but there's no vocabulary!")
-        tokenizer = LANLTokenizer(vocab)
+        tokenizer = LANLTokenizer(vocab, users)
     else:
         raise RuntimeError("Invalid tokenization.")
 
@@ -268,6 +281,8 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
     if run_validation:
         # Number of iterations between each validation run
         validation_period = (len(train_loader) // VALIDATION_FREQUENCY) + 1
+    else:
+        validation_period = 0
 
     train_losses = []
 

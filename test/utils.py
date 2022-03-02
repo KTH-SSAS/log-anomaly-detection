@@ -16,6 +16,7 @@ def set_args(bidir, model_type, token_level):
     trainer_config.train_files = ["6.csv", "7.csv"]
     trainer_config.test_files = ["8.csv"]
     args["trainer_config"] = trainer_config
+    args["user_file"] = "data/users678.json"
 
     model_config_file = f"config/lanl_config_{model_type}.json"
 

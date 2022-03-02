@@ -9,7 +9,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 from log_analyzer.application import Application
-from log_analyzer.tokenizer.tokenizer_neo import LANLTokenizer, Tokenizer
+from log_analyzer.tokenizer.tokenizer_neo import Tokenizer
 
 AUTOREGRESSIVE_LM = "lm"
 BIDIR_LSTM_LM = "bidir-lm"
@@ -166,12 +166,12 @@ class LogDataLoader(DataLoader):
             "Y": Y,
             "L": L,
             "M": M,
+            "user": batch["user"],
+            "second": batch["second"],
+            "red_flag": batch["red"],
         }
 
         # Grab evaluation data
-        split_batch["user"] = batch["user"]
-        split_batch["second"] = batch["second"]
-        split_batch["red_flag"] = batch["red"]
 
         return split_batch
 
@@ -298,18 +298,18 @@ class TieredLogDataLoader:
     def __init__(
         self,
         filepaths,
-        tokenizer: LANLTokenizer,
+        tokenizer: Tokenizer,
         task,
         batch_size=100,
         num_steps=5,
         delimiter=" ",
     ):
-        self.tokenizer: LANLTokenizer = tokenizer
+        self.tokenizer: Tokenizer = tokenizer
         self.task = task
         self.delimiter = delimiter  # delimiter for input file
         self.mb_size = batch_size  # the number of users in a batch
         self.num_steps = num_steps  # The number of log lines for each user in a batch
-        self.user_logs: Dict[str, dict] = {}
+        self.user_logs: Dict[int, List[dict]] = {}
         self.staggler_num_steps = 1
         # the list of users who are ready to be included in the next batch
         # (i.e. whose # of saved log lines are greater than or equal to the self.num_steps)
@@ -447,12 +447,12 @@ class TieredLogDataLoader:
             "Y": Y,
             "L": L,
             "M": M,
+            "user": batch["user"],
+            "second": batch["second"],
+            "red_flag": batch["red"],
         }
 
         # Grab evaluation data
-        split_batch["user"] = batch["user"]
-        split_batch["second"] = batch["second"]
-        split_batch["red_flag"] = batch["red"]
 
         return split_batch
 

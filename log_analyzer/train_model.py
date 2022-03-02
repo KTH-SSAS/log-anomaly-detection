@@ -18,7 +18,12 @@ def prepare_args():
     )
     parser.add_argument("--model-config", type=str, help="Model configuration file.", required=True)
     parser.add_argument("--tokenization", type=str, help="Tokenization method", required=True, choices=["word", "char"])
-    parser.add_argument("--vocab-file", type=str, help="Path to vocabulary file.", required=True)
+    parser.add_argument(
+        "--vocab-file", type=str, help="Path to vocabulary file. Required for field tokenization.", required=False
+    )
+    parser.add_argument(
+        "--user-file", type=str, help="Path to file containing all users. Required for tiered models.", required=False
+    )
     parser.add_argument("--data-folder", type=str, help="Path to data files.", required=True)
     parser.add_argument("--trainer-config", type=str, help="Trainer configuration file.", required=True)
     parser.add_argument("--load-from-checkpoint", type=str, help="Checkpoint to resume training from")
@@ -57,11 +62,17 @@ def main():
 
     args = prepare_args()
 
+    if "tiered" in args.model_type and args.user_file is None:
+        raise Exception("Tiered model was set but no user file was supplied.")
+
+    if "word" in args.tokenization and args.vocab_file is None:
+        raise Exception("Word level tokenization was set but no vocab file was supplied.")
+
     #  Start a W&B run
 
     os.environ["WANDB_MODE"] = "online" if args.wandb_sync else "offline"
 
-    wandb.init(project="logml", entity="log-data-ml", config=args)
+    wandb.init(project="logml", entity="log-data-ml", config=vars(args))
     wandb_initalized = True
 
     if args.use_cuda and not torch.cuda.is_available():
