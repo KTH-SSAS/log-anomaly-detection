@@ -2,11 +2,11 @@
 
 from functools import partial
 from os import path
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import DataLoader, Dataset, IterableDataset, random_split
+from torch.utils.data import DataLoader, Dataset, IterableDataset, Subset, random_split
 
 from log_analyzer.application import Application
 from log_analyzer.tokenizer.tokenizer_neo import Tokenizer
@@ -237,36 +237,38 @@ def create_data_loaders(
     tokenizer: Tokenizer,
     task: str,
     shuffle: bool = False,
-    dataset_split: Tuple[int, int] = None,
-) -> List[DataLoader]:
+    dataset_split: Tuple[int, int] = (1, 0),
+) -> Sequence[Optional[LogDataLoader]]:
     """Creates and returns 2 data loaders.
 
     If dataset_split is not provided the second data loader is instead
     set to None.
     """
 
+    dataset: LogDataset
     if shuffle or dataset_split is not None:
         dataset = MapLogDataset(filepaths, tokenizer, task)
     else:
         dataset = IterableLogDataset(filepaths, tokenizer, task)
 
+    datasets: Sequence[Union[Subset, Dataset, Optional[Dataset]]]
     # Split the dataset according to the split list
-    if dataset_split is not None:
+    if dataset_split != (1, 0):
         # Ensure the list has 2 values and sums to 1
         if sum(dataset_split) != 1:
             raise ValueError("Sum of list of splits is not 1.")
         if len(dataset_split) != 2:
             raise ValueError("Split list does not contain exactly 2 values.")
         # Convert splits into lengths as proportion of dataset length
-        dataset_split = [int(split_val * len(dataset)) for split_val in dataset_split]
+        splits = [int(split_val * len(dataset)) for split_val in dataset_split]
         # Ensure sum of dataset_split is the same as dataset length
-        size_diff = len(dataset) - sum(dataset_split)
-        dataset_split[0] += size_diff
+        size_diff = len(dataset) - sum(splits)
+        splits[0] += size_diff
 
-        datasets = random_split(dataset, dataset_split)
+        datasets = random_split(dataset, splits)
     else:
         # Return just a single dataset
-        datasets = (dataset, None)
+        datasets = [dataset, None]
 
     collate = partial(collate_fn, jagged=tokenizer.jagged)
     data_handlers = [
@@ -295,7 +297,11 @@ def load_data(
         filepaths_train, batch_sizes, tokenizer, task, shuffle_train_data, train_val_split
     )
     test_loader, _ = create_data_loaders(
-        filepaths_eval, (batch_sizes[1], batch_sizes[1]), tokenizer, task, shuffle=False, dataset_split=None
+        filepaths_eval,
+        (batch_sizes[1], batch_sizes[1]),
+        tokenizer,
+        task,
+        shuffle=False,
     )
 
     return train_loader, val_loader, test_loader
