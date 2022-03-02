@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from log_analyzer.config.trainer_config import DataConfig
-from log_analyzer.data.data_loader import create_data_loaders, create_data_loaders_linelevel
+from log_analyzer.data.data_loader import create_data_loaders, create_data_loaders_multiline
 
 
 def batch_equal(v1: torch.Tensor, v2: torch.Tensor):
@@ -63,7 +63,7 @@ def test_data_loader_tiered():
     pytest.skip()
 
 
-def test_data_loader_loglinelevel():
+def test_data_loader_multiline():
     from log_analyzer.train_loop import calculate_max_input_length
 
     filepath = "data/test_data/word_day_split/0.txt"
@@ -74,7 +74,7 @@ def test_data_loader_loglinelevel():
     jagged = False
     bidirectional = False
     input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skip_sos)
-    data_handler, _ = create_data_loaders_linelevel(
+    data_handler, _ = create_data_loaders_multiline(
         filepath, batch_size, bidirectional, skip_sos, jagged, window_size
     )
     assert len(data_handler) >= batch_size, "Dataset too small"

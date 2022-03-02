@@ -75,8 +75,8 @@ class TieredTransformerConfig(TransformerConfig):
 
 
 @dataclass
-class LoglineTransformerConfig(TransformerConfig):
-    """Configuration class for Logline Transformer models."""
+class MultilineTransformerConfig(TransformerConfig):
+    """Configuration class for Multiline Transformer models."""
 
     window_size: int
     sentence_embedding: str

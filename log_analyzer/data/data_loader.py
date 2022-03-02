@@ -358,7 +358,7 @@ def create_data_loaders(filepath, batch_size, bidir, skipsos, jagged, max_len, s
     return data_handlers
 
 
-def create_data_loaders_linelevel(
+def create_data_loaders_multiline(
     filepath, batch_size, bidir, skipsos, jagged, window_size, shuffle=False, dataset_split=None
 ):
     """Creates and returns 2 data loaders.
@@ -447,7 +447,7 @@ def load_data(
     return train_loader, val_loader, test_loader
 
 
-def load_data_linelevel(
+def load_data_multiline(
     data_folder,
     train_files,
     test_files,
@@ -461,7 +461,7 @@ def load_data_linelevel(
 ):
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
-    train_loader, val_loader = create_data_loaders_linelevel(
+    train_loader, val_loader = create_data_loaders_multiline(
         filepaths_train,
         batch_size,
         bidir,
@@ -471,7 +471,7 @@ def load_data_linelevel(
         shuffle=False,
         dataset_split=train_val_split,
     )
-    test_loader, _ = create_data_loaders_linelevel(
+    test_loader, _ = create_data_loaders_multiline(
         filepaths_eval, batch_size, bidir, skipsos, jagged, window_size=window_size, shuffle=False, dataset_split=None
     )
 
