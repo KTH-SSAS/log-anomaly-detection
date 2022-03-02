@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 from typing import List, Tuple
+
 from log_analyzer.config.config import Config
+
+
 @dataclass
 class TrainerConfig(Config):
     train_files: List[str]

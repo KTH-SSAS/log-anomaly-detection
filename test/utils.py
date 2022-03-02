@@ -1,5 +1,5 @@
 from log_analyzer.application import Application
-from log_analyzer.config.trainer_config import TrainerConfig
+from log_analyzer.config import TrainerConfig
 from log_analyzer.train_loop import eval_model, get_model_config, init_from_config_classes, train_model
 
 

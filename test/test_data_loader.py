@@ -15,15 +15,15 @@ def batch_equal(v1: torch.Tensor, v2: torch.Tensor):
 def test_data_loader_char(shuffle, task):
 
     filepath = "data/test_data/6.csv"
-    batch_size = 10
+    batch_sizes = (10, 10)
     vocab = LANLVocab("data/vocab_field_cutoff=40.json")
     tokenizer = CharTokenizer(vocab)
-    data_handler, _ = create_data_loaders(filepath, batch_size, tokenizer, task, shuffle=shuffle)
+    data_handler, _ = create_data_loaders(filepath, batch_sizes, tokenizer, task, shuffle=shuffle)
     bidirectional = task == "bidir-lm"
     for batch in data_handler:
         x: torch.Tensor = batch["input"]
         x_length = batch["length"]
-        for i in range(0, batch_size):
+        for i in range(0, batch_sizes[0]):
             # Confirm that the targets are equal to the inputs shifted
             # by 1
             all(
@@ -36,16 +36,16 @@ def test_data_loader_char(shuffle, task):
 def test_data_loader_word(shuffle, task):
 
     filepath = "data/test_data/6.csv"
-    batch_size = 10
+    batch_sizes = (10, 10)
     vocab = LANLVocab("data/vocab_field_cutoff=40.json")
     tokenizer = LANLTokenizer(vocab)
 
-    data_handler, _ = create_data_loaders(filepath, batch_size, tokenizer, task, shuffle)
+    data_handler, _ = create_data_loaders(filepath, batch_sizes, tokenizer, task, shuffle)
     bidirectional = task == "bidir-lm"
     expected_input_length = len(tokenizer.field_names) - 1 if task == "lm" else len(tokenizer.field_names) + 2
     for batch in data_handler:
         x: torch.Tensor = batch["input"]
-        assert x.shape == torch.Size([batch_size, expected_input_length]), (
+        assert x.shape == torch.Size([batch_sizes[0], expected_input_length]), (
             "bidirectional" if bidirectional else "forward"
         )
         # Confirm that the targets are equal to the inputs shifted by 1

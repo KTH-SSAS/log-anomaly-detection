@@ -1,6 +1,6 @@
 import os
 
-from log_analyzer.config.trainer_config import TrainerConfig
+from log_analyzer.config import TrainerConfig
 
 
 def test_save_load_config(tmpdir):

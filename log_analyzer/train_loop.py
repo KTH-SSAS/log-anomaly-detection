@@ -12,6 +12,7 @@ import log_analyzer.data.data_loader as data_utils
 import wandb
 from log_analyzer import application
 from log_analyzer.application import Application
+from log_analyzer.config import TrainerConfig
 from log_analyzer.config.model_config import (
     LSTMConfig,
     ModelConfig,
@@ -19,7 +20,6 @@ from log_analyzer.config.model_config import (
     TieredTransformerConfig,
     TransformerConfig,
 )
-from log_analyzer.config.trainer_config import TrainerConfig
 from log_analyzer.evaluator import Evaluator
 from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel, TieredLSTM
 from log_analyzer.model.transformer import TieredTransformer, Transformer
@@ -178,7 +178,7 @@ def init_from_config_classes(
             data_folder,
             train_days,
             test_days,
-            trainer_config.batch_size,
+            (trainer_config.train_batch_size, trainer_config.eval_batch_size),
             tokenizer,
             task,
             num_steps=3,
@@ -188,7 +188,7 @@ def init_from_config_classes(
             data_folder,
             train_days,
             test_days,
-            trainer_config.batch_size,
+            (trainer_config.train_batch_size, trainer_config.eval_batch_size),
             tokenizer,
             task,
             trainer_config.train_val_split,

@@ -21,7 +21,8 @@ def test_lstm(tmpdir, model_type, bidir, tokenization, cuda):
 
     if model_type == "tiered-lstm":
         # Reduce batch size to not immediately flush.
-        args["trainer_config"].batch_size = 10
+        args["trainer_config"].train_batch_size = 10
+        args["trainer_config"].eval_batch_size = 10
 
     utils.run_test(args)
     assert True
@@ -35,7 +36,8 @@ def test_transformer(tmpdir, model_type, bidirectional, tokenization):
     args = utils.set_args(bidirectional, model_type, tokenization)
     if model_type == "tiered-transformer":
         # Reduce batch size to not immediately flush.
-        args["trainer_config"].batch_size = 10
+        args["trainer_config"].train_batch_size = 10
+        args["trainer_config"].eval_batch_size = 10
     args["base_logdir"] = os.path.join(tmpdir, "runs")
 
     utils.run_test(args)

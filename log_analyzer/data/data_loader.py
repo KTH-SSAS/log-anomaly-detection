@@ -2,11 +2,11 @@
 
 from functools import partial
 from os import path
-from typing import Dict, List
+from typing import Dict, List, Tuple, Union
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import DataLoader, Dataset, IterableDataset
+from torch.utils.data import DataLoader, Dataset, IterableDataset, random_split
 
 from log_analyzer.application import Application
 from log_analyzer.tokenizer.tokenizer_neo import Tokenizer
@@ -28,7 +28,9 @@ DEFAULT_HEADERS = [
 ]
 
 
-def tokens_to_add(task):
+def tokens_to_add(task: str) -> Tuple[bool, bool]:
+    add_sos: bool
+    add_eos: bool
     if task == BIDIR_LSTM_LM:
         add_sos = True
         add_eos = True
@@ -96,7 +98,7 @@ def parse_multiple_files(filepaths: List[str]):
 class LogDataset:
     """Base log dataset class."""
 
-    def __init__(self, filepaths, tokenizer: Tokenizer, task) -> None:
+    def __init__(self, filepaths: Union[str, List[str]], tokenizer: Tokenizer, task: str) -> None:
         super().__init__()
         self.tokenizer: Tokenizer = tokenizer
         self.task = task
@@ -113,17 +115,17 @@ class MapLogDataset(LogDataset, Dataset):
     def __init__(self, filepaths, tokenizer, task) -> None:
         super().__init__(filepaths, tokenizer, task)
 
-        self.loglines = []
+        self.log_lines = []
         iterator = parse_multiple_files(self.filepaths)
-        self.loglines.extend(iterator)
+        self.log_lines.extend(iterator)
 
     def __getitem__(self, index):
-        log_line = self.loglines[index]
+        log_line = self.log_lines[index]
         parsed_line = prepare_datadict(log_line, self.task, self.tokenizer)
         return parsed_line
 
     def __len__(self):
-        return len(self.loglines)
+        return len(self.log_lines)
 
 
 class IterableLogDataset(LogDataset, IterableDataset):  # pylint: disable=abstract-method
@@ -142,8 +144,8 @@ class LogDataLoader(DataLoader):
     Provides a function to split the batch provided by the data loader.
     """
 
-    def __init__(self, dataset, batch_size, shuffle, collate_fn):
-        super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
+    def __init__(self, dataset, batch_size, shuffle, collate_function):
+        super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_function)
         self.using_cuda = Application.instance().using_cuda
 
     def split_batch(self, batch: dict):
@@ -180,12 +182,12 @@ def load_data_tiered(
     data_folder,
     train_files,
     test_files,
-    batch_size,
+    batch_sizes: Tuple[int, int],
     tokenizer: Tokenizer,
     task,
     num_steps,
 ):
-    def create_tiered_data_loader(filepath):
+    def create_tiered_data_loader(filepath, batch_size):
         data_handler = TieredLogDataLoader(
             filepath,
             tokenizer,
@@ -198,47 +200,55 @@ def load_data_tiered(
 
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
-    train_loader = create_tiered_data_loader(filepaths_train)
-    test_loader = create_tiered_data_loader(filepaths_eval)
+    train_loader = create_tiered_data_loader(filepaths_train, batch_sizes[0])
+    test_loader = create_tiered_data_loader(filepaths_eval, batch_sizes[1])
     return train_loader, test_loader
 
 
-def create_data_loaders(filepath, batch_size, tokenizer, task, shuffle=False, dataset_split=None):
+def collate_fn(data, jagged=False, pad_idx=0):
+    """Pads the input fields to the length of the longest sequence in the
+    batch."""
+    batch = {}
+
+    for key in data[0]:
+        batch[key] = []
+
+    for sample in data:
+        for key in sample:
+            batch[key].append(sample[key])
+
+    if jagged:
+        fields_to_pad = ["input", "target"]
+        for key in fields_to_pad:
+            batch[key] = pad_sequence(batch[key], batch_first=True, padding_value=pad_idx)
+
+        batch["mask"] = batch["input"] != pad_idx
+
+    for key, value in batch.items():
+        if isinstance(value, list):
+            batch[key] = torch.stack(value)
+
+    return batch
+
+
+def create_data_loaders(
+    filepaths: List[str],
+    batch_sizes: Tuple[int, int],
+    tokenizer: Tokenizer,
+    task: str,
+    shuffle: bool = False,
+    dataset_split: Tuple[int, int] = None,
+) -> List[DataLoader]:
     """Creates and returns 2 data loaders.
 
     If dataset_split is not provided the second data loader is instead
     set to None.
     """
 
-    def collate_fn(data, jagged=False, pad_idx=0):
-        """Pads the input fields to the length of the longest sequence in the
-        batch."""
-        batch = {}
-
-        for key in data[0]:
-            batch[key] = []
-
-        for sample in data:
-            for key in sample:
-                batch[key].append(sample[key])
-
-        if jagged:
-            fields_to_pad = ["input", "target"]
-            for key in fields_to_pad:
-                batch[key] = pad_sequence(batch[key], batch_first=True, padding_value=pad_idx)
-
-            batch["mask"] = batch["input"] != pad_idx
-
-        for key, value in batch.items():
-            if isinstance(value, list):
-                batch[key] = torch.stack(value)
-
-        return batch
-
     if shuffle or dataset_split is not None:
-        dataset = MapLogDataset(filepath, tokenizer, task)
+        dataset = MapLogDataset(filepaths, tokenizer, task)
     else:
-        dataset = IterableLogDataset(filepath, tokenizer, task)
+        dataset = IterableLogDataset(filepaths, tokenizer, task)
 
     # Split the dataset according to the split list
     if dataset_split is not None:
@@ -253,38 +263,40 @@ def create_data_loaders(filepath, batch_size, tokenizer, task, shuffle=False, da
         size_diff = len(dataset) - sum(dataset_split)
         dataset_split[0] += size_diff
 
-        datasets = torch.utils.data.random_split(dataset, dataset_split)
+        datasets = random_split(dataset, dataset_split)
     else:
         # Return just a single dataset
         datasets = (dataset, None)
 
     collate = partial(collate_fn, jagged=tokenizer.jagged)
     data_handlers = [
-        LogDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate)
+        LogDataLoader(dataset, batch_size=bs, shuffle=shuffle, collate_function=collate)
         if dataset is not None
         else None
-        for dataset in datasets
+        for bs, dataset in zip(batch_sizes, datasets)
     ]
 
     return data_handlers
 
 
 def load_data(
-    data_folder,
-    train_files,
-    test_files,
-    batch_size,
+    data_folder: str,
+    train_files: List[str],
+    test_files: List[str],
+    batch_sizes: Tuple[int, int],
     tokenizer: Tokenizer,
-    task,
-    train_val_split=(1, 0),
-    shuffle_train_data=True,
+    task: str,
+    train_val_split: Tuple[int, int] = (1, 0),
+    shuffle_train_data: bool = True,
 ):
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
     train_loader, val_loader = create_data_loaders(
-        filepaths_train, batch_size, tokenizer, task, shuffle_train_data, train_val_split
+        filepaths_train, batch_sizes, tokenizer, task, shuffle_train_data, train_val_split
     )
-    test_loader, _ = create_data_loaders(filepaths_eval, batch_size, tokenizer, task, shuffle=False, dataset_split=None)
+    test_loader, _ = create_data_loaders(
+        filepaths_eval, (batch_sizes[1], batch_sizes[1]), tokenizer, task, shuffle=False, dataset_split=None
+    )
 
     return train_loader, val_loader, test_loader
 

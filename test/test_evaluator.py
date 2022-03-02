@@ -18,7 +18,8 @@ def test_evaluator(tmpdir, model_type):
 
     if model_type == "tiered-lstm":
         # Reduce batch size to not immediately flush.
-        args["trainer_config"].batch_size = 10
+        args["trainer_config"].train_batch_size = 10
+        args["trainer_config"].eval_batch_size = 10
 
     trainer, evaluator, train_loader, val_loader, test_loader = init_from_config_classes(**args)
     _ = train_model(trainer, train_loader, val_loader)
