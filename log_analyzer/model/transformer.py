@@ -6,7 +6,7 @@ import torch
 from torch import Tensor, nn
 
 from log_analyzer.application import Application
-from log_analyzer.config.model_config import LoglineTransformerConfig, TieredTransformerConfig, TransformerConfig
+from log_analyzer.config.model_config import MultilineTransformerConfig, TieredTransformerConfig, TransformerConfig
 from log_analyzer.model.lstm import LogLineLogModel, LogModel, TieredLogModel
 from log_analyzer.model.model_util import initialize_weights
 
@@ -320,8 +320,8 @@ class TieredTransformer(TieredLogModel):
         self.saved_context_histories[torch.tensor(users), -max_length:, :] = context_history[:, -max_length:, :]
 
 
-class LoglineTransformer(LogLineLogModel):
-    """Transformer that works on the logline level - each "token" input is a single log line.
+class MultilineTransformer(LogLineLogModel):
+    """Transformer that works across multiple log lines - each "token" input is a single log line.
 
     The type of sentence embedding used is defined in the config. Valid options are currently:
     "mean": embeds words to the full model_dim, then takes the element-wise mean of the words in the log line.
@@ -331,10 +331,10 @@ class LoglineTransformer(LogLineLogModel):
 
     Output: predicted embedding value for the next logline."""
 
-    def __init__(self, config: LoglineTransformerConfig):
+    def __init__(self, config: MultilineTransformerConfig):
         super().__init__(config)
 
-        self.config: LoglineTransformerConfig = config
+        self.config: MultilineTransformerConfig = config
         self.name = "Logline Transformer"
         self.src_mask = None
 
