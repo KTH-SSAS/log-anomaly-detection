@@ -1,5 +1,6 @@
 """Code related to Transformer language model."""
 import math
+from abc import abstractmethod
 
 import torch
 from torch import Tensor, nn
@@ -116,15 +117,19 @@ class TransformerLanguageModel(LogModel):
             self.src_mask = mask
         return self.src_mask
 
+    @abstractmethod
+    def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None, targets=None):
+        ...
+
 
 class Transformer(TransformerLanguageModel):
     """Container module with an encoder, a recurrent or transformer module, and
     a decoder."""
 
-    def __init__(self, config: TransformerConfig):
+    def __init__(self, config: TransformerConfig, bidirectional):
         self.name = "Transformer"
         super().__init__(config)
-        self.bidirectional = False  # TODO: Change this when we make a bidirectional model.
+        self.bidirectional = bidirectional
         self.word_embedding = nn.Embedding(self.vocab_size, self.model_dim)
         if isinstance(config, TieredTransformerConfig):
             self.reduce_dimension = nn.Linear(config.input_dim, self.model_dim)
@@ -132,13 +137,30 @@ class Transformer(TransformerLanguageModel):
                 self.reduce_dimension = self.reduce_dimension.cuda()
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
-    def forward(self, src, ctx_vector=None, lengths=None, mask=None, targets=None):
+    def forward(self, sequences, lengths=None, context_vectors=None, mask=None, targets=None):
         # batch size, sequence length, embedded dimension
         # lengths is currently ignored, added for compatibility with LSTM-training code
-        # TODO: compatibility with character level encoding
 
-        word_embeddings = self.word_embedding(src) * math.sqrt(self.config.model_dim)
-        if ctx_vector is not None:
+        if not self.bidirectional:
+            self.src_mask = self.get_mask(sequences)
+        else:
+            self.src_mask = None
+
+        word_embeddings = self.word_embedding(sequences) * math.sqrt(self.config.model_dim)
+        if context_vectors is not None:
+            cat_word_embeddings = torch.Tensor([]).to(sequences.device)
+            trans_word_embeddings = word_embeddings.transpose(0, 1).to(sequences.device)
+            # Output: trans_word_embeddings: (sequence length x batch x embedded dimension)
+            for trans_word_embedding in trans_word_embeddings:
+                # trans_word_embedding (batch x embedding)
+                trans_word_embedding = torch.cat((trans_word_embedding, context_vectors), dim=-1).unsqueeze(0)
+                # Input: trans_word_embedding (batch x embedded dimension), context_vector (batch x context dimension)
+                # Output: trans_word_embedding: (1 x batch x embedded dimension + context dimension)
+                cat_word_embeddings = torch.cat((cat_word_embeddings, trans_word_embedding), dim=0)
+                # Output: cat_word_embeddings: (sequence length x batch x embedded dimension + context dimension)
+            trans_cat_word_embeddings = cat_word_embeddings.transpose(0, 1)
+            # Output: trans_cat_word_embeddings: (batch x sequence length x embedded dimension + context dimension)
+            word_embeddings = self.reduce_dimension(trans_cat_word_embeddings)
             # Output: word_embeddings: (batch x sequence length x embedded dimension)
             word_embeddings = word_embeddings * math.sqrt(self.config.model_dim)
         tf_input = self.pos_encoder(word_embeddings)
@@ -154,14 +176,17 @@ class Transformer(TransformerLanguageModel):
         loss = None
         if targets is not None:
             # Compute and return loss if targets is given
-            loss, _ = self.compute_loss(logits, targets, lengths, mask)
+            loss, _ = self.compute_loss(logits, targets)
 
         if self.tiered:
             return logits, tf_hidden, loss
         return logits, loss
 
 class TieredTransformer(TieredLogModel):
-    def __init__(self, config: TieredTransformerConfig):
+
+    num_steps: int
+
+    def __init__(self, config: TieredTransformerConfig, bidirectional):
         super().__init__(config)
         self.config: TransformerConfig = config
         self.bidirectional = False 
@@ -187,8 +212,9 @@ class TieredTransformer(TieredLogModel):
         self.context_model_dim = config.context_config.model_dim
         self.context_input_dimension = config.input_dim
         self.shift_window = config.shift_window
-        self.n_users = 1200
-        self.saved_context_histories = torch.zeros([self.n_users, self.shift_window, self.model_dim])
+        self.n_users = config.number_of_users
+        self.saved_context_vectors = torch.zeros([self.n_users, self.context_model_dim])
+        self.saved_context_histories = torch.zeros([self.n_users, self.shift_window, self.context_input_dimension])
         self.saved_context_history_lengths = torch.zeros([self.n_users], dtype=torch.int16)
 
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
@@ -212,8 +238,8 @@ class TieredTransformer(TieredLogModel):
             mask = None
         return mask.to(device)
 
-    def forward(self, src: Tensor, lengths=None, mask=None, targets=None):
-        users, src = src
+    def forward(self, sequences: Tensor, lengths=None, mask=None, targets=None):
+        users, src = sequences
         # Convert users list to python list
         users = [user.item() for user in users]
 
@@ -221,10 +247,10 @@ class TieredTransformer(TieredLogModel):
         context_history, history_length = self.get_batch_data(users, src.device)
 
         # Get the number of steps in the batch
-        self.num_steps = src.shape[0]
-        batch_size = src.shape[1]
+        self.num_steps = sequences.shape[0]
 
-        token_output = torch.empty_like(src, dtype=torch.float)
+        shape = sequences.shape + (self.config.vocab_size,)
+        token_output = torch.zeros(shape, dtype=torch.float)
 
         token_output = token_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
         
@@ -253,7 +279,7 @@ class TieredTransformer(TieredLogModel):
         loss = None
         if targets is not None:
             # Compute and return loss if targets is given
-            loss, _ = self.compute_loss(token_output, targets, lengths, mask)
+            loss, _ = self.compute_loss(token_output, targets)
         return token_output, loss
 
     def get_batch_data(self, users, device):

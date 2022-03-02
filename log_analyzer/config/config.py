@@ -7,12 +7,12 @@ from dataclasses import asdict, dataclass
 class Config:
     """Parent class for configs."""
 
-    def __init__(self) -> None:
+    def __init__(self, **_kwargs) -> None:
         pass
 
     def save_config(self, filename):
         """save configuration as json file."""
-        with open(filename, "w") as f:
+        with open(filename, "w", encoding="utf8") as f:
             dictionary = self.__dict__
 
             for key, item in dictionary.items():
@@ -23,14 +23,14 @@ class Config:
 
     def load_config(self, filename):
         """load configuration from json file."""
-        with open(filename, "r") as f:
+        with open(filename, "r", encoding="utf8") as f:
             data = json.load(f)
 
         self.__dict__ = deepcopy(data)
 
     @classmethod
     def init_from_file(cls, filename):
-        with open(filename, "r") as f:
+        with open(filename, "r", encoding="utf8") as f:
             data = json.load(f)
 
         return cls.init_from_dict(data)

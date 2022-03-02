@@ -1,9 +1,0 @@
-{
-	"layers": 2,
-	"feedforward_dim": 512,
-	"model_dim": 256,
-	"attention_heads": 16,
-	"vocab_size": 96,
-	"dropout": 0.25,
-	"sequence_length": null
-}

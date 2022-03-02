@@ -3,29 +3,12 @@ import os
 import random
 from argparse import ArgumentParser
 
+import numpy as np
 import torch
 
 import wandb
-import numpy as np
 from log_analyzer.application import Application
 from log_analyzer.train_loop import eval_model, init_from_args, train_model
-
-"""
-Entrypoint script for training
-Example:
-train_model.py
---model-type
-lstm,
---model-config,
-config/lanl_char_config_model.json,
---trainer-config,
-config/config_trainer.json,
---data-config,
-config/lanl_char_config_data.json,
---data-folder,
-data/data_examples/raw_day_split,
---bidir
-"""
 
 
 def prepare_args():
@@ -34,18 +17,28 @@ def prepare_args():
         "--model-type", choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer"], required=True
     )
     parser.add_argument("--model-config", type=str, help="Model configuration file.", required=True)
-    parser.add_argument("--data-config", type=str, help="Data description file.", required=True)
+    parser.add_argument("--tokenization", type=str, help="Tokenization method", required=True, choices=["word", "char"])
+    parser.add_argument(
+        "--vocab-file", type=str, help="Path to vocabulary file. Required for field tokenization.", required=False
+    )
+    parser.add_argument(
+        "--user-file", type=str, help="Path to file containing all users. Required for tiered models.", required=False
+    )
     parser.add_argument("--data-folder", type=str, help="Path to data files.", required=True)
     parser.add_argument("--trainer-config", type=str, help="Trainer configuration file.", required=True)
     parser.add_argument("--load-from-checkpoint", type=str, help="Checkpoint to resume training from")
     parser.add_argument(
-        "--bidir", dest="bidirectional", action="store_true", help="Whether to use bidirectional lstm for lower tier."
+        "--bidir",
+        dest="bidirectional",
+        action="store_true",
+        help="Use model in bidirectional mode. Only applies to lower level models when using tiered architectures.",
     )
     parser.add_argument("--model-dir", type=str, help="Directory to save stats and checkpoints to", default="runs")
     parser.add_argument(
         "--no-eval-model",
         action="store_true",
-        help="Including this option will skip running the model through standard evaluation and returning appropriate metrics and plots.",
+        help="Including this option will skip running the model through standard"
+        "evaluation and returning appropriate metrics and plots.",
     )
     parser.add_argument(
         "--wandb-sync", action="store_true", help="Including this option will sync the wandb data with the cloud."
@@ -55,11 +48,13 @@ def prepare_args():
     args = parser.parse_args()
     return args
 
+
 def set_seeds(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     return seed
+
 
 def main():
     # Initialize seeds
@@ -67,11 +62,17 @@ def main():
 
     args = prepare_args()
 
+    if "tiered" in args.model_type and args.user_file is None:
+        raise Exception("Tiered model was set but no user file was supplied.")
+
+    if "word" in args.tokenization and args.vocab_file is None:
+        raise Exception("Word level tokenization was set but no vocab file was supplied.")
+
     #  Start a W&B run
 
     os.environ["WANDB_MODE"] = "online" if args.wandb_sync else "offline"
 
-    wandb.init(project="logml", entity="log-data-ml", config=args)
+    wandb.init(project="logml", entity="log-data-ml", config=vars(args))
     wandb_initalized = True
 
     if args.use_cuda and not torch.cuda.is_available():

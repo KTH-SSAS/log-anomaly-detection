@@ -40,7 +40,10 @@ class EarlyStopping:
         else:
             self.patience_counter += 1
             self.logger.debug(
-                f"EarlyStopping counter: {self.patience_counter} out of {self.patience}. Best loss: {self.val_loss_min}"
+                "EarlyStopping counter: %d out of %d. Best loss: %f",
+                self.patience_counter,
+                self.patience,
+                self.val_loss_min,
             )
             if self.patience_counter >= self.patience:
                 self.early_stop = True

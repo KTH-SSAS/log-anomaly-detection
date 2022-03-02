@@ -1,9 +1,8 @@
 import pytest
 import torch
-from torch.utils.data import DataLoader
 
-from log_analyzer.config.trainer_config import DataConfig
-from log_analyzer.data.data_loader import IterableLogDataset, MapLogDataset, create_data_loaders
+from log_analyzer.data.data_loader import create_data_loaders
+from log_analyzer.tokenizer.tokenizer_neo import CharTokenizer, LANLTokenizer, LANLVocab
 
 
 def batch_equal(v1: torch.Tensor, v2: torch.Tensor):
@@ -12,52 +11,48 @@ def batch_equal(v1: torch.Tensor, v2: torch.Tensor):
 
 
 @pytest.mark.parametrize("shuffle", [False, True])
-@pytest.mark.parametrize("bidirectional", [False, True])
-def test_data_loader_char(shuffle, bidirectional):
-    from log_analyzer.train_loop import calculate_max_input_length
+@pytest.mark.parametrize("task", ["lm", "bidir-lm"])
+def test_data_loader_char(shuffle, task):
 
-    filepath = "data/test_data/char_day_split/0.txt"
-    data_config = DataConfig.init_from_file("config/lanl_config_data_char.json")
-    batch_size = 10
-    skip_sos = False
-    jagged = True
-    input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skip_sos)
-    data_handler, _ = create_data_loaders(
-        filepath, batch_size, bidirectional, skip_sos, jagged, input_length, shuffle=shuffle
-    )
+    filepath = "data/test_data/6.csv"
+    batch_sizes = (10, 10)
+    vocab = LANLVocab("data/vocab_field_cutoff=40.json")
+    tokenizer = CharTokenizer(vocab)
+    data_handler, _ = create_data_loaders(filepath, batch_sizes, tokenizer, task, shuffle=shuffle)
+    bidirectional = task == "bidir-lm"
     for batch in data_handler:
         x: torch.Tensor = batch["input"]
         x_length = batch["length"]
-        for i in range(0, batch_size):
+        for i in range(0, batch_sizes[0]):
             # Confirm that the targets are equal to the inputs shifted
             # by 1
             all(
-                batch["input"][i, 1 : x_length[i] - int(bidirectional)]
-                == batch["target"][i, : x_length[i] - 1 - int(bidirectional)]
+                x[i, 1 : x_length[i] - int(bidirectional)] == batch["target"][i, : x_length[i] - 1 - int(bidirectional)]
             )
 
 
 @pytest.mark.parametrize("shuffle", [False, True])
-@pytest.mark.parametrize("bidirectional", [False, True])
-def test_data_loader_word(shuffle, bidirectional):
-    from log_analyzer.train_loop import calculate_max_input_length
+@pytest.mark.parametrize("task", ["lm", "bidir-lm"])
+def test_data_loader_word(shuffle, task):
 
-    filepath = "data/test_data/word_day_split/0.txt"
-    data_config = DataConfig.init_from_file("config/lanl_config_data_word.json")
-    batch_size = 10
-    skip_sos = False
-    jagged = False
-    input_length = calculate_max_input_length(data_config.sentence_length, bidirectional, skip_sos)
-    data_handler, _ = create_data_loaders(
-        filepath, batch_size, bidirectional, skip_sos, jagged, data_config.sentence_length, shuffle
-    )
+    filepath = "data/test_data/6.csv"
+    batch_sizes = (10, 10)
+    vocab = LANLVocab("data/vocab_field_cutoff=40.json")
+    tokenizer = LANLTokenizer(vocab)
+
+    data_handler, _ = create_data_loaders(filepath, batch_sizes, tokenizer, task, shuffle)
+    bidirectional = task == "bidir-lm"
+    expected_input_length = len(tokenizer.field_names) - 1 if task == "lm" else len(tokenizer.field_names) + 2
     for batch in data_handler:
         x: torch.Tensor = batch["input"]
-        assert x.shape == torch.Size([batch_size, input_length]), "bidirectional" if bidirectional else "forward"
+        assert x.shape == torch.Size([batch_sizes[0], expected_input_length]), (
+            "bidirectional" if bidirectional else "forward"
+        )
+        # Confirm that the targets are equal to the inputs shifted by 1
         assert batch_equal(
             batch["input"][:, 1 : batch["input"].shape[1] - int(bidirectional)],
             batch["target"][:, : batch["target"].shape[1] - int(not bidirectional)],
-        ), f"{'bidir' if bidirectional else 'forward'}-shift"  # Confirm that the targets are equal to the inputs shifted by 1
+        ), f"{'bidir' if bidirectional else 'forward'}-shift"
 
 
 def test_data_loader_tiered():

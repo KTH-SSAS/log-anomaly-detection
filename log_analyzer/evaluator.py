@@ -9,7 +9,7 @@ from tqdm import tqdm
 import wandb
 from log_analyzer.application import Application
 from log_analyzer.model.lstm import LogModel, LSTMLanguageModel
-from log_analyzer.tokenizer.tokenizer import Char_tokenizer
+from log_analyzer.tokenizer.tokenizer import CharTokenizer
 
 
 def create_attention_matrix(
@@ -18,7 +18,6 @@ def create_attention_matrix(
     output_dir,
     lengths=None,
     mask=None,
-    token_map_file=None,
 ):
     """Plot attention matrix over batched input.
 
@@ -88,7 +87,7 @@ def create_attention_matrix(
 
         ax.matshow(matrix.detach().numpy())
         if lengths is not None:
-            string = Char_tokenizer.detokenize_line(seq[: lengths[i] - 1])
+            string = CharTokenizer.detokenize_line(seq[: lengths[i] - 1])
             ax.set_xticks(range(len(string)))
             ax.set_xticklabels(string, fontsize="small")
             ax.set_yticks(range(len(string)))
@@ -112,6 +111,9 @@ class Evaluator:
         self.reset_evaluation_data()
         self.use_wandb = Application.instance().wandb_initialized
         self.checkpoint_dir = checkpoint_dir
+        self.token_count = 0
+        self.token_accuracy = 0
+        self.test_count = 0
 
     @torch.no_grad()
     def eval_step(self, split_batch, store_eval_data=False):
@@ -140,7 +142,7 @@ class Evaluator:
         output, _ = self.model(X, lengths=L, mask=M)
 
         # Compute the loss for the output
-        loss, line_losses = self.model.compute_loss(output, Y, lengths=L, mask=M)
+        loss, line_losses = self.model.compute_loss(output, Y)
 
         # Save the results if desired
         if store_eval_data:
@@ -210,8 +212,8 @@ class Evaluator:
 
         # Log the evaluation results
         if self.use_wandb and wandb.run is not None:
-            for key in evaluator_metrics:
-                wandb.run.summary[key] = evaluator_metrics[key]
+            for key, value in evaluator_metrics.items():
+                wandb.run.summary[key] = value
         return evaluator_metrics
 
     def add_evaluation_data(self, log_line, predictions, users, losses, seconds, red_flags):
@@ -242,7 +244,8 @@ class Evaluator:
             ["users", "losses", "seconds", "red_flags"],
             [users, losses, seconds, red_flags],
         ):
-            self.data[key][self.index[key] : self.index[key] + len(new_data)] = new_data
+            self.data[key][self.index[key] : self.index[key] + len(new_data)] = new_data.squeeze()
+
             self.index[key] += len(new_data)
 
         # Update the metatag, i.e. data is prepared and normalised data is ready
@@ -319,14 +322,13 @@ class Evaluator:
 
     def get_metrics(self):
         """Computes and returns all metrics."""
-        metrics = {
+        return {
             "eval/loss": self.get_test_loss(),
             "eval/token_accuracy": self.get_token_accuracy(),
             "eval/token_perplexity": self.get_token_perplexity(),
             "eval/AUC": self.get_auc_score(),
             "eval/AP": self.get_ap_score(),
         }
-        return metrics
 
     def get_test_loss(self):
         """Returns the accuracy of the model token prediction."""
@@ -366,9 +368,9 @@ class Evaluator:
 
     def plot_line_loss_percentiles(
         self,
-        percentiles=[75, 95, 99],
+        percentiles=(75, 95, 99),
         smoothing=1,
-        colors=["darkorange", "gold"],
+        colors=("darkorange", "gold"),
         ylim=(-1, -1),
         outliers=10,
         legend=True,
@@ -497,24 +499,24 @@ class Evaluator:
                 },
             )
             return auc_score, wandb_plot
-        else:
-            # Plot using scikit-learn and matplotlib
-            red_flag_count = sum(self.data["red_flags"])
-            non_red_flag_count = len(self.data["red_flags"]) - red_flag_count
-            xlabel = "False Positive Rate"
 
-            plt.plot(
-                fp_rate,
-                tp_rate,
-                color="orange",
-                lw=2,
-                label=f"ROC curve (area = {auc_score:.2f})",
-            )
-            plt.xlabel(xlabel)
-            plt.ylabel("True Positive Rate")
-            plt.title(title)
-            plt.legend()
-            return auc_score, plt
+        # Plot using scikit-learn and matplotlib
+        # red_flag_count = sum(self.data["red_flags"])
+        # non_red_flag_count = len(self.data["red_flags"]) - red_flag_count
+        xlabel = "False Positive Rate"
+
+        plt.plot(
+            fp_rate,
+            tp_rate,
+            color="orange",
+            lw=2,
+            label=f"ROC curve (area = {auc_score:.2f})",
+        )
+        plt.xlabel(xlabel)
+        plt.ylabel("True Positive Rate")
+        plt.title(title)
+        plt.legend()
+        return auc_score, plt
 
     def get_ap_score(self, normalised=False):
         """Computes AP score (average precision)"""
@@ -549,7 +551,7 @@ class Evaluator:
             precision = np.append(precision, full_precision[-1])
             recall = np.append(recall, full_recall[-1])
         # Erase the full fp and tp lists
-        full_precision = full_recall = full_thresh = []
+        full_precision = full_recall = []
 
         # Round to 5 digits
         precision = list(map(lambda x: round(x, 5), precision))
@@ -573,19 +575,19 @@ class Evaluator:
                 },
             )
             return AP_score, wandb_plot
-        else:
-            # Plot using scikit-learn and matplotlib
-            xlabel = "Recall"
-            ylabel = "Precision"
-            plt.plot(
-                recall,
-                precision,
-                color="orange",
-                lw=2,
-                label=f"Intrusion events",
-            )
-            plt.xlabel(xlabel)
-            plt.ylabel(ylabel)
-            plt.title(title)
-            plt.legend()
-            return AP_score, plt
+
+        # Plot using scikit-learn and matplotlib
+        xlabel = "Recall"
+        ylabel = "Precision"
+        plt.plot(
+            recall,
+            precision,
+            color="orange",
+            lw=2,
+            label="Intrusion events",
+        )
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+        plt.title(title)
+        plt.legend()
+        return AP_score, plt
