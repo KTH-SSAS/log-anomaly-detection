@@ -143,7 +143,7 @@ class IterableLogDataset(LogDataset, IterableDataset):
         return parse_multiple_files(self.filepaths, self.jag, self.bidir, self.skipsos)
 
 
-class MapLoglineDataset(LogDataset, Dataset):
+class MapMultilineDataset(LogDataset, Dataset):
     """Provides data via __getitem__, allowing arbitrary data entries to be
     accessed via index.
 
@@ -393,7 +393,7 @@ def create_data_loaders_multiline(
 
         return batch
 
-    dataset = MapLoglineDataset(filepath, bidir, skipsos, jagged, window_size=window_size)
+    dataset = MapMultilineDataset(filepath, bidir, skipsos, jagged, window_size=window_size)
 
     # Split the dataset according to the split list
     if dataset_split is not None:

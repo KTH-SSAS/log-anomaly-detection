@@ -83,8 +83,8 @@ class TieredLogModel(LogModel):
         return loss, line_losses_list
 
 
-class LogLineLogModel(LogModel):
-    """Superclass for logline-level language models ("sentence-embedding"
+class MultilineLogModel(LogModel):
+    """Superclass for Multiline language models ("sentence-embedding"
     models)."""
 
     def __init__(self, config: Config):

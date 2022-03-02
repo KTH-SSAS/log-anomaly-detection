@@ -7,7 +7,7 @@ from torch import Tensor, nn
 
 from log_analyzer.application import Application
 from log_analyzer.config.model_config import MultilineTransformerConfig, TieredTransformerConfig, TransformerConfig
-from log_analyzer.model.lstm import LogLineLogModel, LogModel, TieredLogModel
+from log_analyzer.model.lstm import MultilineLogModel, LogModel, TieredLogModel
 from log_analyzer.model.model_util import initialize_weights
 
 
@@ -320,7 +320,7 @@ class TieredTransformer(TieredLogModel):
         self.saved_context_histories[torch.tensor(users), -max_length:, :] = context_history[:, -max_length:, :]
 
 
-class MultilineTransformer(LogLineLogModel):
+class MultilineTransformer(MultilineLogModel):
     """Transformer that works across multiple log lines - each "token" input is a single log line.
 
     The type of sentence embedding used is defined in the config. Valid options are currently:
@@ -335,7 +335,7 @@ class MultilineTransformer(LogLineLogModel):
         super().__init__(config)
 
         self.config: MultilineTransformerConfig = config
-        self.name = "Logline Transformer"
+        self.name = "Multiline Transformer"
         self.src_mask = None
 
         self.dropout = config.dropout
