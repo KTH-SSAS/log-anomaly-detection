@@ -6,10 +6,17 @@ from .vocab import LANLVocab, CLS_TOKEN, MSK_TOKEN, SOS_TOKEN, PAD_TOKEN, EOS_TO
 
 class Tokenizer(ABC):
 
+    jagged: bool
     pad_idx: int
     pad_token: str
     add_sos: bool
     add_eos: bool
+    _num_users: int
+    users: dict[str, int]
+
+    @abstractmethod
+    def __init__(self, vocab, users: List[str] = None) -> None:
+        super().__init__()
 
     @abstractmethod
     def tokenize(self, line, add_sos=False, add_eos=False):
@@ -27,14 +34,15 @@ class Tokenizer(ABC):
     def mask_tokens(self, tokens: list, percentage_to_mask=0.15, p_preserve=0.1, p_random=0.1):
         ...
 
-    @abstractmethod
     def user_idx(self, user):
-        ...
+        if self.num_users == 0:
+            return 0
+        return self.users[user]
 
     @property
     @abstractmethod
     def num_users(self) -> int:
-        ...
+        return self._num_users
 
     @property
     @abstractmethod
@@ -48,7 +56,8 @@ class Tokenizer(ABC):
 
 
 class CharTokenizer(Tokenizer):
-    def __init__(self, vocab) -> None:
+    def __init__(self, vocab, users: List[str] = None) -> None:
+        super().__init__(vocab, users)
         special_tokens = [PAD_TOKEN, SOS_TOKEN, EOS_TOKEN, MSK_TOKEN, CLS_TOKEN]
 
         self.jagged = True
@@ -65,9 +74,12 @@ class CharTokenizer(Tokenizer):
         self.sos_idx = self.special_tokens[SOS_TOKEN]
         self.mask_idx = self.special_tokens[MSK_TOKEN]
 
-        self.users = vocab.vocab["src_user"]
+        if users is not None:
+            self.users = {users[i]: i for i in range(len(users))}
+        else:
+            self.users = {}
 
-        self._num_users = vocab.num_users
+        self._num_users = len(self.users)
 
     @property
     def vocab_size(self):
@@ -167,18 +179,23 @@ class CharTokenizer(Tokenizer):
     def num_users(self):
         return self._num_users
 
-    def user_idx(self, user):
-        return self.users[user]
-
 
 class LANLTokenizer(Tokenizer):
     """Tokenizer for LANL data."""
 
-    def __init__(self, vocab: LANLVocab) -> None:
-        self.vocab = vocab
+    def __init__(self, vocab, users: List[str] = None) -> None:
+        super().__init__(vocab, users)
+        self.vocab: LANLVocab = vocab
         self.delimiter = ","
         self.num_fields = len(self.field_names)
         self.jagged = False
+
+        if users is not None:
+            self.users = {users[i]: i for i in range(len(users))}
+        else:
+            self.users = {}
+
+        self._num_users = len(self.users)
 
     @property
     def sequence_length(self):
@@ -198,10 +215,7 @@ class LANLTokenizer(Tokenizer):
 
     @property
     def num_users(self):
-        return self.vocab.num_users
-
-    def user_idx(self, user):
-        return self.vocab.token2idx(user, "src_user")
+        return self._num_users
 
     def tokenize(self, line, add_sos=False, add_eos=False):
 

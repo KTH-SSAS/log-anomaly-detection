@@ -194,6 +194,27 @@ def process_logfiles_for_training(auth_file, red_file, output_dir, days_to_keep)
             add_redteam_to_log(day, infile, outfile, red_file)
 
 
+def get_all_users(infile_path, outfile_path, has_red=True):
+    users = set()
+
+    if not isinstance(infile_path, list):
+        infile_path = [infile_path]
+
+    for file in infile_path:
+        with open(file, encoding="utf8") as f:
+            reader = LANLReader(f, normalized=True, has_red=has_red)
+            for line in reader:
+                users.add(line["src_user"])
+
+    users = list(users)
+
+    if outfile_path is not None:
+        with open(outfile_path, "w", encoding="utf8") as f:
+            json.dump(users, f)
+
+    return users
+
+
 def count_fields(infile_path, outfile_path=None, fields_to_exclude=None, normalized=True, has_red=False):
     """Count fields in the given file."""
     counts = OrderedDict()
@@ -242,7 +263,7 @@ def process_file():
     process_logfiles_for_training(args.auth_file, args.redteam_file, args.output, args.days_to_keep)
 
 
-def generate_counts():
+def generate_counts(arguments=None):
     """CLI tool to generate counts file."""
     parser = ArgumentParser()
     parser.add_argument("log_files", type=str, nargs="+", help="Glob pattern of log files to process.")
@@ -256,9 +277,28 @@ def generate_counts():
     parser.add_argument(
         "--fields-to-exclude", nargs="+", type=int, help="Indexes of fields to not count.", default=[0, -1]
     )
-    args = parser.parse_args()
+
+    if arguments is None:
+        args = parser.parse_args()
+    else:
+        args = parser.parse_args(arguments)
+
     # args = parser.parse_args(["data/train_data/7.csv", "--fields-to-exclude", "0"])
     count_fields(args.log_files, args.output, args.fields_to_exclude, args.not_normalized, args.no_red)
+
+
+def count_users():
+    """CLI tool to generate  file."""
+    parser = ArgumentParser()
+    parser.add_argument("log_files", type=str, nargs="+", help="Glob pattern of log files to process.")
+    parser.add_argument(
+        "--no-red", action="store_false", help="Add this flag if the log file does not have red team events added."
+    )
+    parser.add_argument("-o", "--output", help="Output filename.", default="users.json")
+
+    args = parser.parse_args()
+
+    get_all_users(args.log_files, args.output, args.no_red)
 
 
 def generate_vocab_from_counts():
