@@ -11,7 +11,9 @@ def set_args(bidir, model_type, token_level):
     args["bidirectional"] = bidir
     args["model_type"] = model_type
     args["tokenization"] = token_level
-    args["vocab_file"] = "data/vocab_field_cutoff=40.json"
+    args["vocab_file"] = (
+        "data/vocab_field_cutoff=40.json" if token_level == "word-field" else "data/vocab_global_cutoff=40.json"
+    )
     trainer_config = TrainerConfig.init_from_file("config/lanl_config_trainer.json")
     trainer_config.train_files = ["6.csv", "7.csv"]
     trainer_config.test_files = ["8.csv"]

@@ -7,7 +7,7 @@ import torch.cuda
 from . import utils
 
 
-@pytest.mark.parametrize("tokenization", ["word", "char"])
+@pytest.mark.parametrize("tokenization", ["word-field", "word-global", "char"])
 @pytest.mark.parametrize("bidir", [True, False])
 @pytest.mark.parametrize("model_type", ["lstm", "tiered-lstm"])
 @pytest.mark.parametrize("cuda", [True, False])
@@ -28,7 +28,7 @@ def test_lstm(tmpdir, model_type, bidir, tokenization, cuda):
     assert True
 
 
-@pytest.mark.parametrize("tokenization", ["word", "char"])
+@pytest.mark.parametrize("tokenization", ["word-field", "word-global", "char"])
 @pytest.mark.parametrize("bidirectional", [True, False])
 @pytest.mark.parametrize("model_type", ["transformer", "tiered-transformer"])
 def test_transformer(tmpdir, model_type, bidirectional, tokenization):

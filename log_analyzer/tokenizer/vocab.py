@@ -12,9 +12,6 @@ MSK_TOKEN = "[MSK]"
 OOV_TOKEN = "[OOV]"
 CLS_TOKEN = "[CLS]"
 
-SPECIAL_TOKENS = [PAD_TOKEN]
-
-
 class FieldVocab(ABC):
 
     special_tokens: dict
@@ -41,13 +38,36 @@ class FieldVocab(ABC):
 
 
 class GlobalVocab(FieldVocab):
+    """Vocabulary that keeps a single record of each field entry, irrespective
+    of it's place in the log line."""
+
+    special_tokens = {
+        PAD_TOKEN: 0,
+        SOS_TOKEN: 1,
+        EOS_TOKEN: 2,
+        CLS_TOKEN: 3,
+        MSK_TOKEN: 4,
+        OOV_TOKEN: 5,
+    }
+
     def __init__(self, vocab_file) -> None:
         super().__init__(vocab_file)
         with open(vocab_file, encoding="utf8") as f:
             self.vocab = json.load(f)
 
-    def token2idx(self, token, _):
-        return self.vocab[token]
+        self.mask_idx = GlobalVocab.special_tokens[MSK_TOKEN]
+        self.eos_idx = GlobalVocab.special_tokens[EOS_TOKEN]
+        self.sos_idx = GlobalVocab.special_tokens[SOS_TOKEN]
+
+        self.size = len(self.vocab)
+
+        self.num_special_tokens = len(GlobalVocab.special_tokens)
+
+    def token2idx(self, token, field) -> int:
+        try:
+            return self.vocab[token]
+        except KeyError:
+            return self.special_tokens[OOV_TOKEN]
 
     def idx2token(self, idx):
         for k, v in self.vocab.items():
@@ -57,10 +77,34 @@ class GlobalVocab(FieldVocab):
 
     @classmethod
     def counts2vocab(cls, counts_file, outfile, cutoff):
-        raise NotImplementedError("Not implemented.")
+
+        vocab = {}
+        index = 0
+
+        # Add special tokens to entry unrelated to fields
+        for k, v in cls.special_tokens.items():
+            vocab[k] = v
+            index += 1
+
+        with open(counts_file, encoding="utf8") as f:
+            counts: dict[str, dict] = json.load(f)
+
+        for field in counts:
+            # Add indexes for the tokens in the field
+            for token, count in counts[field].items():
+                if count > cutoff and token not in vocab:
+                    vocab[token] = index
+                    index += 1
+
+        print(f"Generated vocab with {index} words.")
+
+        with open(outfile, "w", encoding="utf8") as f:
+            json.dump(vocab, f, indent=" ")
 
 
 class LANLVocab(FieldVocab):
+    """Vocabulary that maintains a seperate wordlist for each log field."""
+
     def __init__(self, vocab_file) -> None:
         super().__init__(vocab_file)
         with open(vocab_file, encoding="utf8") as f:
