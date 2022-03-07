@@ -246,9 +246,9 @@ class TieredTransformer(TieredLogModel):
         context_history, history_length = self.get_batch_data(users, src.device)
 
         # Get the number of steps in the batch
-        self.num_steps = sequences.shape[0]
+        self.num_steps = src.shape[0]
 
-        shape = sequences.shape + (self.config.vocab_size,)
+        shape = src.shape + (self.config.vocab_size,)
         token_output = torch.zeros(shape, dtype=torch.float)
 
         # token_output = token_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
