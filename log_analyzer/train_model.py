@@ -17,7 +17,13 @@ def prepare_args():
         "--model-type", choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer"], required=True
     )
     parser.add_argument("--model-config", type=str, help="Model configuration file.", required=True)
-    parser.add_argument("--tokenization", type=str, help="Tokenization method", required=True, choices=["word", "char"])
+    parser.add_argument(
+        "--tokenization",
+        type=str,
+        help="Tokenization method",
+        required=True,
+        choices=["word-field", "word-global", "char"],
+    )
     parser.add_argument(
         "--vocab-file", type=str, help="Path to vocabulary file. Required for field tokenization.", required=False
     )
