@@ -268,7 +268,10 @@ class TieredTransformer(TieredLogModel):
             tf_hidden_mean = torch.unsqueeze(torch.mean(tf_hidden, dim = 1), dim=1) * math.sqrt(self.model_dim)
             context_history = torch.cat([context_history, tf_hidden_mean], dim =1)
             history_length = torch.min(history_length + 1, torch.ones(history_length.shape, dtype=torch.int16) * self.shift_window )
-            context_history = context_history[:, -max(history_length):, :]
+            if self.shift_window == 1:
+                context_history = context_history
+            else:
+                context_history = new_context_history[:, -max(history_length):, :]
             logits = tf_hidden @ self.word_embedding.weight.t()
             token_output[idx][: logits.shape[0], : logits.shape[1], : logits.shape[2]] = logits
         # Update context state
