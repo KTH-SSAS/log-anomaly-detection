@@ -260,7 +260,7 @@ class TieredTransformer(TieredLogModel):
             src_pad_mask = self.gen_pad_mask(src_compressed, history_length, device=src.device) 
             embedding_tgt_input = self.word_embedding(batch)  * math.sqrt(self.model_dim)
 
-            src_input = self.pos_encoder(context_history)
+            src_input = self.pos_encoder(src_compressed * math.sqrt(self.model_dim))
             tgt_input = self.pos_encoder(embedding_tgt_input)
             
             tf_hidden = self.transformer_model(src = src_input,
