@@ -249,7 +249,7 @@ class TieredTransformer(TieredLogModel):
         self.num_steps = src.shape[0]
 
         shape = src.shape + (self.config.vocab_size,)
-        token_output = torch.zeros(shape, dtype=torch.float)
+        token_output = torch.zeros(shape, dtype=torch.float).to(src.device)
 
         # token_output = token_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
         
