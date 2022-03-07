@@ -213,7 +213,7 @@ class TieredTransformer(TieredLogModel):
         self.context_input_dimension = config.input_dim
         self.shift_window = config.shift_window
         self.n_users = config.number_of_users
-        self.saved_context_histories = torch.zeros([self.n_users, self.shift_window, self.model_dim])
+        self.reduce_dim = self.reduce_dimension = nn.Linear(self.config.context_dim, self.model_dim)
         self.saved_context_history_lengths = torch.ones([self.n_users], dtype=torch.int16)
 
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
