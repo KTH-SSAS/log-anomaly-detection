@@ -93,6 +93,11 @@ class TieredTransformerConfig(TransformerConfig):
         """Feature length of input to LSTM."""
         return self.model_dim + self.context_config.model_dim
 
+    @property
+    def context_dim(self):
+        """Feature length of input to LSTM."""
+        return self.model_dim * 2
+
     @classmethod
     def init_from_file(cls, filename):
         with open(filename, "r", encoding="utf8") as f:
