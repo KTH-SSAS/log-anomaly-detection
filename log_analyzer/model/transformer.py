@@ -206,7 +206,7 @@ class TieredTransformer(TieredLogModel):
                                             dim_feedforward =self.config.feedforward_dim,
                                             dropout=self.dropout,
                                             batch_first=True)
-        self.shift_window = config.shift_window
+        self.shift_window = config.shift_window + 1
 
         # User model state
         self.context_model_dim = config.context_config.model_dim
