@@ -256,6 +256,8 @@ class TieredTransformer(TieredLogModel):
         for idx, batch in enumerate(src):
             tgt_mask = self.gen_mask(batch.shape[-1], device=src.device)
             src_compressed = self.reduce_dim(context_history)
+
+            src_pad_mask = self.gen_pad_mask(src_compressed, history_length, device=src.device) 
             embedding_tgt_input = self.word_embedding(batch)  * math.sqrt(self.model_dim)
 
             src_input = self.pos_encoder(context_history)
