@@ -251,7 +251,7 @@ class TieredTransformer(TieredLogModel):
         shape = sequences.shape + (self.config.vocab_size,)
         token_output = torch.zeros(shape, dtype=torch.float)
 
-        token_output = token_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
+        # token_output = token_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
         
         for idx, batch in enumerate(src):
             tgt_mask = self.gen_mask(batch.shape[-1], device=src.device)
