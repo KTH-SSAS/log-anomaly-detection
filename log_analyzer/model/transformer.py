@@ -295,4 +295,4 @@ class TieredTransformer(TieredLogModel):
         context_history = context_history.detach().cpu()
         self.saved_context_history_lengths[torch.tensor(users)] = history_length
         max_length = torch.max(self.saved_context_history_lengths[torch.tensor(users)])
-        self.saved_context_histories[torch.tensor(users), -max_length:, :] = context_history[:, -max_length:, :]
+        self.saved_context_histories[torch.tensor(users), -(context_history.shape[1]):, :] = context_history
