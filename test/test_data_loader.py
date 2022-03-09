@@ -2,7 +2,8 @@ import pytest
 import torch
 
 from log_analyzer.data.data_loader import create_data_loaders
-from log_analyzer.tokenizer.tokenizer_neo import CharTokenizer, LANLTokenizer, LANLVocab
+from log_analyzer.tokenizer.tokenizer_neo import CharTokenizer, FieldTokenizer, LANLTokenizer, LANLVocab
+from log_analyzer.tokenizer.vocab import GlobalVocab
 
 
 def batch_equal(v1: torch.Tensor, v2: torch.Tensor):
@@ -16,9 +17,8 @@ def test_data_loader_char(shuffle, task):
 
     filepath = "data/test_data/6.csv"
     batch_sizes = (10, 10)
-    vocab = LANLVocab("data/vocab_field_cutoff=40.json")
-    tokenizer = CharTokenizer(vocab)
-    data_handler, _ = create_data_loaders(filepath, batch_sizes, tokenizer, task, shuffle=shuffle)
+    tokenizer = CharTokenizer(None)
+    data_handler, _ = create_data_loaders([filepath], batch_sizes, tokenizer, task, shuffle=shuffle)
     bidirectional = task == "bidir-lm"
     for batch in data_handler:
         x: torch.Tensor = batch["input"]
@@ -33,16 +33,23 @@ def test_data_loader_char(shuffle, task):
 
 @pytest.mark.parametrize("shuffle", [False, True])
 @pytest.mark.parametrize("task", ["lm", "bidir-lm"])
-def test_data_loader_word(shuffle, task):
+@pytest.mark.parametrize("mode", ["field", "global"])
+def test_data_loader_word(shuffle, task, mode):
 
     filepath = "data/test_data/6.csv"
     batch_sizes = (10, 10)
-    vocab = LANLVocab("data/vocab_field_cutoff=40.json")
-    tokenizer = LANLTokenizer(vocab)
+    vocab_file = f"data/vocab_{mode}_cutoff=40.json"
 
-    data_handler, _ = create_data_loaders(filepath, batch_sizes, tokenizer, task, shuffle)
+    if mode == "field":
+        vocab = LANLVocab(vocab_file)
+        tokenizer = LANLTokenizer(vocab)
+    else:
+        vocab = GlobalVocab(vocab_file)
+        tokenizer = FieldTokenizer(vocab)
+
+    data_handler, _ = create_data_loaders([filepath], batch_sizes, tokenizer, task, shuffle)
     bidirectional = task == "bidir-lm"
-    expected_input_length = len(tokenizer.field_names) - 1 if task == "lm" else len(tokenizer.field_names) + 2
+    expected_input_length = 10 - 1 if task == "lm" else 10 + 2
     for batch in data_handler:
         x: torch.Tensor = batch["input"]
         assert x.shape == torch.Size([batch_sizes[0], expected_input_length]), (

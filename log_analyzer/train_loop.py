@@ -3,9 +3,12 @@ import json
 import logging
 import os
 import socket
+from argparse import Namespace
 from datetime import datetime
+from typing import Optional, Tuple
 
 import numpy as np
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import log_analyzer.data.data_loader as data_utils
@@ -23,7 +26,15 @@ from log_analyzer.config.model_config import (
 from log_analyzer.evaluator import Evaluator
 from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel, TieredLSTM
 from log_analyzer.model.transformer import TieredTransformer, Transformer
-from log_analyzer.tokenizer.tokenizer_neo import CharTokenizer, LANLTokenizer, LANLVocab, Tokenizer
+from log_analyzer.tokenizer.tokenizer_neo import (
+    CharTokenizer,
+    FieldTokenizer,
+    GlobalVocab,
+    LANLTokenizer,
+    LANLVocab,
+    Tokenizer,
+)
+from log_analyzer.tokenizer.vocab import FieldVocab
 from log_analyzer.trainer import Trainer
 
 try:
@@ -32,16 +43,20 @@ except ImportError:
     print("PyTorch is needed for this application.")
 
 
-LSTM = "lstm"
-TRANSFORMER = "transformer"
-TIERED_LSTM = "tiered-lstm"
-TIERED_TRANSFORMER = "tiered-transformer"
+LSTM: str = "lstm"
+TRANSFORMER: str = "transformer"
+TIERED_LSTM: str = "tiered-lstm"
+TIERED_TRANSFORMER: str = "tiered-transformer"
 
-LOGGING_FREQUENCY = 10  # How often to log results. Set to 1 to log everything.
-VALIDATION_FREQUENCY = 10  # Number of times to do validation per epoch. Set to 1 to only validate after each epoch.
+LOGGING_FREQUENCY: int = 10  # How often to log results. Set to 1 to log everything.
+VALIDATION_FREQUENCY: int = (
+    10  # Number of times to do validation per epoch. Set to 1 to only validate after each epoch.
+)
+
+tokenizers = {"char": CharTokenizer, "word-field": LANLTokenizer, "word-global": FieldTokenizer}
 
 
-def get_task(model: str, bidirectional: str):
+def get_task(model: str, bidirectional: bool) -> str:
     """Return the language modeling task for the given model, since it varies
     depending on its directionality."""
     if bidirectional and model in (TRANSFORMER, TIERED_TRANSFORMER):
@@ -52,7 +67,7 @@ def get_task(model: str, bidirectional: str):
     return data_utils.AUTOREGRESSIVE_LM
 
 
-def calculate_max_input_length(task, tokenizer: Tokenizer):
+def calculate_max_input_length(task: str, tokenizer: Tokenizer) -> Optional[int]:
     """Maximum input length to model."""
     add_sos, add_eos = data_utils.tokens_to_add(task)
     seq_len = tokenizer.sequence_length
@@ -62,7 +77,7 @@ def calculate_max_input_length(task, tokenizer: Tokenizer):
     return int(add_sos) + seq_len + int(add_eos)
 
 
-def get_model_config(filename, model_type) -> ModelConfig:
+def get_model_config(filename: str, model_type: str) -> ModelConfig:
     if model_type == TIERED_LSTM:
         return TieredLSTMConfig.init_from_file(filename)
     if model_type == LSTM:
@@ -75,13 +90,13 @@ def get_model_config(filename, model_type) -> ModelConfig:
     raise RuntimeError("Invalid model type.")
 
 
-def create_identifier_string(model_name, comment=""):
+def create_identifier_string(model_name: str, comment: str = "") -> str:
     current_time = datetime.now().strftime("%b%d_%H-%M-%S")
     id_string = f"{model_name}_{current_time}_{socket.gethostname()}_{comment}"
     return id_string
 
 
-def init_from_args(args):
+def init_from_args(args: Namespace) -> Tuple[Trainer, Evaluator, DataLoader, DataLoader, DataLoader]:
     return init_from_config_files(
         args.model_type,
         args.bidirectional,
@@ -104,7 +119,8 @@ def init_from_config_files(
     base_logdir="runs",
     vocab_file=None,
     user_file=None,
-):
+) -> Tuple[Trainer, Evaluator, DataLoader, DataLoader, DataLoader]:
+
     """Creates a model plus trainer given the specifications in args."""
     model_config = get_model_config(model_config_file, model_type)
     trainer_config = TrainerConfig.init_from_file(trainer_config_file)
@@ -149,15 +165,21 @@ def init_from_config_classes(
             raise Exception("Tiered models need a list of users.")
         users = None
 
-    vocab = LANLVocab(vocab_file)
-
+    vocab: FieldVocab
     tokenizer: Tokenizer
     if tokenization == "char":
-        tokenizer = CharTokenizer(vocab, users)
-    elif tokenization == "word":
+        tokenizer = CharTokenizer(None, users)
+    elif "word" in tokenization:
         if vocab_file is None:
             raise RuntimeError("Word tokenization set, but there's no vocabulary!")
-        tokenizer = LANLTokenizer(vocab, users)
+        if tokenization == "word-field":
+            vocab = LANLVocab(vocab_file)
+            tokenizer = LANLTokenizer(vocab, users)
+        elif tokenization == "word-global":
+            vocab = GlobalVocab(vocab_file)
+            tokenizer = FieldTokenizer(vocab, users)
+        else:
+            raise RuntimeError("Invalid tokenization.")
     else:
         raise RuntimeError("Invalid tokenization.")
 

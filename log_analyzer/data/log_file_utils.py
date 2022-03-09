@@ -1,11 +1,13 @@
 import csv
 import json
 import os
+import sys
 import tempfile
 from argparse import ArgumentParser
 from collections import OrderedDict
 
 from log_analyzer.tokenizer.tokenizer_neo import LANLVocab
+from log_analyzer.tokenizer.vocab import GlobalVocab
 
 SECONDS_PER_DAY = 86400
 
@@ -316,7 +318,9 @@ def generate_vocab_from_counts():
     if args.mode == "fields":
         LANLVocab.counts2vocab(args.counts_file, args.output, args.cutoff)
     elif args.mode == "global":
-        raise NotImplementedError("Globally unique vocab is not implemented.")
+        GlobalVocab.counts2vocab(args.counts_file, args.output, args.cutoff)
+    else:
+        sys.exit(0)
 
 
 # count_days("/home/jakob/lanl/redteam.txt")
