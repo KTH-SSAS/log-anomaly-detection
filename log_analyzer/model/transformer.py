@@ -23,8 +23,11 @@ def _generate_subsquare_subsequent_mask(seq_len, window_len):
     the attention window length."""
     # Initialise mask of ones
     mask = torch.ones(seq_len, seq_len)
-    # In the last window_len rows, we want to fill in a window_len wide diagonal with 0
     start_row = seq_len - window_len
+    # In all rows except the last window_len, we mask in one token (the diagonal) to avoid NaNs during backprop
+    for row in range(0, start_row):
+        mask[row,row] = 0
+    # In the last window_len rows, we want to fill in a window_len wide diagonal with 0
     for row in range(start_row, seq_len):
         for col in range(row-window_len + 1, row + 1):
             mask[row, col] = 0
