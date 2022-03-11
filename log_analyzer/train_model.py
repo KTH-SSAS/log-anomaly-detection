@@ -25,10 +25,7 @@ def prepare_args():
         choices=["word-field", "word-global", "char"],
     )
     parser.add_argument(
-        "--vocab-file", type=str, help="Path to vocabulary file. Required for field tokenization.", required=False
-    )
-    parser.add_argument(
-        "--user-file", type=str, help="Path to file containing all users. Required for tiered models.", required=False
+        "--counts-file", type=str, help="Path to field counts file. Required for field tokenization and tiered models.", required=False
     )
     parser.add_argument("--data-folder", type=str, help="Path to data files.", required=True)
     parser.add_argument("--trainer-config", type=str, help="Trainer configuration file.", required=True)
@@ -68,11 +65,8 @@ def main():
 
     args = prepare_args()
 
-    if "tiered" in args.model_type and args.user_file is None:
-        raise Exception("Tiered model was set but no user file was supplied.")
-
-    if "word" in args.tokenization and args.vocab_file is None:
-        raise Exception("Word level tokenization was set but no vocab file was supplied.")
+    if ("tiered" in args.model_type or "word" in args.tokenization) and args.counts_file is None:
+        raise Exception("No field counts file was supplied!.")
 
     #  Start a W&B run
 
