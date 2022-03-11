@@ -112,7 +112,7 @@ def fixture_vocab_file(tmp_path, counts_file):
 
     filename = tmp_path / "vocabfile.json"
 
-    LANLVocab.counts2vocab(counts_file=counts_file, outfile=filename, cutoff=0)
+    LANLVocab.counts2vocab(counts=counts_file, outfile=filename, cutoff=0)
 
     return filename
 

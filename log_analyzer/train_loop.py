@@ -5,11 +5,14 @@ import os
 import socket
 from argparse import Namespace
 from datetime import datetime
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Type
+import tempfile
+from pathlib import Path
 
 import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from zmq import TYPE
 
 import log_analyzer.data.data_loader as data_utils
 import wandb
@@ -53,8 +56,11 @@ VALIDATION_FREQUENCY: int = (
     10  # Number of times to do validation per epoch. Set to 1 to only validate after each epoch.
 )
 
-tokenizers = {"char": CharTokenizer, "word-field": LANLTokenizer, "word-global": FieldTokenizer}
+WORD_GLOBAL = "word-global"
+WORD_FIELD = "word-field"
+CHAR = "char"
 
+tokenizer_vocabs = {CHAR: (CharTokenizer, None), WORD_FIELD: (LANLTokenizer, LANLVocab), WORD_GLOBAL: (FieldTokenizer, GlobalVocab)}
 
 def get_task(model: str, bidirectional: bool) -> str:
     """Return the language modeling task for the given model, since it varies
@@ -104,8 +110,7 @@ def init_from_args(args: Namespace) -> Tuple[Trainer, Evaluator, DataLoader, Dat
         args.tokenization,
         args.trainer_config,
         args.data_folder,
-        vocab_file=args.vocab_file,
-        user_file=args.user_file,
+        counts_file=args.counts_file,
     )
 
 
@@ -117,8 +122,7 @@ def init_from_config_files(
     trainer_config_file: str,
     data_folder: str,
     base_logdir="runs",
-    vocab_file=None,
-    user_file=None,
+    counts_file=None,
 ) -> Tuple[Trainer, Evaluator, DataLoader, DataLoader, DataLoader]:
 
     """Creates a model plus trainer given the specifications in args."""
@@ -132,8 +136,7 @@ def init_from_config_files(
         tokenization,
         data_folder,
         base_logdir,
-        vocab_file=vocab_file,
-        user_file=user_file,
+        counts_file=counts_file,
     )
 
 
@@ -145,8 +148,8 @@ def init_from_config_classes(
     tokenization: str,
     data_folder,
     base_logdir="runs",
-    vocab_file=None,
-    user_file=None,
+    counts_file=None,
+    cutoff=40
 ):
     """Creates a model plus trainer given the specifications in args."""
     if not os.path.isdir(base_logdir):
@@ -157,31 +160,26 @@ def init_from_config_classes(
 
     shuffle_train_data = trainer_config.shuffle_train_data
 
-    if user_file is not None:
-        with open(user_file, encoding="utf8") as f:
-            users = json.load(f)
-    else:
-        if "tiered" in model_type:
-            raise Exception("Tiered models need a list of users.")
-        users = None
-
-    vocab: FieldVocab
     tokenizer: Tokenizer
-    if tokenization == "char":
-        tokenizer = CharTokenizer(None, users)
-    elif "word" in tokenization:
-        if vocab_file is None:
-            raise RuntimeError("Word tokenization set, but there's no vocabulary!")
-        if tokenization == "word-field":
-            vocab = LANLVocab(vocab_file)
-            tokenizer = LANLTokenizer(vocab, users)
-        elif tokenization == "word-global":
-            vocab = GlobalVocab(vocab_file)
-            tokenizer = FieldTokenizer(vocab, users)
-        else:
-            raise RuntimeError("Invalid tokenization.")
+    users = None
+    vocab = None
+    vocab_cls: Type[FieldVocab]
+    tokenizer_cls: Type[Tokenizer]
+    tokenizer_cls, vocab_cls = tokenizer_vocabs[tokenization]
+    if counts_file is not None:
+        with open(counts_file, encoding="utf8") as f:
+            counts = json.load(f)
+        if "tiered" in model_type:
+            users = list(counts["src_user"].keys())
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            tmp_vocab_file = Path(tmpdirname) / "vocab.json"
+            vocab = vocab_cls.counts2vocab(counts, tmp_vocab_file, cutoff) if vocab_cls is not None else None
     else:
-        raise RuntimeError("Invalid tokenization.")
+        if "word" in tokenization or "tiered" in model_type:
+            raise RuntimeError("No counts file was supplied!")
+        
+    tokenizer = tokenizer_cls(vocab, users)
 
     task = get_task(model_type, bidirectional)
 

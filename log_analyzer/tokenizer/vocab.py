@@ -2,6 +2,8 @@ import json
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from typing import Union, List, Dict
 
 import numpy as np
 
@@ -20,7 +22,7 @@ class FieldVocab(ABC):
     vocab: dict
 
     @abstractmethod
-    def __init__(self, vocab_file: str) -> None:
+    def __init__(self, vocab_file: Path) -> None:
         ...
 
     @abstractmethod
@@ -33,7 +35,7 @@ class FieldVocab(ABC):
 
     @classmethod
     @abstractmethod
-    def counts2vocab(cls, counts_file: str, outfile: str, cutoff: int):
+    def counts2vocab(cls, counts: Union[dict, Path], outfile: Path, cutoff: int):
         ...
 
 
@@ -50,7 +52,7 @@ class GlobalVocab(FieldVocab):
         OOV_TOKEN: 5,
     }
 
-    def __init__(self, vocab_file) -> None:
+    def __init__(self, vocab_file: Path) -> None:
         super().__init__(vocab_file)
         with open(vocab_file, encoding="utf8") as f:
             self.vocab = json.load(f)
@@ -76,7 +78,7 @@ class GlobalVocab(FieldVocab):
         return OOV_TOKEN
 
     @classmethod
-    def counts2vocab(cls, counts_file, outfile, cutoff):
+    def counts2vocab(cls, counts: Union[dict, Path], outfile: Path, cutoff: int):
 
         vocab = {}
         index = 0
@@ -86,26 +88,32 @@ class GlobalVocab(FieldVocab):
             vocab[k] = v
             index += 1
 
-        with open(counts_file, encoding="utf8") as f:
-            counts: dict[str, dict] = json.load(f)
+        if isinstance(counts, Path):
+            with open(counts, encoding="utf8") as f:
+                field_counts = json.load(f)
+        else:
+            field_counts = counts
 
-        for field in counts:
+        for field in field_counts:
             # Add indexes for the tokens in the field
-            for token, count in counts[field].items():
+            for token, count in field_counts[field].items():
                 if count > cutoff and token not in vocab:
                     vocab[token] = index
                     index += 1
 
         print(f"Generated vocab with {index} words.")
 
+
         with open(outfile, "w", encoding="utf8") as f:
             json.dump(vocab, f, indent=" ")
+
+        return cls(outfile)
 
 
 class LANLVocab(FieldVocab):
     """Vocabulary that maintains a seperate wordlist for each log field."""
 
-    def __init__(self, vocab_file) -> None:
+    def __init__(self, vocab_file: Path) -> None:
         super().__init__(vocab_file)
         with open(vocab_file, encoding="utf8") as f:
             self.vocab = OrderedDict(json.load(f))
@@ -183,7 +191,7 @@ class LANLVocab(FieldVocab):
         raise KeyError("Index not present in vocabulary.")
 
     @classmethod
-    def counts2vocab(cls, counts_file, outfile, cutoff):
+    def counts2vocab(cls, counts: Union[dict, Path], outfile: Path, cutoff: int):
         """Generates a vocabulary file based on a file of token counts per
         field.
 
@@ -192,7 +200,7 @@ class LANLVocab(FieldVocab):
         """
 
         # Use an ordered dict to maintain the order of field names
-        vocab = OrderedDict()
+        vocab: OrderedDict[str, Dict[str, int]] = OrderedDict()
 
         # Add special tokens to entry unrelated to fields
         vocab["special_tokens"] = {}
@@ -201,22 +209,25 @@ class LANLVocab(FieldVocab):
             vocab["special_tokens"][t] = index
             index += 1
 
-        with open(counts_file, encoding="utf8") as f:
-            counts = json.load(f)
+        if isinstance(counts, Path):
+            with open(counts, encoding="utf8") as f:
+                field_counts = json.load(f)
+        else:
+            field_counts = counts
 
         # Add one Out-Of-Vocabulary and MASK index for each field
         vocab[MSK_TOKEN] = []
         vocab[OOV_TOKEN] = []
         for t in [OOV_TOKEN, MSK_TOKEN]:
-            for _ in counts:
+            for _ in field_counts:
                 vocab[t].append(index)
                 index += 1
 
-        for field in counts:
+        for field in field_counts:
             vocab[field] = {}
 
             # Add indexes for the tokens in the field
-            for token, count in counts[field].items():
+            for token, count in field_counts[field].items():
                 if count > cutoff:
                     vocab[field][token] = index
                     index += 1
@@ -227,7 +238,8 @@ class LANLVocab(FieldVocab):
 
         print(f"Generated vocab with {index} words.")
 
-        with open(outfile, "w", encoding="utf8") as f:
-            json.dump(vocab, f, indent=" ")
+        if outfile is not None:
+            with open(outfile, "w", encoding="utf8") as f:
+                json.dump(vocab, f, indent=" ")
 
         return cls(outfile)
