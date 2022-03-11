@@ -95,7 +95,11 @@ class TieredTransformerConfig(TransformerConfig):
 
     @property
     def context_dim(self):
-        """Feature length of input to LSTM."""
+        """Feature length of input to context history for tiered transformer.
+
+        (i.e., dimension by concatenation of final hidden and mean of
+        hidden
+        """
         return self.model_dim * 2
 
     @classmethod
