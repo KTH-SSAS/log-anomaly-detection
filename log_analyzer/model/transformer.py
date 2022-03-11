@@ -78,8 +78,6 @@ class NoPositionalEncoding(nn.Module):
 # https://github.com/pytorch/examples/blob/master/word_language_model/model.py
 
 
-
-
 class TransformerLanguageModel(LogModel):
     """Container module with an encoder, a recurrent or transformer module, and
     a decoder."""
@@ -97,10 +95,10 @@ class TransformerLanguageModel(LogModel):
         self.vocab_size = config.vocab_size
 
         self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout)
-        if self.name == "Transformer_Decoder" :
+        if self.name == "Transformer_Decoder":
             decoder_layers = nn.TransformerDecoderLayer(
                 self.model_dim, self.attention_heads, self.feedforward_dim, dropout=self.dropout, batch_first=True
-                )
+            )
             self.transformer_decoder = nn.TransformerDecoder(decoder_layers, self.layers)
         else:
             encoder_layers = nn.TransformerEncoderLayer(
@@ -182,6 +180,7 @@ class Transformer(TransformerLanguageModel):
             return logits, tf_hidden, loss
         return logits, loss
 
+
 class TieredTransformer(TieredLogModel):
 
     num_steps: int
@@ -189,7 +188,7 @@ class TieredTransformer(TieredLogModel):
     def __init__(self, config: TieredTransformerConfig, bidirectional):
         super().__init__(config)
         self.config: TransformerConfig = config
-        self.bidirectional = False 
+        self.bidirectional = False
         self.dropout = config.dropout
         self.model_dim = config.model_dim
         self.layers = config.layers
@@ -199,13 +198,15 @@ class TieredTransformer(TieredLogModel):
         self.name = "Tiered_Transformer"
         self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout)
         self.word_embedding = nn.Embedding(self.vocab_size, self.model_dim)
-        self.transformer_model = nn.Transformer(d_model=self.config.model_dim,
-                                            nhead=self.config.attention_heads, 
-                                            num_encoder_layers=self.config.layers,
-                                            num_decoder_layers=self.config.context_config.layers,
-                                            dim_feedforward =self.config.feedforward_dim,
-                                            dropout=self.dropout,
-                                            batch_first=True)
+        self.transformer_model = nn.Transformer(
+            d_model=self.config.model_dim,
+            nhead=self.config.attention_heads,
+            num_encoder_layers=self.config.layers,
+            num_decoder_layers=self.config.context_config.layers,
+            dim_feedforward=self.config.feedforward_dim,
+            dropout=self.dropout,
+            batch_first=True,
+        )
         self.shift_window = config.shift_window + 1
 
         # User model state
@@ -217,7 +218,7 @@ class TieredTransformer(TieredLogModel):
         self.saved_context_history_lengths = torch.ones([self.n_users], dtype=torch.int16)
 
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
-    
+
     def gen_mask(self, seq_len, device=None, mask=None, has_mask=True):
         # batch size, sequence length, embedded dimension
         # lengths is currently ignored, added for compatibility with LSTM-training code
@@ -226,13 +227,13 @@ class TieredTransformer(TieredLogModel):
         else:
             mask = None
         return mask
-        
-    def gen_pad_mask(self, ctx_history, history_length, device= None, has_mask=True):
-        history_padding_length = ctx_history.shape[1] - history_length.long() 
+
+    def gen_pad_mask(self, ctx_history, history_length, device=None, has_mask=True):
+        history_padding_length = ctx_history.shape[1] - history_length.long()
         if has_mask:
             mask = torch.ones([ctx_history.shape[0], ctx_history.shape[1]]) != 1
             for p, i in zip(history_padding_length, range(mask.shape[0])):
-                mask[i,:p] = True
+                mask[i, :p] = True
         else:
             mask = None
         return mask.to(device)
@@ -252,28 +253,33 @@ class TieredTransformer(TieredLogModel):
         token_output = torch.zeros(shape, dtype=torch.float).to(src.device)
 
         # token_output = token_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
-        
+
         for idx, batch in enumerate(src):
             tgt_mask = self.gen_mask(batch.shape[-1], device=src.device)
             src_compressed = self.reduce_dim(context_history)
 
-            src_pad_mask = self.gen_pad_mask(src_compressed, history_length, device=src.device) 
-            embedding_tgt_input = self.word_embedding(batch)  * math.sqrt(self.model_dim)
+            src_pad_mask = self.gen_pad_mask(src_compressed, history_length, device=src.device)
+            embedding_tgt_input = self.word_embedding(batch) * math.sqrt(self.model_dim)
 
-            src_input = self.pos_encoder(src_compressed * math.sqrt(self.model_dim))
+            src_input = self.pos_encoder(src_compressed * math.sqrt(self.model_dim))[
+                :, list(range(src_compressed.shape[1]))[::-1], :
+            ]
             tgt_input = self.pos_encoder(embedding_tgt_input)
-            
-            tf_hidden = self.transformer_model(src = src_input,
-                                            src_key_padding_mask = src_pad_mask, 
-                                            tgt = tgt_input,
-                                            tgt_mask = tgt_mask)
-            tf_hidden_mean = torch.unsqueeze(torch.cat([tf_hidden[:, -1, :], torch.mean(tf_hidden, dim = 1)], dim=-1), dim=1)
-            new_context_history = torch.cat([context_history, tf_hidden_mean], dim =1)
-            history_length = torch.min(history_length + 1, torch.ones(history_length.shape, dtype=torch.int16) * self.shift_window )
+
+            tf_hidden = self.transformer_model(
+                src=src_input, src_key_padding_mask=src_pad_mask, tgt=tgt_input, tgt_mask=tgt_mask
+            )
+            tf_hidden_mean = torch.unsqueeze(
+                torch.cat([tf_hidden[:, -1, :], torch.mean(tf_hidden, dim=1)], dim=-1), dim=1
+            )
+            new_context_history = torch.cat([context_history, tf_hidden_mean], dim=1)
+            history_length = torch.min(
+                history_length + 1, torch.ones(history_length.shape, dtype=torch.int16) * self.shift_window
+            )
             if self.shift_window == 1:
                 context_history = context_history
             else:
-                context_history = new_context_history[:, -max(history_length):, :]
+                context_history = new_context_history[:, -max(history_length) :, :]
             logits = tf_hidden @ self.word_embedding.weight.t()
             token_output[idx][: logits.shape[0], : logits.shape[1], : logits.shape[2]] = logits
         # Update context state
@@ -300,4 +306,4 @@ class TieredTransformer(TieredLogModel):
         context_history = context_history.detach().cpu()
         self.saved_context_history_lengths[torch.tensor(users)] = history_length
         max_length = torch.max(self.saved_context_history_lengths[torch.tensor(users)])
-        self.saved_context_histories[torch.tensor(users), -(context_history.shape[1]):, :] = context_history
+        self.saved_context_histories[torch.tensor(users), -(context_history.shape[1]) :, :] = context_history
