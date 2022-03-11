@@ -9,41 +9,35 @@ SEQUENCE_LENGTH = 10
 VOCAB_SIZE = 128
 BATCH_SIZE = 64
 SHIFT_WINDOW = 10
-LOW_LV_MODEL_DIM = 64
-LOW_LV_FFW_DIM = 64
+LAYERS = 2
+MODEL_DIM = 64
+FFW_DIM = 64
 DROPOUT_RATE = 0.1
 ATTENTION_HEAD = 2
 CTX_LV_MODEL_DIM = 64
 CTX_LV_FFW_DIM = 100
 LEN_SAVED_HISTORY = 10
+NUM_USERS = 100
 
 
 @pytest.fixture
 def test_config():
-    context_config = TransformerConfig(
-        None, SEQUENCE_LENGTH, CTX_LV_MODEL_DIM, CTX_LV_FFW_DIM, ATTENTION_HEAD, VOCAB_SIZE, DROPOUT_RATE
+    context_config = TransformerConfig(LAYERS, FFW_DIM, MODEL_DIM, ATTENTION_HEAD, DROPOUT_RATE)
+    config = TieredTransformerConfig(
+        LAYERS, FFW_DIM, MODEL_DIM, ATTENTION_HEAD, DROPOUT_RATE, context_config, SHIFT_WINDOW
     )
-    return TieredTransformerConfig(
-        None,
-        SEQUENCE_LENGTH,
-        LOW_LV_FFW_DIM,
-        LOW_LV_MODEL_DIM,
-        ATTENTION_HEAD,
-        VOCAB_SIZE,
-        DROPOUT_RATE,
-        context_config,
-        SHIFT_WINDOW,
-    )
+    config.vocab_size = VOCAB_SIZE
+    config.number_of_users = NUM_USERS
+    config.sequence_length = SEQUENCE_LENGTH
+    return config
 
 
 @pytest.fixture
 def test_input():
-    return torch.randint(low=0, high=VOCAB_SIZE, size=(CONSECUTIVE_LOG, BATCH_SIZE, SEQUENCE_LENGTH))
-
-
-@pytest.fixture
-def context_input():
-    return torch.rand(size=(BATCH_SIZE, CTX_LV_FFW_DIM))
+    return (
+        torch.randint(low=0, high=NUM_USERS, size=(BATCH_SIZE, 1)),
+        torch.randint(low=0, high=VOCAB_SIZE, size=(CONSECUTIVE_LOG, BATCH_SIZE, SEQUENCE_LENGTH)),
+    )
 
 
 @pytest.fixture
@@ -51,13 +45,14 @@ def context_history():
     return torch.randint(low=0, high=VOCAB_SIZE, size=(BATCH_SIZE, LEN_SAVED_HISTORY, VOCAB_SIZE))
 
 
-def test_tiered_transformer_forward_word(
-    test_config: TieredTransformerConfig, test_input, ctxt_vector_input, ctx_history_input
-):
-    tieredTransformer = TieredTransformer(test_config)
-    tag_output, ctxt_vector, ctx_history_output = tieredTransformer(test_input, ctxt_vector_input, ctx_history_input)
+def test_tiered_transformer_forward_word(test_config: TieredTransformerConfig, test_input, context_history):
+    tieredTransformer = TieredTransformer(test_config, bidirectional=False)
+    token_output, loss = tieredTransformer(test_input, context_history)
+
     return (
-        (ctx_history_input[:, 3:, :] == ctx_history_output[:, :-3, :]).all()
-        and ctx_history_output.shape == torch.Size([BATCH_SIZE, SHIFT_WINDOW, LOW_LV_MODEL_DIM])
-        and tag_output.shape == torch.Size([CONSECUTIVE_LOG, BATCH_SIZE, SEQUENCE_LENGTH, VOCAB_SIZE])
+        torch.all(
+            torch.ones(BATCH_SIZE) + CONSECUTIVE_LOG == tieredTransformer.saved_context_history_lengths[test_input[0]]
+        )
+        and tieredTransformer.saved_context_histories.shape == torch.Size([NUM_USERS, SHIFT_WINDOW + 1, VOCAB_SIZE])
+        and token_output.shape == torch.Size([CONSECUTIVE_LOG, BATCH_SIZE, SEQUENCE_LENGTH, VOCAB_SIZE])
     )
