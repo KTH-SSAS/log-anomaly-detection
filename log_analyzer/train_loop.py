@@ -3,16 +3,15 @@ import json
 import logging
 import os
 import socket
+import tempfile
 from argparse import Namespace
 from datetime import datetime
-from typing import Optional, Tuple, Type
-import tempfile
 from pathlib import Path
+from typing import Optional, Tuple, Type
 
 import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from zmq import TYPE
 
 import log_analyzer.data.data_loader as data_utils
 import wandb
@@ -60,7 +59,34 @@ WORD_GLOBAL = "word-global"
 WORD_FIELD = "word-field"
 CHAR = "char"
 
-tokenizer_vocabs = {CHAR: (CharTokenizer, None), WORD_FIELD: (LANLTokenizer, LANLVocab), WORD_GLOBAL: (FieldTokenizer, GlobalVocab)}
+tokenizer_vocabs = {
+    CHAR: (CharTokenizer, None),
+    WORD_FIELD: (LANLTokenizer, LANLVocab),
+    WORD_GLOBAL: (FieldTokenizer, GlobalVocab),
+}
+
+
+def get_tokenizer(tokenization, model_type, counts_file: Path, cutoff) -> Tokenizer:
+    tokenizer: Tokenizer
+    users = None
+    vocab = None
+    tokenizer_cls, vocab_cls = tokenizer_vocabs[tokenization]
+    if counts_file is not None:
+        with open(counts_file, encoding="utf8") as f:
+            counts = json.load(f)
+        if "tiered" in model_type:
+            users = list(counts["src_user"].keys())
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            tmp_vocab_file = Path(tmpdirname) / "vocab.json"
+            vocab = vocab_cls.counts2vocab(counts, tmp_vocab_file, cutoff) if vocab_cls is not None else None
+    else:
+        if "word" in tokenization or "tiered" in model_type:
+            raise RuntimeError("No counts file was supplied!")
+
+    tokenizer = tokenizer_cls(vocab, users)
+    return tokenizer
+
 
 def get_task(model: str, bidirectional: bool) -> str:
     """Return the language modeling task for the given model, since it varies
@@ -149,7 +175,7 @@ def init_from_config_classes(
     data_folder,
     base_logdir="runs",
     counts_file=None,
-    cutoff=40
+    cutoff=40,
 ):
     """Creates a model plus trainer given the specifications in args."""
     if not os.path.isdir(base_logdir):
@@ -160,26 +186,7 @@ def init_from_config_classes(
 
     shuffle_train_data = trainer_config.shuffle_train_data
 
-    tokenizer: Tokenizer
-    users = None
-    vocab = None
-    vocab_cls: Type[FieldVocab]
-    tokenizer_cls: Type[Tokenizer]
-    tokenizer_cls, vocab_cls = tokenizer_vocabs[tokenization]
-    if counts_file is not None:
-        with open(counts_file, encoding="utf8") as f:
-            counts = json.load(f)
-        if "tiered" in model_type:
-            users = list(counts["src_user"].keys())
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            tmp_vocab_file = Path(tmpdirname) / "vocab.json"
-            vocab = vocab_cls.counts2vocab(counts, tmp_vocab_file, cutoff) if vocab_cls is not None else None
-    else:
-        if "word" in tokenization or "tiered" in model_type:
-            raise RuntimeError("No counts file was supplied!")
-        
-    tokenizer = tokenizer_cls(vocab, users)
+    tokenizer = get_tokenizer(tokenization, model_type, counts_file, cutoff)
 
     task = get_task(model_type, bidirectional)
 

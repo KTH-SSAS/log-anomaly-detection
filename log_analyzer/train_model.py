@@ -25,7 +25,10 @@ def prepare_args():
         choices=["word-field", "word-global", "char"],
     )
     parser.add_argument(
-        "--counts-file", type=str, help="Path to field counts file. Required for field tokenization and tiered models.", required=False
+        "--counts-file",
+        type=str,
+        help="Path to field counts file. Required for field tokenization and tiered models.",
+        required=False,
     )
     parser.add_argument("--data-folder", type=str, help="Path to data files.", required=True)
     parser.add_argument("--trainer-config", type=str, help="Trainer configuration file.", required=True)
