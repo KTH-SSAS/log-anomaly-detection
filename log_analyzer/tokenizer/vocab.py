@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Union, List, Dict
+from typing import Dict, Union
 
 import numpy as np
 
@@ -13,6 +13,7 @@ EOS_TOKEN = "[EOS]"
 MSK_TOKEN = "[MSK]"
 OOV_TOKEN = "[OOV]"
 CLS_TOKEN = "[CLS]"
+
 
 class FieldVocab(ABC):
 
@@ -103,7 +104,6 @@ class GlobalVocab(FieldVocab):
 
         print(f"Generated vocab with {index} words.")
 
-
         with open(outfile, "w", encoding="utf8") as f:
             json.dump(vocab, f, indent=" ")
 
@@ -191,7 +191,7 @@ class LANLVocab(FieldVocab):
         raise KeyError("Index not present in vocabulary.")
 
     @classmethod
-    def counts2vocab(cls, counts: Union[dict, Path], outfile: Path, cutoff: int):
+    def counts2vocab(cls, counts: Union[Dict, Path], outfile: Path, cutoff: int):
         """Generates a vocabulary file based on a file of token counts per
         field.
 
@@ -209,18 +209,19 @@ class LANLVocab(FieldVocab):
             vocab["special_tokens"][t] = index
             index += 1
 
+        field_counts: Dict[str, Dict[str, int]]
         if isinstance(counts, Path):
             with open(counts, encoding="utf8") as f:
-                field_counts = json.load(f)
+                field_counts = dict(json.load(f))
         else:
             field_counts = counts
 
         # Add one Out-Of-Vocabulary and MASK index for each field
-        vocab[MSK_TOKEN] = []
-        vocab[OOV_TOKEN] = []
+        vocab[MSK_TOKEN] = {}
+        vocab[OOV_TOKEN] = {}
         for t in [OOV_TOKEN, MSK_TOKEN]:
-            for _ in field_counts:
-                vocab[t].append(index)
+            for field in field_counts:
+                vocab[t][field] = index
                 index += 1
 
         for field in field_counts:
