@@ -265,12 +265,14 @@ class TieredTransformer(TieredLogModel):
             src_input = self.pos_encoder(src_compressed * math.sqrt(self.model_dim))[
                 :, list(range(src_compressed.shape[1]))[::-1], :
             ]
-            # invert the order of the context as
+            # invert the order of the context
+            # e.g., for 2 users and 5 shift window, the context history would be 
             # 0 0 0 0 i ==> i 0 0 0 0
             # 0 0 0 i i ==> i i 0 0 0
             # So we can apply padding mask to history input as
             # F T T T T
             # F F T T T
+            # where T stands for True and padding, and F stands for False and no padding.
             tgt_input = self.pos_encoder(embedding_tgt_input)
 
             tf_hidden = self.transformer_model(
