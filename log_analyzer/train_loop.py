@@ -264,14 +264,14 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
     """Perform training on lm_trainer."""
     logger = logging.getLogger(application.TRAINER_LOGGER)
 
+    @torch.inference_mode()
     def validation_run(train_iteration=0, val_run=0):
         """Performs one phase of validation on lm_trainer."""
         val_losses = []
         for val_iteration, val_batch in enumerate(tqdm(val_loader, desc=f"Valid:{val_run:2d}")):
             split_batch = val_loader.split_batch(val_batch)
-            with torch.no_grad():
-                loss, *_ = lm_trainer.train_step(split_batch, validation=True)
-                val_losses.append(loss.item())
+            loss, *_ = lm_trainer.train_step(split_batch, validation=True)
+            val_losses.append(loss.item())
             # Log the current validation loss and val_iteration to enable detailed view of
             # validation loss.
             # Also log the current train iteration and validation run_number to enable
@@ -370,6 +370,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
     return train_losses
 
 
+@torch.inference_mode()
 def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, model_file_name="model.pt"):
     """Perform testing on lm_trainer.
 
@@ -396,17 +397,16 @@ def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, mode
     test_losses = []
     for iteration, batch in enumerate(tqdm(test_loader, desc="Test")):
         split_batch = test_loader.split_batch(batch)
-        with torch.no_grad():
-            loss, *_ = lm_evaluator.eval_step(split_batch, store_eval_data=store_eval_data)
-            test_losses.append(loss.item())
-            wandb_log(
-                iteration,
-                LOGGING_FREQUENCY,
-                {
-                    "eval/loss": loss,
-                    "eval/iteration": iteration,
-                    "eval/day": batch["day"][0],
-                },
-            )
+        loss, *_ = lm_evaluator.eval_step(split_batch, store_eval_data=store_eval_data)
+        test_losses.append(loss.item())
+        wandb_log(
+            iteration,
+            LOGGING_FREQUENCY,
+            {
+                "eval/loss": loss,
+                "eval/iteration": iteration,
+                "eval/day": batch["day"][0],
+            },
+        )
 
     return test_losses
