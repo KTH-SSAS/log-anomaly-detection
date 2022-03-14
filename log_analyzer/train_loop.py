@@ -7,7 +7,7 @@ import tempfile
 from argparse import Namespace
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple, Type
+from typing import Optional, Tuple
 
 import numpy as np
 from torch.utils.data import DataLoader
@@ -36,7 +36,6 @@ from log_analyzer.tokenizer.tokenizer_neo import (
     LANLVocab,
     Tokenizer,
 )
-from log_analyzer.tokenizer.vocab import FieldVocab
 from log_analyzer.trainer import Trainer
 
 try:

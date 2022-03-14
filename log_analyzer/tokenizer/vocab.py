@@ -126,15 +126,21 @@ class LANLVocab(FieldVocab):
         self.special_tokens = self.vocab["special_tokens"]
         del self.vocab["special_tokens"]
 
-        self.mask_tokens = np.array(self.vocab[MSK_TOKEN])
-        self.oov_tokens = np.array(self.vocab[OOV_TOKEN])
-
+        mask_tokens = self.vocab[MSK_TOKEN]
+        oov_tokens = self.vocab[OOV_TOKEN]
         del self.vocab[OOV_TOKEN]
         del self.vocab[MSK_TOKEN]
 
         # Save field names, without special keys
         self.field_names = list(self.vocab.keys())
         self.field_indexes = {field: i for i, field in enumerate(self.vocab)}
+
+        self.mask_tokens = np.zeros(len(self.field_names))
+        self.oov_tokens = np.zeros(len(self.field_names))
+
+        for field_name, index in self.field_indexes.items():
+            self.mask_tokens[index] = oov_tokens[field_name]
+            self.oov_tokens[index] = mask_tokens[field_name]
 
         # Precalculated vocab limits to help generating random tokens for each field
         self.field_vocab_max = np.zeros(len(self.field_names))
