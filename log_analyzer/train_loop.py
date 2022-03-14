@@ -336,7 +336,8 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                     "train/loss": loss,
                     "train/iteration": iteration,
                     "train/day": batch["day"][0],
-                    "train/lr": lm_trainer.scheduler.get_last_lr()[0],
+                    "train/lr": lm_trainer.optimizer.param_groups[0]['lr']
+,
                     "train/epoch": epoch,
                     "train/gradient_norm": gradient_norm
                 },
