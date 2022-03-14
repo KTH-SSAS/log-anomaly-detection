@@ -16,5 +16,6 @@
 	"scheduler_step_size": 0,
 	"mixed_precision": false,
 	"shuffle_train_data": false,
-	"gradient_accumulation": 0
+	"gradient_accumulation": 0,
+	"validations_per_epoch": 10
 }

@@ -50,9 +50,6 @@ TIERED_LSTM: str = "tiered-lstm"
 TIERED_TRANSFORMER: str = "tiered-transformer"
 
 LOGGING_FREQUENCY: int = 10  # How often to log results. Set to 1 to log everything.
-VALIDATION_FREQUENCY: int = (
-    10  # Number of times to do validation per epoch. Set to 1 to only validate after each epoch.
-)
 
 WORD_GLOBAL = "word-global"
 WORD_FIELDS = "word-fields"
@@ -303,7 +300,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
     run_validation = val_loader is not None
     if run_validation:
         # Number of iterations between each validation run
-        validation_period = (len(train_loader) // VALIDATION_FREQUENCY) + 1
+        validation_period = (len(train_loader) // lm_trainer.config.validations_per_epoch) + 1
     else:
         validation_period = 0
 
