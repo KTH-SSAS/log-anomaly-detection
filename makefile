@@ -24,5 +24,5 @@ install:
 %_word-global: TOKENIZATION=word-global
 %_char: TOKENIZATION=char
 
-%_word-field %_char: config/lanl_config_%.json
+%_word-field %_word-global %_char: config/lanl_config_%.json
 	python log_analyzer/train_model.py --model-type $* --counts-file $(COUNTS_FILE) --model-config $^ $(FLAGS) --tokenization $(TOKENIZATION)
