@@ -10,7 +10,7 @@ TRAIN_MODEL = python log_analyzer/train_model.py
 
 
 ifdef BIDIRECTIONAL
-FLAGS += --bidirectional
+FLAGS += --bidir
 endif
 
 ifdef CUDA
