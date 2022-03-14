@@ -50,6 +50,15 @@ class Trainer:
         if self.config.mixed_precision:
             self.scaler: GradScaler = torch.cuda.amp.GradScaler()
 
+        warmup_period = 1e5
+        warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+            self.optimizer, start_factor=0.1, total_iters=warmup_period
+        )
+        annealing_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=1E4, eta_min=1e-8)
+        self.warmup_schedulers = torch.optim.lr_scheduler.SequentialLR(
+            self.optimizer, schedulers=[warmup_scheduler, annealing_scheduler], milestones=[warmup_period]
+        )
+
     def early_stopping(self, val_loss):
         """Performs early stopping check after validation, if enabled."""
         if self.config.early_stopping:
@@ -74,6 +83,7 @@ class Trainer:
 
             self.optimizer.zero_grad()
             self.accumulated_steps = 0
+            self.warmup_schedulers.step()
         else:
             self.accumulated_steps += 1
 
