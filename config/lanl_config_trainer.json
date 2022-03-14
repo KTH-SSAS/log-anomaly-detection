@@ -15,5 +15,6 @@
 	"scheduler_gamma": 0.99,
 	"scheduler_step_size": 0,
 	"mixed_precision": false,
-	"shuffle_train_data": false
+	"shuffle_train_data": false,
+	"gradient_accumulation": 0
 }

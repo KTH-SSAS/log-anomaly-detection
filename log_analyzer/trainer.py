@@ -17,6 +17,8 @@ class Trainer:
 
         self.model = model
 
+        self.accumulated_steps = 0
+
         # Check GPU
         self.using_cuda = Application.instance().using_cuda
 
@@ -47,13 +49,24 @@ class Trainer:
 
     def optimizer_step(self, loss: torch.Tensor):
         """Performs one step of optimization on the given loss."""
-        if self.config.mixed_precision and isinstance(self.scaler, GradScaler):
+        using_mp = self.config.mixed_precision and isinstance(self.scaler, GradScaler)
+        if using_mp:
             self.scaler.scale(loss).backward()
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
         else:
             loss.backward()
-            self.optimizer.step()
+
+        if self.accumulated_steps == self.config.gradient_accumulation:
+            if using_mp:
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+            else:
+                self.optimizer.step()
+
+            self.optimizer.zero_grad()
+            self.accumulated_steps = 0
+        else:
+            self.accumulated_steps += 1
+
         if self.use_scheduler:
             self.scheduler.step()
 
