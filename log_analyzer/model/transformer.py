@@ -230,11 +230,10 @@ class TieredTransformer(TieredLogModel):
         return mask
 
     def gen_pad_mask(self, ctx_history, history_length, device=None, has_mask=True):
-        history_padding_length = ctx_history.shape[1] - history_length.long()
         if has_mask:
-            mask = torch.ones([ctx_history.shape[0], ctx_history.shape[1]]) != 1
-            for p, i in zip(history_padding_length, range(mask.shape[0])):
-                mask[i, :p] = True
+            mask = torch.ones([ctx_history.shape[0], ctx_history.shape[1]]) == 1
+            for p, i in zip(history_length, range(mask.shape[0])):
+                mask[i, :p] = False
         else:
             mask = None
         return mask.to(device)
