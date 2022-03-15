@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 import wandb
 from log_analyzer.application import Application
-from log_analyzer.model.lstm import MultilineLogModel, LogModel, LSTMLanguageModel
+from log_analyzer.model.lstm import LogModel, LSTMLanguageModel, MultilineLogModel
 from log_analyzer.tokenizer.tokenizer import Char_tokenizer
 
 

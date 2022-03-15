@@ -2,6 +2,7 @@
 
 import os.path as path
 from functools import partial
+from typing import Dict, List
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
@@ -170,7 +171,7 @@ class MapMultilineDataset(LogDataset, Dataset):
         # Extra history before the start of this input needed to ensure a full window_size history for every entry: window_size-1
         # Length of each item: 2*window_size - 1 long
         start_index = index * self.window_size
-        end_index = start_index + 2*self.window_size  # Add 1 line that will be the target for the last input
+        end_index = start_index + 2 * self.window_size  # Add 1 line that will be the target for the last input
         sequence = self.loglines[start_index:end_index]
         parsed_sequence = self.parse_lines(sequence)
         return parsed_sequence
@@ -219,8 +220,7 @@ class MapMultilineDataset(LogDataset, Dataset):
 
 
 class IterableUserMultilineDataset(LogDataset, IterableDataset):
-    """Provides data via __iter__, allowing data to be accessed in order
-    only.
+    """Provides data via __iter__, allowing data to be accessed in order only.
 
     Provides sequences of loglines of length window_size * 2 - 1. Each sequence contains loglines from a single user.
     """
@@ -230,11 +230,10 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
 
         self.window_size = window_size
 
-        self.loglines = []
         self.skipsos = True
         self.skipeos = True
         self.data = parse_multiple_files(self.filepaths, jagged, bidirectional, skipsos, raw_lines=True)
-        self.user_loglines = {}
+        self.user_loglines: Dict[str, Dict[str, List]] = {}
 
     def __iter__(self):
         # Actual input to the model (that will produce an output prediction): window_size
@@ -282,7 +281,8 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
         return datadict
 
     def produce_output_sequence(self, user):
-        """Puts together a sequence of loglines from a single user from the data that's been read in so far."""
+        """Puts together a sequence of loglines from a single user from the
+        data that's been read in so far."""
         datadict = {
             "line": [],
             "second": [],
@@ -310,7 +310,7 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
                 datadict["red"].append(line_data["red"])
                 datadict["target"].append(line_data["data"])
         # Remove all lines from this user, except the ones necessary for history for the next sequence (last window_size - 1)
-        lines = lines[self.window_size - 1:]
+        lines = lines[self.window_size - 1 :]
         self.user_loglines[user] = lines
         return datadict
 
@@ -326,9 +326,7 @@ class LogDataLoader(DataLoader):
         if batch_sampler is not None:
             super().__init__(dataset, collate_fn=collate_fn, batch_sampler=batch_sampler)
         else:
-            super().__init__(
-                dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn
-            )
+            super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
         self.using_cuda = Application.instance().using_cuda
 
     def split_batch(self, batch: dict):
@@ -489,7 +487,7 @@ def create_data_loaders_multiline(
                 batch[key] = torch.stack(batch[key])
 
         return batch
-    
+
     if memory_type.lower() == "global":
         dataset = MapMultilineDataset(filepath, bidir, skipsos, jagged, window_size=window_size)
     elif memory_type.lower() == "user":
@@ -574,7 +572,14 @@ def load_data_multiline(
         dataset_split=train_val_split,
     )
     test_loader, _ = create_data_loaders_multiline(
-        filepaths_eval, batch_size, bidir, skipsos, jagged, window_size=window_size, memory_type=memory_type, dataset_split=None
+        filepaths_eval,
+        batch_size,
+        bidir,
+        skipsos,
+        jagged,
+        window_size=window_size,
+        memory_type=memory_type,
+        dataset_split=None,
     )
 
     return train_loader, val_loader, test_loader

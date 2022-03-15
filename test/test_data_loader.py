@@ -62,6 +62,7 @@ def test_data_loader_word(shuffle, bidirectional):
 def test_data_loader_tiered():
     pytest.skip()
 
+
 @pytest.mark.parametrize("memory_type", ["global", "user"])
 def test_data_loader_multiline(memory_type):
     from log_analyzer.train_loop import calculate_max_input_length
@@ -83,15 +84,15 @@ def test_data_loader_multiline(memory_type):
         if final_batch:
             raise AssertionError("Encountered non-full batch that wasn't final batch of dataloader.")
         try:
-            assert batch["input"].shape == torch.Size([batch_size, 2*window_size-1, input_length])
+            assert batch["input"].shape == torch.Size([batch_size, 2 * window_size - 1, input_length])
         except AssertionError:
-            assert batch["input"].shape[1:] == torch.Size([2*window_size-1, input_length])
+            assert batch["input"].shape[1:] == torch.Size([2 * window_size - 1, input_length])
             final_batch = True
-        for b in range (batch["input"].shape[0]):
+        for b in range(batch["input"].shape[0]):
             # Confirm that the targets are equal to the last window-size input.
             # Note that the first of these window_size inputs won't be present in targets, and likewise
             # The last target won't be present in the input
             assert batch_equal(
-                batch["input"][b,-(window_size-1):],
-                batch["target"][b,:-1],
+                batch["input"][b, -(window_size - 1) :],
+                batch["target"][b, :-1],
             ), "forward-shift"

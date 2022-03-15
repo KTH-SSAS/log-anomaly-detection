@@ -7,29 +7,29 @@ from torch import Tensor, nn
 
 from log_analyzer.application import Application
 from log_analyzer.config.model_config import MultilineTransformerConfig, TieredTransformerConfig, TransformerConfig
-from log_analyzer.model.lstm import MultilineLogModel, LogModel, TieredLogModel
+from log_analyzer.model.lstm import LogModel, MultilineLogModel, TieredLogModel
 from log_analyzer.model.model_util import initialize_weights
 
 
 def _generate_square_subsequent_mask(seq_len):
-    """Generates a standard square subsequent mask for self-attention"""
+    """Generates a standard square subsequent mask for self-attention."""
     mask = (torch.triu(torch.ones(seq_len, seq_len)) == 1).transpose(0, 1)
     mask = mask.float().masked_fill(mask == 0, float("-inf")).masked_fill(mask == 1, float(0.0))
     return mask
 
 
 def _generate_subsquare_subsequent_mask(seq_len, window_len):
-    """Generates a sub-square subsequent mask for self-attention where sequence length is larger than
-    the attention window length."""
+    """Generates a sub-square subsequent mask for self-attention where sequence
+    length is larger than the attention window length."""
     # Initialise mask of ones
     mask = torch.ones(seq_len, seq_len)
     start_row = seq_len - window_len
     # In all rows except the last window_len, we mask in one token (the diagonal) to avoid NaNs during backprop
     for row in range(0, start_row):
-        mask[row,row] = 0
+        mask[row, row] = 0
     # In the last window_len rows, we want to fill in a window_len wide diagonal with 0
     for row in range(start_row, seq_len):
-        for col in range(row-window_len + 1, row + 1):
+        for col in range(row - window_len + 1, row + 1):
             mask[row, col] = 0
     # Replace the ones with -inf
     mask = mask.float().masked_fill(mask == 1, float("-inf"))
@@ -356,16 +356,18 @@ class MultilineTransformer(MultilineLogModel):
         # Prepare the sentence embedding
         if self.config.sentence_embedding == "mean":
             self._sentence_embedding = partial(torch.mean, dim=2)
-            self._sentence_deembedding = lambda x : None # Cannot reverse mean() so return None
+            self._sentence_deembedding = lambda x: None  # Cannot reverse mean() so return None
             embedding_dim = self.model_dim
         elif self.config.sentence_embedding == "concatenate":
             # In this case words will be embedded to self.model_dim/sentence_length dims, then concatenated to form
             # a self.model_dim long sentence embedding
             # Loss function will be cross entropy
             embedding_dim = int(self.model_dim / 10)
-            assert embedding_dim == self.model_dim / 10, "For 'Concatenate' sentence embedding, model_dim must be divisible by 10"
+            assert (
+                embedding_dim == self.model_dim / 10
+            ), "For 'Concatenate' sentence embedding, model_dim must be divisible by 10"
             self._sentence_embedding = partial(torch.flatten, start_dim=2)
-            self._sentence_deembedding = lambda t : t.reshape(t.shape[0], t.shape[1], 10, embedding_dim)
+            self._sentence_deembedding = lambda t: t.reshape(t.shape[0], t.shape[1], 10, embedding_dim)
             self.criterion = nn.CrossEntropyLoss(reduction="none", ignore_index=0)
 
         # Check if we have pretrained embedding weights to use
@@ -382,7 +384,6 @@ class MultilineTransformer(MultilineLogModel):
         else:
             # Normal, learnable embeddings
             self._word_embedding = nn.Embedding(self.vocab_size, embedding_dim)
-
 
         self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout, max_len=self.virtual_window_size)
         encoder_layers = nn.TransformerEncoderLayer(
@@ -411,19 +412,22 @@ class MultilineTransformer(MultilineLogModel):
             else:
                 mask = _generate_subsquare_subsequent_mask(seq_len, self.config.window_size).to(device)
             self.src_mask = mask
-            
+
         return self.src_mask
 
     def word_embedding(self, src):
-        """Performs word embedding, i.e. from word token to n-dimensional vector representation."""
+        """Performs word embedding, i.e. from word token to n-dimensional
+        vector representation."""
         return self._word_embedding(src)
 
     def sentence_embedding(self, src):
-        """Performs sentence embedding, taking a sequence of embedded word tokens and producing a singular 'sentence token'"""
+        """Performs sentence embedding, taking a sequence of embedded word
+        tokens and producing a singular 'sentence token'."""
         return self._sentence_embedding(src)
-    
+
     def sentence_deembedding(self, src):
-        """Reverses sentence embedding (if possible), taking a sentence token and yielding a sequence of embedded word tokens."""
+        """Reverses sentence embedding (if possible), taking a sentence token
+        and yielding a sequence of embedded word tokens."""
         return self._sentence_deembedding(src)
 
     def forward(self, src: Tensor, lengths=None, mask=None, targets=None):
@@ -451,7 +455,7 @@ class MultilineTransformer(MultilineLogModel):
             pad_mask = mask == 0
         tf_hidden = self.transformer_encoder(line_embeddings, self.src_mask, src_key_padding_mask=pad_mask)
         # Discard all but the last window_size entries
-        logits = tf_hidden[:,-self.config.window_size:,:]  # Compute loss directly in embedding space
+        logits = tf_hidden[:, -self.config.window_size :, :]  # Compute loss directly in embedding space
 
         # Try to reverse sentence embedding to produce logits
         deembedded_sentence = self.sentence_deembedding(logits)

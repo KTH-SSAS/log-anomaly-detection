@@ -121,12 +121,12 @@ class MultilineLogModel(LogModel):
         if isinstance(self.criterion, nn.CosineEmbeddingLoss):
             criterion_output = output.view(-1, output.shape[2])
             criterion_Y = Y.view(-1, Y.shape[2])
-            targets = torch.ones((Y.shape[0]*Y.shape[1])).to(output.device)
+            targets = torch.ones((Y.shape[0] * Y.shape[1])).to(output.device)
             embedding_losses = self.criterion(criterion_output, criterion_Y, targets)
             embedding_losses = embedding_losses.view(Y.shape[0], Y.shape[1])
         elif isinstance(self.criterion, nn.CrossEntropyLoss):
             # Flatten dims 1 and 2 (line sequence, word) then transpose so order becomes (batch, vocab_dim, sequence+word position)
-            output = output.flatten(start_dim=1, end_dim=2).transpose(1,2)
+            output = output.flatten(start_dim=1, end_dim=2).transpose(1, 2)
             Y = Y.flatten(start_dim=1, end_dim=2)
             embedding_losses = self.criterion(output, Y)
             # Reshape the loss tensor to (batch, line sequence, word)

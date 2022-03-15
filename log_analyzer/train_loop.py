@@ -11,9 +11,9 @@ import log_analyzer.data.data_loader as data_utils
 import wandb
 from log_analyzer.application import Application
 from log_analyzer.config.model_config import (
-    MultilineTransformerConfig,
     LSTMConfig,
     ModelConfig,
+    MultilineTransformerConfig,
     TieredLSTMConfig,
     TieredTransformerConfig,
     TransformerConfig,
