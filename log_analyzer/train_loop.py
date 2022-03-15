@@ -183,8 +183,8 @@ def init_from_config_classes(
             skip_sos,
             jagged,
             model_config.window_size,
+            model_config.memory_type,
             trainer_config.train_val_split,
-            shuffle_train_data=False,
         )
     else:
         raise RuntimeError("Invalid model type.")

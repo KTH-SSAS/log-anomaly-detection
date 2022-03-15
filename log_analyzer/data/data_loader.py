@@ -147,7 +147,7 @@ class MapMultilineDataset(LogDataset, Dataset):
     """Provides data via __getitem__, allowing arbitrary data entries to be
     accessed via index.
 
-    Provides sequences of loglines of length window_size
+    Provides sequences of loglines of length window_size * 2 - 1.
     """
 
     def __init__(self, filepaths, bidirectional, skipsos, jagged, delimiter=" ", window_size=100) -> None:
@@ -215,6 +215,103 @@ class MapMultilineDataset(LogDataset, Dataset):
                 datadict["red"].append(data[4])
                 datadict["target"].append(data[input_start:input_end])
 
+        return datadict
+
+
+class IterableUserMultilineDataset(LogDataset, IterableDataset):
+    """Provides data via __iter__, allowing data to be accessed in order
+    only.
+
+    Provides sequences of loglines of length window_size * 2 - 1. Each sequence contains loglines from a single user.
+    """
+
+    def __init__(self, filepaths, bidirectional, skipsos, jagged, delimiter=" ", window_size=100) -> None:
+        super().__init__(filepaths, bidirectional, skipsos, jagged, delimiter)
+
+        self.window_size = window_size
+
+        self.loglines = []
+        self.skipsos = True
+        self.skipeos = True
+        self.data = parse_multiple_files(self.filepaths, jagged, bidirectional, skipsos, raw_lines=True)
+        self.user_loglines = {}
+
+    def __iter__(self):
+        # Actual input to the model (that will produce an output prediction): window_size
+        # Extra history before the start of this input needed to ensure a full window_size history for every entry: window_size-1
+        # Length of each item: 2*window_size - 1 long
+        for line in self.data:
+            line_data = self.parse_line(line)
+            line_user = line_data["user"].item()
+            if line_user not in self.user_loglines:
+                self.user_loglines[line_user] = []
+            self.user_loglines[line_user].append(line_data)
+            # Check if this user has enough lines to produce a sequence:
+            # window_size*2 (window_size-1 history, window_size inputs, 1 final target)
+            if len(self.user_loglines[line_user]) >= self.window_size * 2:
+                yield self.produce_output_sequence(line_user)
+
+    def parse_line(self, line):
+        datadict = {
+            "line": [],
+            "second": [],
+            "day": [],
+            "user": [],
+            "red": [],
+            "data": [],
+        }
+
+        metadata_offset = 5
+        offset = int(self.skipsos)
+        input_start = metadata_offset + offset
+
+        split_line = line.strip().split(self.delimiter)
+        split_line = [int(x) for x in split_line]
+        data = torch.LongTensor(split_line)
+
+        length = data.shape[0] - metadata_offset - int(self.skipeos) - int(self.skipsos)
+        input_end = input_start + length
+
+        datadict["line"] = data[0]
+        datadict["second"] = data[1]
+        datadict["day"] = data[2]
+        datadict["user"] = data[3]
+        datadict["red"] = data[4]
+        datadict["data"] = data[input_start:input_end]
+
+        return datadict
+
+    def produce_output_sequence(self, user):
+        """Puts together a sequence of loglines from a single user from the data that's been read in so far."""
+        datadict = {
+            "line": [],
+            "second": [],
+            "day": [],
+            "user": [],
+            "red": [],
+            "input": [],
+            "target": [],
+        }
+
+        lines = self.user_loglines[user]
+
+        this_sequence_len = len(lines)
+
+        for idx, line_data in enumerate(lines):
+            # The last line in the input is only used as the target for the 2nd to last line, not as input
+            if idx < this_sequence_len - 1:
+                datadict["input"].append(line_data["data"])
+            # The first window_size lines processed are not the target of anything (in this sequence) - only history
+            if idx > self.window_size - 1:
+                datadict["line"].append(line_data["line"])
+                datadict["second"].append(line_data["second"])
+                datadict["day"].append(line_data["day"])
+                datadict["user"].append(line_data["user"])
+                datadict["red"].append(line_data["red"])
+                datadict["target"].append(line_data["data"])
+        # Remove all lines from this user, except the ones necessary for history for the next sequence (last window_size - 1)
+        lines = lines[self.window_size - 1:]
+        self.user_loglines[user] = lines
         return datadict
 
 
@@ -359,7 +456,7 @@ def create_data_loaders(filepath, batch_size, bidir, skipsos, jagged, max_len, s
 
 
 def create_data_loaders_multiline(
-    filepath, batch_size, bidir, skipsos, jagged, window_size, shuffle=False, dataset_split=None
+    filepath, batch_size, bidir, skipsos, jagged, window_size, memory_type, shuffle=False, dataset_split=None
 ):
     """Creates and returns 2 data loaders.
 
@@ -392,11 +489,16 @@ def create_data_loaders_multiline(
                 batch[key] = torch.stack(batch[key])
 
         return batch
-
-    dataset = MapMultilineDataset(filepath, bidir, skipsos, jagged, window_size=window_size)
+    
+    if memory_type.lower() == "global":
+        dataset = MapMultilineDataset(filepath, bidir, skipsos, jagged, window_size=window_size)
+    elif memory_type.lower() == "user":
+        dataset = IterableUserMultilineDataset(filepath, bidir, skipsos, jagged, window_size=window_size)
+    else:
+        raise ValueError(f"Invalid memory_type. Expected 'global' or 'user', got '{memory_type}'")
 
     # Split the dataset according to the split list
-    if dataset_split is not None:
+    if dataset_split is not None and not isinstance(dataset, IterableDataset):
         # Ensure the list has 2 values and sums to 1
         if sum(dataset_split) != 1:
             raise ValueError("Sum of list of splits is not 1.")
@@ -456,8 +558,8 @@ def load_data_multiline(
     skipsos,
     jagged,
     window_size,
+    memory_type,
     train_val_split=[1, 0],
-    shuffle_train_data=False,
 ):
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
@@ -468,11 +570,11 @@ def load_data_multiline(
         skipsos,
         jagged,
         window_size=window_size,
-        shuffle=False,
+        memory_type=memory_type,
         dataset_split=train_val_split,
     )
     test_loader, _ = create_data_loaders_multiline(
-        filepaths_eval, batch_size, bidir, skipsos, jagged, window_size=window_size, shuffle=False, dataset_split=None
+        filepaths_eval, batch_size, bidir, skipsos, jagged, window_size=window_size, memory_type=memory_type, dataset_split=None
     )
 
     return train_loader, val_loader, test_loader
