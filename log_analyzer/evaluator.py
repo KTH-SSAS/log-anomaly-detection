@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,7 +15,7 @@ from log_analyzer.tokenizer.tokenizer import CharTokenizer
 def create_attention_matrix(
     model: LSTMLanguageModel,
     sequences,
-    output_dir,
+    output_dir: Path,
     lengths=None,
     mask=None,
 ):
@@ -29,8 +29,8 @@ def create_attention_matrix(
     if model.attention is None:
         raise RuntimeError("Can not create an attention matrix for a model without attention!")
 
-    if not os.path.exists(output_dir):
-        os.mkdir(output_dir)
+    if not output_dir.exists():
+        output_dir.mkdir()
 
     skip_sos = not model.bidirectional
     tokenization = "word" if lengths is None else "char"
@@ -76,7 +76,7 @@ def create_attention_matrix(
         set_ticks()
 
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, f"{model.attention.attention_type}_batchAverage.png"))
+    plt.savefig(output_dir / f"{model.attention.attention_type}_batchAverage.png")
 
     _, ax = plt.subplots(figsize=(10, 10))
     for i, matrix in enumerate(attention_matrix_batch):
@@ -98,7 +98,7 @@ def create_attention_matrix(
             set_ticks()
             plt.tight_layout()
 
-        plt.savefig(os.path.join(output_dir, f"{model.attention.attention_type}_{tokenization}_#{i}.png"))
+        plt.savefig(output_dir / f"{model.attention.attention_type}_{tokenization}_#{i}.png")
         plt.cla()
 
 

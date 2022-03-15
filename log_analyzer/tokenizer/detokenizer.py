@@ -1,5 +1,5 @@
 import json
-import os
+from pathlib import Path
 
 from .tokenizer import split_line
 
@@ -39,26 +39,26 @@ class Int2Char(Detokenizer):
 
 
 class Int2Word(Detokenizer):
-    def __init__(self, json_folder):
+    def __init__(self, json_folder: Path):
         super().__init__()
 
-        with open(os.path.join(json_folder, "word_token_map.json"), encoding="utf8") as json_file:
+        with open(json_folder / "word_token_map.json", encoding="utf8") as json_file:
             self.search_dict = json.load(json_file)
-        with open(os.path.join(json_folder, "usr_map.json"), encoding="utf8") as json_file:
+        with open(json_folder / "usr_map.json", encoding="utf8") as json_file:
             self.usr_inds = json.load(json_file)
-        with open(os.path.join(json_folder, "pc_map.json"), encoding="utf8") as json_file:
+        with open(json_folder / "pc_map.json", encoding="utf8") as json_file:
             self.pc_inds = json.load(json_file)
-        with open(os.path.join(json_folder, "domain_map.json"), encoding="utf8") as json_file:
+        with open(json_folder / "domain_map.json", encoding="utf8") as json_file:
             self.domain_inds = json.load(json_file)
-        with open(os.path.join(json_folder, "auth_map.json"), encoding="utf8") as json_file:
+        with open(json_folder / "auth_map.json", encoding="utf8") as json_file:
             self.auth_dict = json.load(json_file)
-        with open(os.path.join(json_folder, "logon_map.json"), encoding="utf8") as json_file:
+        with open(json_folder / "logon_map.json", encoding="utf8") as json_file:
             self.logon_dict = json.load(json_file)
-        with open(os.path.join(json_folder, "orient_map.json"), encoding="utf8") as json_file:
+        with open(json_folder / "orient_map.json", encoding="utf8") as json_file:
             self.orient_dict = json.load(json_file)
-        with open(os.path.join(json_folder, "success_map.json"), encoding="utf8") as json_file:
+        with open(json_folder / "success_map.json", encoding="utf8") as json_file:
             self.success_dict = json.load(json_file)
-        with open(os.path.join(json_folder, "other_map.json"), encoding="utf8") as json_file:
+        with open(json_folder / "other_map.json", encoding="utf8") as json_file:
             self.other_inds = json.load(json_file)
         self.sos = 0
         self.eos = 1

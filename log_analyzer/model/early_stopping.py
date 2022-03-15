@@ -1,6 +1,6 @@
 import copy
 import logging
-import os
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -12,7 +12,7 @@ class EarlyStopping:
     """Early stops the training if validation loss doesn't improve after a
     given patience."""
 
-    def __init__(self, patience=4, delta=0, path="./"):
+    def __init__(self, patience=4, delta=0, path: Path = Path("./")):
         """
         Args:
             patience (int): How long (batches) to wait after last time validation loss improved.
@@ -29,7 +29,7 @@ class EarlyStopping:
         self.val_loss_min = np.Inf
         self.saved_val_loss = np.Inf
         self.delta = delta
-        self.path = os.path.join(path, "checkpoint.pt")
+        self.path = path / "checkpoint.pt"
         self.model_state_dict = None
         self.logger = logging.getLogger(TRAINER_LOGGER)
 

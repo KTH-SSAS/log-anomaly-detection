@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional
 
 import torch
@@ -10,7 +11,7 @@ from log_analyzer.model.lstm import LogModel
 
 
 class Trainer:
-    def __init__(self, config: TrainerConfig, model: LogModel, checkpoint_dir):
+    def __init__(self, config: TrainerConfig, model: LogModel, checkpoint_dir: Path):
 
         self.config = config
 
@@ -19,7 +20,7 @@ class Trainer:
         # Check GPU
         self.using_cuda = Application.instance().using_cuda
 
-        self.checkpoint_dir = checkpoint_dir
+        self.checkpoint_dir: Path = checkpoint_dir
 
         if self.using_cuda:
             self.model.cuda()
