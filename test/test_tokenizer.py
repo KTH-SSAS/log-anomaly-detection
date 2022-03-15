@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -73,7 +75,7 @@ def test_mask_tokens(tokenizer, seed, num_masked_positions, expected_num_mask_to
 def test_log_processing(tmp_path, auth_file, redteam_file):
     """Test auth processing."""
 
-    outfile = tmp_path / "out"
+    outfile = Path(tmp_path) / "out"
     outfile.mkdir()
 
     process_logfiles_for_training(auth_file, redteam_file, outfile, [0])

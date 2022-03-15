@@ -1,5 +1,5 @@
 """Functions to test different model configurations."""
-import os
+from pathlib import Path
 
 import pytest
 
@@ -14,7 +14,7 @@ def test_evaluator(tmpdir, model_type):
     token_level = "word-field"
 
     args = utils.set_args(bidir, model_type, token_level)
-    args["base_logdir"] = os.path.join(tmpdir, "runs")
+    args["base_logdir"] = Path(tmpdir) / "runs"
 
     if model_type == "tiered-lstm":
         # Reduce batch size to not immediately flush.
