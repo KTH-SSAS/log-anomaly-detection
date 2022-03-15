@@ -277,10 +277,10 @@ class TieredTransformer(TieredLogModel):
             tf_hidden = self.transformer_model(
                 src=src_input, src_key_padding_mask=src_pad_mask, tgt=tgt_input, tgt_mask=tgt_mask
             )
-            tf_hidden_mean = torch.unsqueeze(
+            context_input = torch.unsqueeze(
                 torch.cat([tf_hidden[:, -1, :], torch.mean(tf_hidden, dim=1)], dim=-1), dim=1
             )
-            new_context_history = torch.cat([context_history, tf_hidden_mean], dim=1)
+            new_context_history = torch.cat([context_history, context_input], dim=1)
             history_length = torch.min(
                 history_length + 1, torch.ones(history_length.shape, dtype=torch.int16) * self.shift_window
             )
