@@ -6,6 +6,7 @@ import socket
 from argparse import Namespace
 from datetime import datetime
 from pathlib import Path
+from time import time
 from typing import Optional, Tuple
 
 import numpy as np
@@ -50,6 +51,9 @@ TIERED_LSTM: str = "tiered-lstm"
 TIERED_TRANSFORMER: str = "tiered-transformer"
 
 LOGGING_FREQUENCY: int = 10  # How often to log results. Set to 1 to log everything.
+
+# Autosave every 10 minutes
+AUTOSAVE_TIME = 10 * 60
 
 WORD_GLOBAL = "word-global"
 WORD_FIELDS = "word-fields"
@@ -263,6 +267,7 @@ def wandb_log(iteration, frequency, data: dict):
 def train_model(lm_trainer: Trainer, train_loader, val_loader):
     """Perform training on lm_trainer."""
     logger = logging.getLogger(application.TRAINER_LOGGER)
+    last_save = time()
 
     @torch.inference_mode()
     def validation_run(train_iteration=0, val_run=0):
@@ -327,6 +332,13 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                     continue
             else:
                 loss, gradient_norm, done = lm_trainer.train_step(split_batch)
+
+            if (time() - last_save) > AUTOSAVE_TIME:
+                tqdm.write("Autosaving...")
+                last_save = time()
+                with open(log_dir / "autosave.pt", "wb") as f:
+                    torch.save(lm_trainer.model.state_dict(), f)
+
             iteration += 1  # Total iterations in training (cumulative)
             train_losses.append(loss.item())
             wandb_log(
