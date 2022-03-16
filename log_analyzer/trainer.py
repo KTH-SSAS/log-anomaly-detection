@@ -50,11 +50,11 @@ class Trainer:
         if self.config.mixed_precision:
             self.scaler: GradScaler = torch.cuda.amp.GradScaler()
 
-        warmup_period = 1e5
+        warmup_period = int(1E5)
         warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
             self.optimizer, start_factor=0.1, total_iters=warmup_period
         )
-        annealing_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=1e4, eta_min=1e-8)
+        annealing_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=int(1E4), eta_min=1e-8)
         self.warmup_schedulers = torch.optim.lr_scheduler.SequentialLR(
             self.optimizer, schedulers=[warmup_scheduler, annealing_scheduler], milestones=[warmup_period]
         )
@@ -66,8 +66,7 @@ class Trainer:
 
     def optimizer_step(self, loss: torch.Tensor):
         """Performs one step of optimization on the given loss."""
-        using_mp = self.config.mixed_precision
-        if using_mp:
+        if self.config.mixed_precision and isinstance(self.scaler, GradScaler):
             self.scaler.scale(loss).backward()
         else:
             loss.backward()
@@ -75,7 +74,7 @@ class Trainer:
         gradient_norm = calculate_gradient_norm(self.model)
 
         if self.accumulated_steps == self.config.gradient_accumulation:
-            if using_mp:
+            if self.config.mixed_precision and isinstance(self.scaler, GradScaler):
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
             else:
