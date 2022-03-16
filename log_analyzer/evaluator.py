@@ -114,6 +114,7 @@ class Evaluator:
         self.token_count = 0
         self.token_accuracy = 0
         self.test_count = 0
+        self.test_loss = 0
 
     @torch.no_grad()
     def eval_step(self, split_batch, store_eval_data=False):
@@ -297,7 +298,7 @@ class Evaluator:
             for key in ["users", "losses", "seconds", "red_flags"]:
                 self.data[key] = self.data[key][sorted_indices]
         # Compute final test loss
-        self.test_loss /= max(self.test_count, 1)
+        self.test_loss = self.test_loss / max(self.test_count, 1)
         self.test_count = 1
         # Prepared the normalised losses
         self._normalise_losses()
