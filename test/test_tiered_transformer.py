@@ -47,10 +47,6 @@ def test_tiered_transformer_forward_word(test_config: TieredTransformerConfig, t
     tieredTransformer = TieredTransformer(test_config, bidirectional=False)
     token_output, loss = tieredTransformer(test_input, context_history)
 
-    return (
-        torch.all(
-            torch.ones(BATCH_SIZE) + CONSECUTIVE_LOG == tieredTransformer.saved_context_history_lengths[test_input[0]]
-        )
-        and tieredTransformer.saved_context_histories.shape == torch.Size([NUM_USERS, SHIFT_WINDOW + 1, VOCAB_SIZE])
-        and token_output.shape == torch.Size([CONSECUTIVE_LOG, BATCH_SIZE, SEQUENCE_LENGTH, VOCAB_SIZE])
-    )
+    assert torch.all(torch.ones(BATCH_SIZE) + CONSECUTIVE_LOG == tieredTransformer.saved_context_history_lengths[test_input[0]])
+    assert tieredTransformer.saved_context_histories.shape == torch.Size([NUM_USERS, SHIFT_WINDOW + 1, VOCAB_SIZE])
+    assert token_output.shape == torch.Size([CONSECUTIVE_LOG, BATCH_SIZE, SEQUENCE_LENGTH, VOCAB_SIZE])
