@@ -95,16 +95,10 @@ class TransformerLanguageModel(LogModel):
         self.vocab_size = config.vocab_size
 
         self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout)
-        if self.name == "Transformer_Decoder":
-            decoder_layers = nn.TransformerDecoderLayer(
-                self.model_dim, self.attention_heads, self.feedforward_dim, dropout=self.dropout, batch_first=True
-            )
-            self.transformer_decoder = nn.TransformerDecoder(decoder_layers, self.layers)
-        else:
-            encoder_layers = nn.TransformerEncoderLayer(
-                self.model_dim, self.attention_heads, self.feedforward_dim, dropout=self.dropout, batch_first=True
-            )
-            self.transformer_encoder = nn.TransformerEncoder(encoder_layers, self.layers)
+        encoder_layers = nn.TransformerEncoderLayer(
+            self.model_dim, self.attention_heads, self.feedforward_dim, dropout=self.dropout, batch_first=True
+        )
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, self.layers)
 
     def get_mask(self, src: torch.Tensor):
         # batch size, sequence length, embedded dimension
