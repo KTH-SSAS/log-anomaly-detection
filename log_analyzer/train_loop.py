@@ -135,7 +135,7 @@ def init_from_args(args: Namespace) -> Tuple[Trainer, Evaluator, DataLoader, Dat
         args.tokenization,
         Path(args.trainer_config),
         Path(args.data_folder),
-        Path(args.counts_file),
+        counts_file=Path(args.counts_file),
     )
 
 
