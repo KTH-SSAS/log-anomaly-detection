@@ -224,11 +224,10 @@ class TieredTransformer(TieredLogModel):
         return mask
 
     def gen_pad_mask(self, ctx_history, history_length, device=None, has_mask=True):
-        history_padding_length = ctx_history.shape[1] - history_length.long()
         if has_mask:
-            mask = torch.ones([ctx_history.shape[0], ctx_history.shape[1]]) != 1
-            for p, i in zip(history_padding_length, range(mask.shape[0])):
-                mask[i, :p] = True
+            mask = torch.ones([ctx_history.shape[0], ctx_history.shape[1]]) == 1
+            for p, i in zip(history_length, range(mask.shape[0])):
+                mask[i, :p] = False
         else:
             mask = None
         return mask.to(device)
@@ -272,10 +271,10 @@ class TieredTransformer(TieredLogModel):
             tf_hidden = self.transformer_model(
                 src=src_input, src_key_padding_mask=src_pad_mask, tgt=tgt_input, tgt_mask=tgt_mask
             )
-            tf_hidden_mean = torch.unsqueeze(
+            context_input = torch.unsqueeze(
                 torch.cat([tf_hidden[:, -1, :], torch.mean(tf_hidden, dim=1)], dim=-1), dim=1
             )
-            new_context_history = torch.cat([context_history, tf_hidden_mean], dim=1)
+            new_context_history = torch.cat([context_history, context_input], dim=1)
             history_length = torch.min(
                 history_length + 1, torch.ones(history_length.shape, dtype=torch.int16) * self.shift_window
             )
