@@ -348,8 +348,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                     "train/loss": loss,
                     "train/iteration": iteration,
                     "train/day": batch["day"][0],
-                    "train/lr": lm_trainer.optimizer.param_groups[0]['lr']
-,
+                    "train/lr": lm_trainer.optimizer.param_groups[0]["lr"],
                     "train/epoch": epoch,
                     "train/gradient_norm": gradient_norm
                 },
@@ -383,7 +382,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
 
 
 @torch.inference_mode()
-def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, model_file_name="model.pt"):
+def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, model_file_name=None):
     """Perform testing on lm_trainer.
 
     Note: model_file_name is only used for uploading model parameters to wandb.

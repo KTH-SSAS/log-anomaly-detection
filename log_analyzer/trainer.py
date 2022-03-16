@@ -54,7 +54,7 @@ class Trainer:
         warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
             self.optimizer, start_factor=0.1, total_iters=warmup_period
         )
-        annealing_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=1E4, eta_min=1e-8)
+        annealing_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=1e4, eta_min=1e-8)
         self.warmup_schedulers = torch.optim.lr_scheduler.SequentialLR(
             self.optimizer, schedulers=[warmup_scheduler, annealing_scheduler], milestones=[warmup_period]
         )
