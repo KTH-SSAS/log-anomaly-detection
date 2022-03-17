@@ -13,9 +13,7 @@ from log_analyzer.train_loop import eval_model, init_from_args, train_model
 
 def prepare_args():
     parser = ArgumentParser()
-    parser.add_argument(
-        "model_type", choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer"]
-    )
+    parser.add_argument("model_type", choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer"])
     parser.add_argument(
         "tokenization",
         type=str,
@@ -24,7 +22,8 @@ def prepare_args():
     )
     parser.add_argument("-mc", "--model-config", type=str, help="Model configuration file.", required=True)
     parser.add_argument(
-        "-cf", "--counts-file",
+        "-cf",
+        "--counts-file",
         type=str,
         help="Path to field counts file. Required for field tokenization and tiered models.",
         required=False,
