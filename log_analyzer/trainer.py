@@ -57,6 +57,10 @@ class Trainer:
         if self.use_scheduler:
             self.scheduler.step()
 
+    def load_model_weights(self, file_pointer):
+        state_dict = torch.load(file_pointer)
+        self.model.load_state_dict(state_dict)
+
     def train_step(self, split_batch, validation=False):
         """Defines a single training step.
 

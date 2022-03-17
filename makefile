@@ -21,6 +21,14 @@ ifdef WANDB
 FLAGS += --wandb-sync
 endif
 
+ifdef LOAD
+FLAGS += --load-model $(LOAD)
+endif
+
+ifdef PYFLAGS
+FLAGS += $(PYFLAGS)
+endif
+
 tox:
 	tox .
 
