@@ -108,7 +108,7 @@ def calculate_max_input_length(task: str, tokenizer: Tokenizer) -> Optional[int]
     return int(add_sos) + seq_len + int(add_eos)
 
 
-def get_model_config(filename: str, model_type: str) -> ModelConfig:
+def get_model_config(filename: Path, model_type: str) -> ModelConfig:
     if model_type == TIERED_LSTM:
         return TieredLSTMConfig.init_from_file(filename)
     if model_type == LSTM:
@@ -121,9 +121,9 @@ def get_model_config(filename: str, model_type: str) -> ModelConfig:
     raise RuntimeError("Invalid model type.")
 
 
-def create_identifier_string(model_name: str, comment: str = "") -> str:
-    current_time = datetime.now().strftime("%b%d_%H-%M-%S")
-    id_string = f"{model_name}_{current_time}_{socket.gethostname()}_{comment}"
+def create_identifier_string(model_name: str, tokenization: str) -> str:
+    current_time = datetime.now().strftime(r"%m-%d_%H:%M:%S")
+    id_string = f"{model_name}_{tokenization}_{current_time}@{socket.gethostname()}"
     return id_string
 
 
@@ -131,22 +131,22 @@ def init_from_args(args: Namespace) -> Tuple[Trainer, Evaluator, DataLoader, Dat
     return init_from_config_files(
         args.model_type,
         args.bidirectional,
-        args.model_config,
+        Path(args.model_config),
         args.tokenization,
-        args.trainer_config,
-        args.data_folder,
-        counts_file=args.counts_file,
+        Path(args.trainer_config),
+        Path(args.data_folder),
+        counts_file=Path(args.counts_file),
     )
 
 
 def init_from_config_files(
     model_type: str,
-    bidirectional,
-    model_config_file: str,
+    bidirectional: bool,
+    model_config_file: Path,
     tokenization: str,
-    trainer_config_file: str,
-    data_folder: str,
-    base_logdir="runs",
+    trainer_config_file: Path,
+    data_folder: Path,
+    base_logdir=Path("./runs"),
     counts_file=None,
 ) -> Tuple[Trainer, Evaluator, DataLoader, DataLoader, DataLoader]:
 
@@ -172,16 +172,16 @@ def init_from_config_classes(
     trainer_config: TrainerConfig,
     tokenization: str,
     data_folder,
-    base_logdir="runs",
+    base_logdir: Path = Path("./runs"),
     counts_file=None,
     cutoff=40,
 ):
     """Creates a model plus trainer given the specifications in args."""
-    if not os.path.isdir(base_logdir):
+    if not base_logdir.is_dir():
         os.mkdir(base_logdir)
-    id_string = create_identifier_string(model_type)
-    log_dir = os.path.join(base_logdir, id_string)
-    os.mkdir(log_dir)
+    id_string = create_identifier_string(model_type, tokenization)
+    log_dir: Path = base_logdir / id_string
+    log_dir.mkdir()
 
     shuffle_train_data = trainer_config.shuffle_train_data
 
@@ -366,11 +366,11 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
         lm_trainer.earlystopping.save_checkpoint()
 
     # Save the final model version to file
-    model_save_path = os.path.join(log_dir, "model.pt")
+    model_save_path = log_dir / "model.pt"
     torch.save(lm_trainer.model.state_dict(), model_save_path)
 
-    lm_trainer.config.save_config(os.path.join(log_dir, "trainer_config.json"))
-    lm_trainer.model.config.save_config(os.path.join(log_dir, "model_config.json"))
+    lm_trainer.config.save_config(log_dir / "trainer_config.json")
+    lm_trainer.model.config.save_config(log_dir / "model_config.json")
     return train_losses
 
 
@@ -380,7 +380,7 @@ def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, mode
     Note: model_file_name is only used for uploading model parameters to wandb.
     """
     log_dir = lm_evaluator.checkpoint_dir
-    model_save_path = os.path.join(log_dir, model_file_name)
+    model_save_path = log_dir / model_file_name
 
     if Application.instance().wandb_initialized:
         # Save the model weights as a versioned artifact

@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 
 import pytest
 
@@ -13,7 +13,7 @@ def test_attention(tmpdir, tokenization, bidir, attention_type):
     args = utils.set_args(bidir, "lstm", tokenization)
     args["model_config"].attention_type = attention_type
     args["model_config"].attention_dim = 10
-    args["base_logdir"] = os.path.join(tmpdir, "runs")
+    args["base_logdir"] = Path(tmpdir) / "runs"
 
     utils.run_test(args)
     assert True
@@ -35,7 +35,7 @@ def test_syntax_attention(tmpdir, tokenization, bidir):
     args = utils.set_args(bidir, model_type, tokenization)
     args["model_config"].attention_type = "syntax"
     args["model_config"].attention_dim = 10
-    args["base_logdir"] = os.path.join(tmpdir, "runs")
+    args["base_logdir"] = Path(tmpdir) / "runs"
 
     utils.run_test(args)
     assert True
