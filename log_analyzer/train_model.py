@@ -14,24 +14,23 @@ from log_analyzer.train_loop import eval_model, init_from_args, train_model
 def prepare_args():
     parser = ArgumentParser()
     parser.add_argument(
-        "--model-type", choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer"], required=True
+        "model_type", choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer"]
     )
-    parser.add_argument("--model-config", type=str, help="Model configuration file.", required=True)
     parser.add_argument(
-        "--tokenization",
+        "tokenization",
         type=str,
         help="Tokenization method",
-        required=True,
         choices=["word-field", "word-global", "char"],
     )
+    parser.add_argument("-mc", "--model-config", type=str, help="Model configuration file.", required=True)
     parser.add_argument(
-        "--counts-file",
+        "-cf", "--counts-file",
         type=str,
         help="Path to field counts file. Required for field tokenization and tiered models.",
         required=False,
     )
-    parser.add_argument("--data-folder", type=str, help="Path to data files.", required=True)
-    parser.add_argument("--trainer-config", type=str, help="Trainer configuration file.", required=True)
+    parser.add_argument("-df", "--data-folder", type=str, help="Path to data files.", required=True)
+    parser.add_argument("-tc", "--trainer-config", type=str, help="Trainer configuration file.", required=True)
     parser.add_argument("--load-from-checkpoint", type=str, help="Checkpoint to resume training from")
     parser.add_argument(
         "--bidir",
