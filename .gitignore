@@ -151,3 +151,6 @@ runs/
 
 # W&B folder
 wandb
+
+# Monkeytype spits out an sqlite3 db file
+*.sqlite3

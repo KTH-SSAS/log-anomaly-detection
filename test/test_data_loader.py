@@ -1,9 +1,11 @@
+from pathlib import Path
+
 import pytest
 import torch
 
 from log_analyzer.data.data_loader import create_data_loaders
-from log_analyzer.tokenizer.tokenizer_neo import CharTokenizer, FieldTokenizer, LANLTokenizer, LANLVocab
-from log_analyzer.tokenizer.vocab import GlobalVocab
+from log_analyzer.tokenizer.tokenizer_neo import CharTokenizer
+from log_analyzer.train_loop import get_tokenizer
 
 
 def batch_equal(v1: torch.Tensor, v2: torch.Tensor):
@@ -33,19 +35,14 @@ def test_data_loader_char(shuffle, task):
 
 @pytest.mark.parametrize("shuffle", [False, True])
 @pytest.mark.parametrize("task", ["lm", "bidir-lm"])
-@pytest.mark.parametrize("mode", ["field", "global"])
+@pytest.mark.parametrize("mode", ["word-field", "word-global"])
 def test_data_loader_word(shuffle, task, mode):
 
     filepath = "data/test_data/6.csv"
     batch_sizes = (10, 10)
-    vocab_file = f"data/vocab_{mode}_cutoff=40.json"
+    counts_file = Path("data/counts678.json")
 
-    if mode == "field":
-        vocab = LANLVocab(vocab_file)
-        tokenizer = LANLTokenizer(vocab)
-    else:
-        vocab = GlobalVocab(vocab_file)
-        tokenizer = FieldTokenizer(vocab)
+    tokenizer = get_tokenizer(mode, "", counts_file, cutoff=40)
 
     data_handler, _ = create_data_loaders([filepath], batch_sizes, tokenizer, task, shuffle)
     bidirectional = task == "bidir-lm"

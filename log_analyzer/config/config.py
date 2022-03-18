@@ -1,6 +1,7 @@
 import json
 from copy import deepcopy
 from dataclasses import asdict, dataclass
+from pathlib import Path
 
 
 @dataclass
@@ -29,7 +30,7 @@ class Config:
         self.__dict__ = deepcopy(data)
 
     @classmethod
-    def init_from_file(cls, filename):
+    def init_from_file(cls, filename: Path):
         with open(filename, "r", encoding="utf8") as f:
             data = json.load(f)
 

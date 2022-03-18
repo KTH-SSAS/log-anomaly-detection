@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Union, List, Dict
+from typing import Dict, Union
 
 import numpy as np
 
@@ -13,6 +13,7 @@ EOS_TOKEN = "[EOS]"
 MSK_TOKEN = "[MSK]"
 OOV_TOKEN = "[OOV]"
 CLS_TOKEN = "[CLS]"
+
 
 class FieldVocab(ABC):
 
@@ -103,7 +104,6 @@ class GlobalVocab(FieldVocab):
 
         print(f"Generated vocab with {index} words.")
 
-
         with open(outfile, "w", encoding="utf8") as f:
             json.dump(vocab, f, indent=" ")
 
@@ -126,15 +126,21 @@ class LANLVocab(FieldVocab):
         self.special_tokens = self.vocab["special_tokens"]
         del self.vocab["special_tokens"]
 
-        self.mask_tokens = np.array(self.vocab[MSK_TOKEN])
-        self.oov_tokens = np.array(self.vocab[OOV_TOKEN])
-
+        mask_tokens = self.vocab[MSK_TOKEN]
+        oov_tokens = self.vocab[OOV_TOKEN]
         del self.vocab[OOV_TOKEN]
         del self.vocab[MSK_TOKEN]
 
         # Save field names, without special keys
         self.field_names = list(self.vocab.keys())
         self.field_indexes = {field: i for i, field in enumerate(self.vocab)}
+
+        self.mask_tokens = np.zeros(len(self.field_names))
+        self.oov_tokens = np.zeros(len(self.field_names))
+
+        for field_name, index in self.field_indexes.items():
+            self.mask_tokens[index] = oov_tokens[field_name]
+            self.oov_tokens[index] = mask_tokens[field_name]
 
         # Precalculated vocab limits to help generating random tokens for each field
         self.field_vocab_max = np.zeros(len(self.field_names))
@@ -191,7 +197,7 @@ class LANLVocab(FieldVocab):
         raise KeyError("Index not present in vocabulary.")
 
     @classmethod
-    def counts2vocab(cls, counts: Union[dict, Path], outfile: Path, cutoff: int):
+    def counts2vocab(cls, counts: Union[Dict, Path], outfile: Path, cutoff: int):
         """Generates a vocabulary file based on a file of token counts per
         field.
 
@@ -209,18 +215,19 @@ class LANLVocab(FieldVocab):
             vocab["special_tokens"][t] = index
             index += 1
 
+        field_counts: Dict[str, Dict[str, int]]
         if isinstance(counts, Path):
             with open(counts, encoding="utf8") as f:
-                field_counts = json.load(f)
+                field_counts = dict(json.load(f))
         else:
             field_counts = counts
 
         # Add one Out-Of-Vocabulary and MASK index for each field
-        vocab[MSK_TOKEN] = []
-        vocab[OOV_TOKEN] = []
+        vocab[MSK_TOKEN] = {}
+        vocab[OOV_TOKEN] = {}
         for t in [OOV_TOKEN, MSK_TOKEN]:
-            for _ in field_counts:
-                vocab[t].append(index)
+            for field in field_counts:
+                vocab[t][field] = index
                 index += 1
 
         for field in field_counts:
