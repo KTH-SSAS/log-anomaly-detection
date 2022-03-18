@@ -201,7 +201,7 @@ class TieredTransformer(TieredLogModel):
             dropout=self.dropout,
             batch_first=True,
         )
-        self.shift_window = config.shift_window + 1 
+        self.shift_window = config.shift_window + 1
         # To use transformer structure, the input lenghth for transformer encoder should be 1+.
 
         # User model state
@@ -259,7 +259,7 @@ class TieredTransformer(TieredLogModel):
                 :, list(range(src_compressed.shape[1]))[::-1], :
             ]
             # invert the order of the context
-            # e.g., for 2 users and 5 shift window, the context history would be 
+            # e.g., for 2 users and 5 shift window, the context history would be
             # 0 0 0 0 i ==> i 0 0 0 0
             # 0 0 0 i i ==> i i 0 0 0
             # So we can apply padding mask to history input as
