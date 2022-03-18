@@ -32,7 +32,7 @@ def prepare_args():
     parser = ArgumentParser()
     parser.add_argument(
         "--model-type",
-        choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer", "logline-transformer"],
+        choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer", "multiline-transformer"],
         required=True,
     )
     parser.add_argument("--model-config", type=str, help="Model configuration file.", required=True)

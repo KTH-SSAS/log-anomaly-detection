@@ -1,12 +1,13 @@
 {
 	"layers": 1,
 	"feedforward_dim": 512,
-	"model_dim": 256,
+	"model_dim": 240,
 	"attention_heads": 16,
 	"vocab_size": 28199,
 	"dropout": 0.25,
 	"sequence_length": null,
 	"window_size": 100,
-	"sentence_embedding": "mean",
-	"embeddings_path": "runs/embeddings_three.pt"
+	"memory_type": "user",
+	"sentence_embedding": "concatenate",
+	"embeddings_path": ""
 }

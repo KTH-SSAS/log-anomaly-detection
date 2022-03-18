@@ -83,8 +83,8 @@ class TieredLogModel(LogModel):
         return loss, line_losses_list
 
 
-class LogLineLogModel(LogModel):
-    """Superclass for logline-level language models ("sentence-embedding"
+class MultilineLogModel(LogModel):
+    """Superclass for Multiline language models ("sentence-embedding"
     models)."""
 
     def __init__(self, config: Config):
@@ -102,16 +102,35 @@ class LogLineLogModel(LogModel):
     def sentence_embedding(self):
         pass
 
+    @property
+    @abstractmethod
+    def sentence_deembedding(self):
+        pass
+
     def compute_loss(self, output: torch.Tensor, Y: torch.Tensor, lengths, mask: torch.Tensor):
         """Computes the loss for the given model output and ground truth."""
-        Y = self.word_embedding(Y)
-        Y = self.sentence_embedding(Y)
+        # If the shapes don't match the output was created via one-way sentence embedding and we need to do the same
+        # Embedding on Y to compute loss.
+        # If the shapes do match (but Output is a probability distribution over the vocabulary) we prefer to compute
+        # loss in the vocabulary space (not sentence space)
+        original_shape = Y.shape
+        if output.shape[:3] != Y.shape:
+            Y = self.word_embedding(Y)
+            Y = self.sentence_embedding(Y)
+        assert output.shape[:3] == Y.shape, f"Cannot reconcile output shape {output.shape} with target shape {Y.shape}"
         if isinstance(self.criterion, nn.CosineEmbeddingLoss):
             criterion_output = output.view(-1, output.shape[2])
             criterion_Y = Y.view(-1, Y.shape[2])
-            targets = torch.ones((Y.shape[0]*Y.shape[1])).to(output.device)
+            targets = torch.ones((Y.shape[0] * Y.shape[1])).to(output.device)
             embedding_losses = self.criterion(criterion_output, criterion_Y, targets)
             embedding_losses = embedding_losses.view(Y.shape[0], Y.shape[1])
+        elif isinstance(self.criterion, nn.CrossEntropyLoss):
+            # Flatten dims 1 and 2 (line sequence, word) then transpose so order becomes (batch, vocab_dim, sequence+word position)
+            output = output.flatten(start_dim=1, end_dim=2).transpose(1, 2)
+            Y = Y.flatten(start_dim=1, end_dim=2)
+            embedding_losses = self.criterion(output, Y)
+            # Reshape the loss tensor to (batch, line sequence, word)
+            embedding_losses = embedding_losses.reshape(original_shape)
         else:
             embedding_losses = self.criterion(output, Y)
         if mask is not None:

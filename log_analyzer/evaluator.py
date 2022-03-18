@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 import wandb
 from log_analyzer.application import Application
-from log_analyzer.model.lstm import LogLineLogModel, LogModel, LSTMLanguageModel
+from log_analyzer.model.lstm import LogModel, LSTMLanguageModel, MultilineLogModel
 from log_analyzer.tokenizer.tokenizer import Char_tokenizer
 
 
@@ -144,8 +144,8 @@ class Evaluator:
 
         # Save the results if desired
         if store_eval_data:
-            if isinstance(self.model, LogLineLogModel):
-                # Logline logmodels do not produce predictions over a discrete space that can/should be argmaxed
+            if isinstance(self.model, MultilineLogModel):
+                # Multiline logmodels do not produce predictions over a discrete space that can/should be argmaxed
                 # The predictions are instead placed in the continuous sentence-embedding space
                 # Therefore we cannot track token-accuracy, and we thus do not pass Y or preds to add_evaluation_data()
                 Y = None
