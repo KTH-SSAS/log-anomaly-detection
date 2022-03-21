@@ -379,8 +379,13 @@ def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, mode
 
     Note: model_file_name is only used for uploading model parameters to wandb.
     """
-    log_dir = lm_evaluator.checkpoint_dir
-    model_save_path = log_dir / model_file_name
+
+    if model_file_name is None:
+        log_dir = lm_evaluator.checkpoint_dir
+        model_file_name = "model.pt"
+        model_save_path = log_dir / model_file_name
+    else:
+        model_save_path = model_file_name
 
     if Application.instance().wandb_initialized:
         # Save the model weights as a versioned artifact
