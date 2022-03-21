@@ -283,6 +283,9 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
     val_run = 0
     iteration = 0
     for epoch in tqdm(range(epochs), desc="Epoch   "):
+        if isinstance(train_loader.dataset, torch.utils.data.IterableDataset) and epoch > 0:
+            # Refresh the iterator so we can run another epoch
+            train_loader.dataset.refresh_iterator()
         # Shuffle train data order for each epoch?
         # Count iteration continuously up through each epoch
         for epoch_iteration, batch in enumerate(tqdm(train_loader, desc="Training")):

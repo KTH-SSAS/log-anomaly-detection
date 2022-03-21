@@ -139,9 +139,13 @@ class IterableLogDataset(LogDataset, IterableDataset):
 
     def __init__(self, filepaths, bidirectional, skipsos, jagged, delimiter=" ") -> None:
         super().__init__(filepaths, bidirectional, skipsos, jagged, delimiter)
+        self.refresh_iterator()
 
     def __iter__(self):
-        return parse_multiple_files(self.filepaths, self.jag, self.bidir, self.skipsos)
+        return self.iterator
+
+    def refresh_iterator(self):
+        self.iterator = parse_multiple_files(self.filepaths, self.jag, self.bidir, self.skipsos)
 
 
 class MapMultilineDataset(LogDataset, Dataset):
@@ -232,33 +236,33 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
 
         self.skipsos = True
         self.skipeos = True
-        self.data = parse_multiple_files(self.filepaths, jagged, bidirectional, skipsos, raw_lines=True)
         self.user_loglines: Dict[str, Dict[str, List]] = {}
+        self.refresh_iterator()
 
     def __iter__(self):
-        # Actual input to the model (that will produce an output prediction): window_size
-        # Extra history before the start of this input needed to ensure a full window_size history for every entry: window_size-1
-        # Length of each item: 2*window_size - 1 long
-        for line in self.data:
-            line_data = self.parse_line(line)
-            line_user = line_data["user"].item()
-            if line_user not in self.user_loglines:
-                self.user_loglines[line_user] = []
-            self.user_loglines[line_user].append(line_data)
-            # Check if this user has enough lines to produce a sequence:
-            # window_size*2 (window_size-1 history, window_size inputs, 1 final target)
-            if len(self.user_loglines[line_user]) >= self.window_size * 2:
-                yield self.produce_output_sequence(line_user)
+        return self.iterator
 
-    def parse_line(self, line):
-        datadict = {
-            "line": [],
-            "second": [],
-            "day": [],
-            "user": [],
-            "red": [],
-            "data": [],
-        }
+    def refresh_iterator(self):
+        """Generates a (new) iterator over the data as specified by class parameters."""
+        self.data = parse_multiple_files(self.filepaths, self.jag, self.bidir, self.skipsos, raw_lines=True)
+        def generate_iterator():
+            # Actual input to the model (that will produce an output prediction): window_size
+            # Extra history before the start of this input needed to ensure a full window_size history for every entry: window_size-1
+            # Length of each item: 2*window_size - 1 long
+            for line in self.data:
+                line_data = self.parse_line(line)
+                line_user = line_data["user"].item()
+                if line_user not in self.user_loglines:
+                    self.user_loglines[line_user] = []
+                self.user_loglines[line_user].append(line_data)
+                # Check if this user has enough lines to produce a sequence:
+                # window_size*2 (window_size-1 history, window_size inputs, 1 final target)
+                if len(self.user_loglines[line_user]) >= self.window_size * 2:
+                    yield self.produce_output_sequence(line_user)
+        self.iterator = generate_iterator()
+
+    def parse_line(self, line: str) -> Dict[str, torch.Tensor]:
+        datadict: Dict[str, torch.Tensor] = {}
 
         metadata_offset = 5
         offset = int(self.skipsos)
