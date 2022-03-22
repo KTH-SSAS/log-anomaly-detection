@@ -1,0 +1,18 @@
+[MASTER]
+max-line-length=120
+variable-naming-style=any
+generated-members=
+			numpy.*,
+			torch.*,
+			wandb.*
+
+[MESSAGES CONTROL]
+disable=design,
+		missing-module-docstring,
+		missing-class-docstring,
+		missing-function-docstring,
+		invalid-name,
+		max-attributes,
+		consider-using-with,
+		too-many-nested-blocks,
+		duplicate-code
