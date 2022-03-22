@@ -1,16 +1,17 @@
+from pathlib import Path
 from typing import Optional
 
 import torch
 from torch.cuda.amp.grad_scaler import GradScaler
 
 from log_analyzer.application import Application
-from log_analyzer.config.trainer_config import TrainerConfig
+from log_analyzer.config import TrainerConfig
 from log_analyzer.model import early_stopping
 from log_analyzer.model.lstm import LogModel
 
 
 class Trainer:
-    def __init__(self, config: TrainerConfig, model: LogModel, checkpoint_dir):
+    def __init__(self, config: TrainerConfig, model: LogModel, checkpoint_dir: Path):
 
         self.config = config
 
@@ -19,7 +20,7 @@ class Trainer:
         # Check GPU
         self.using_cuda = Application.instance().using_cuda
 
-        self.checkpoint_dir = checkpoint_dir
+        self.checkpoint_dir: Path = checkpoint_dir
 
         if self.using_cuda:
             self.model.cuda()
@@ -55,6 +56,10 @@ class Trainer:
             self.optimizer.step()
         if self.use_scheduler:
             self.scheduler.step()
+
+    def load_model_weights(self, file_pointer):
+        state_dict = torch.load(file_pointer)
+        self.model.load_state_dict(state_dict)
 
     def train_step(self, split_batch, validation=False):
         """Defines a single training step.

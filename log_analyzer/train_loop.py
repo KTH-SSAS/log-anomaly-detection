@@ -1,16 +1,23 @@
 """Helper functions for model creation and training."""
+import json
 import logging
 import os
 import socket
+import tempfile
+from argparse import Namespace
 from datetime import datetime
+from pathlib import Path
+from typing import Optional, Tuple
 
 import numpy as np
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import log_analyzer.data.data_loader as data_utils
 import wandb
 from log_analyzer import application
 from log_analyzer.application import Application
+from log_analyzer.config import TrainerConfig
 from log_analyzer.config.model_config import (
     LSTMConfig,
     ModelConfig,
@@ -19,11 +26,17 @@ from log_analyzer.config.model_config import (
     TieredTransformerConfig,
     TransformerConfig,
 )
-from log_analyzer.config.trainer_config import TrainerConfig
 from log_analyzer.evaluator import Evaluator
 from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel, TieredLSTM
 from log_analyzer.model.transformer import MultilineTransformer, TieredTransformer, Transformer
-from log_analyzer.tokenizer.tokenizer_neo import CharTokenizer, LANLTokenizer, LANLVocab, Tokenizer
+from log_analyzer.tokenizer.tokenizer_neo import (
+    CharTokenizer,
+    FieldTokenizer,
+    GlobalVocab,
+    LANLTokenizer,
+    LANLVocab,
+    Tokenizer,
+)
 from log_analyzer.trainer import Trainer
 
 try:
@@ -32,17 +45,53 @@ except ImportError:
     print("PyTorch is needed for this application.")
 
 
-LSTM = "lstm"
-TRANSFORMER = "transformer"
-TIERED_LSTM = "tiered-lstm"
-TIERED_TRANSFORMER = "tiered-transformer"
-MULTILINE_TRANSFORMER = "multiline-transformer"
+LSTM: str = "lstm"
+TRANSFORMER: str = "transformer"
+TIERED_LSTM: str = "tiered-lstm"
+TIERED_TRANSFORMER: str = "tiered-transformer"
+MULTILINE_TRANSFORMER: str = "multiline-transformer"
 
-LOGGING_FREQUENCY = 10  # How often to log results. Set to 1 to log everything.
-VALIDATION_FREQUENCY = 10  # Number of times to do validation per epoch. Set to 1 to only validate after each epoch.
+LOGGING_FREQUENCY: int = 10  # How often to log results. Set to 1 to log everything.
+VALIDATION_FREQUENCY: int = (
+    10  # Number of times to do validation per epoch. Set to 1 to only validate after each epoch.
+)
+
+WORD_GLOBAL = "word-global"
+WORD_FIELD = "word-field"
+CHAR = "char"
+SENTENCE = "sentence"
+
+tokenizer_vocabs = {
+    CHAR: (CharTokenizer, None),
+    WORD_FIELD: (LANLTokenizer, LANLVocab),
+    WORD_GLOBAL: (FieldTokenizer, GlobalVocab),
+    SENTENCE: (LANLTokenizer, LANLVocab)
+}
 
 
-def get_task(model: str, bidirectional: str):
+def get_tokenizer(tokenization, model_type, counts_file: Path, cutoff) -> Tokenizer:
+    tokenizer: Tokenizer
+    users = None
+    vocab = None
+    tokenizer_cls, vocab_cls = tokenizer_vocabs[tokenization]
+    if counts_file is not None:
+        with open(counts_file, encoding="utf8") as f:
+            counts = json.load(f)
+        if "tiered" in model_type:
+            users = list(counts["src_user"].keys())
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            tmp_vocab_file = Path(tmpdirname) / "vocab.json"
+            vocab = vocab_cls.counts2vocab(counts, tmp_vocab_file, cutoff) if vocab_cls is not None else None
+    else:
+        if "word" in tokenization or "tiered" in model_type:
+            raise RuntimeError("No counts file was supplied!")
+
+    tokenizer = tokenizer_cls(vocab, users)
+    return tokenizer
+
+
+def get_task(model: str, bidirectional: bool) -> str:
     """Return the language modeling task for the given model, since it varies
     depending on its directionality."""
     if bidirectional and model in (TRANSFORMER, TIERED_TRANSFORMER):
@@ -53,7 +102,7 @@ def get_task(model: str, bidirectional: str):
     return data_utils.AUTOREGRESSIVE_LM
 
 
-def calculate_max_input_length(task, tokenizer: Tokenizer):
+def calculate_max_input_length(task: str, tokenizer: Tokenizer) -> Optional[int]:
     """Maximum input length to model."""
     add_sos, add_eos = data_utils.tokens_to_add(task)
     seq_len = tokenizer.sequence_length
@@ -63,7 +112,7 @@ def calculate_max_input_length(task, tokenizer: Tokenizer):
     return int(add_sos) + seq_len + int(add_eos)
 
 
-def get_model_config(filename, model_type) -> ModelConfig:
+def get_model_config(filename: Path, model_type: str) -> ModelConfig:
     if model_type == TIERED_LSTM:
         return TieredLSTMConfig.init_from_file(filename)
     if model_type == LSTM:
@@ -78,34 +127,35 @@ def get_model_config(filename, model_type) -> ModelConfig:
     raise RuntimeError("Invalid model type.")
 
 
-def create_identifier_string(model_name, comment=""):
-    current_time = datetime.now().strftime("%b%d_%H-%M-%S")
-    id_string = f"{model_name}_{current_time}_{socket.gethostname()}_{comment}"
+def create_identifier_string(model_name: str, tokenization: str) -> str:
+    current_time = datetime.now().strftime(r"%m-%d_%H:%M:%S")
+    id_string = f"{model_name}_{tokenization}_{current_time}@{socket.gethostname()}"
     return id_string
 
 
-def init_from_args(args):
+def init_from_args(args: Namespace) -> Tuple[Trainer, Evaluator, DataLoader, DataLoader, DataLoader]:
     return init_from_config_files(
         args.model_type,
         args.bidirectional,
-        args.model_config,
+        Path(args.model_config),
         args.tokenization,
-        args.trainer_config,
-        args.data_folder,
-        vocab_file=args.vocab_file,
+        Path(args.trainer_config),
+        Path(args.data_folder),
+        counts_file=Path(args.counts_file),
     )
 
 
 def init_from_config_files(
     model_type: str,
-    bidirectional,
-    model_config_file: str,
+    bidirectional: bool,
+    model_config_file: Path,
     tokenization: str,
-    trainer_config_file: str,
-    data_folder: str,
-    base_logdir="runs",
-    vocab_file=None,
-):
+    trainer_config_file: Path,
+    data_folder: Path,
+    base_logdir=Path("./runs"),
+    counts_file=None,
+) -> Tuple[Trainer, Evaluator, DataLoader, DataLoader, DataLoader]:
+
     """Creates a model plus trainer given the specifications in args."""
     model_config = get_model_config(model_config_file, model_type)
     trainer_config = TrainerConfig.init_from_file(trainer_config_file)
@@ -117,7 +167,7 @@ def init_from_config_files(
         tokenization,
         data_folder,
         base_logdir,
-        vocab_file=vocab_file,
+        counts_file=counts_file,
     )
 
 
@@ -128,29 +178,20 @@ def init_from_config_classes(
     trainer_config: TrainerConfig,
     tokenization: str,
     data_folder,
-    base_logdir="runs",
-    vocab_file=None,
+    base_logdir: Path = Path("./runs"),
+    counts_file=None,
+    cutoff=40,
 ):
     """Creates a model plus trainer given the specifications in args."""
-    if not os.path.isdir(base_logdir):
+    if not base_logdir.is_dir():
         os.mkdir(base_logdir)
-    id_string = create_identifier_string(model_type)
-    log_dir = os.path.join(base_logdir, id_string)
-    os.mkdir(log_dir)
+    id_string = create_identifier_string(model_type, tokenization)
+    log_dir: Path = base_logdir / id_string
+    log_dir.mkdir()
 
     shuffle_train_data = trainer_config.shuffle_train_data
 
-    vocab = LANLVocab(vocab_file)
-
-    tokenizer: Tokenizer
-    if tokenization == "char":
-        tokenizer = CharTokenizer(vocab)
-    elif tokenization == "word":
-        if vocab_file is None:
-            raise RuntimeError("Word tokenization set, but there's no vocabulary!")
-        tokenizer = LANLTokenizer(vocab)
-    else:
-        raise RuntimeError("Invalid tokenization.")
+    tokenizer = get_tokenizer(tokenization, model_type, counts_file, cutoff)
 
     task = get_task(model_type, bidirectional)
 
@@ -169,7 +210,7 @@ def init_from_config_classes(
             data_folder,
             train_days,
             test_days,
-            trainer_config.batch_size,
+            (trainer_config.train_batch_size, trainer_config.eval_batch_size),
             tokenizer,
             task,
             num_steps=3,
@@ -179,7 +220,7 @@ def init_from_config_classes(
             data_folder,
             train_days,
             test_days,
-            trainer_config.batch_size,
+            (trainer_config.train_batch_size, trainer_config.eval_batch_size),
             tokenizer,
             task,
             trainer_config.train_val_split,
@@ -190,10 +231,9 @@ def init_from_config_classes(
             data_folder,
             train_days,
             test_days,
-            trainer_config.batch_size,
-            bidirectional,
-            skip_sos,
-            jagged,
+            (trainer_config.train_batch_size, trainer_config.eval_batch_size),
+            tokenizer,
+            task,
             model_config.window_size,
             model_config.memory_type,
             trainer_config.train_val_split,
@@ -288,6 +328,8 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
     if run_validation:
         # Number of iterations between each validation run
         validation_period = (len(train_loader) // VALIDATION_FREQUENCY) + 1
+    else:
+        validation_period = 0
 
     train_losses = []
 
@@ -348,11 +390,11 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
         lm_trainer.earlystopping.save_checkpoint()
 
     # Save the final model version to file
-    model_save_path = os.path.join(log_dir, "model.pt")
+    model_save_path = log_dir / "model.pt"
     torch.save(lm_trainer.model.state_dict(), model_save_path)
 
-    lm_trainer.config.save_config(os.path.join(log_dir, "trainer_config.json"))
-    lm_trainer.model.config.save_config(os.path.join(log_dir, "model_config.json"))
+    lm_trainer.config.save_config(log_dir / "trainer_config.json")
+    lm_trainer.model.config.save_config(log_dir / "model_config.json")
     return train_losses
 
 
@@ -361,8 +403,13 @@ def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, mode
 
     Note: model_file_name is only used for uploading model parameters to wandb.
     """
-    log_dir = lm_evaluator.checkpoint_dir
-    model_save_path = os.path.join(log_dir, model_file_name)
+
+    if model_file_name is None:
+        log_dir = lm_evaluator.checkpoint_dir
+        model_file_name = "model.pt"
+        model_save_path = log_dir / model_file_name
+    else:
+        model_save_path = model_file_name
 
     if Application.instance().wandb_initialized:
         # Save the model weights as a versioned artifact

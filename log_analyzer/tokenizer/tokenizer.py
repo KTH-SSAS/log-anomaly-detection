@@ -3,6 +3,7 @@ import operator
 import os
 import shutil
 import sys
+from pathlib import Path
 
 
 def split_line(string):
@@ -31,7 +32,7 @@ def split_line(string):
 
 class CharTokenizer:
     def __init__(self, args, weekend_days):
-        self.outpath = args.outpath
+        self.outpath: Path = Path(args.outpath)
         self.authfile = args.authfile
         self.redfile = args.redfile
         self.recordpath = args.recordpath
@@ -63,11 +64,11 @@ class CharTokenizer:
     def delete_duplicates(self):
         try:
             for filename in os.listdir(self.outpath):
-                file_path = os.path.join(self.outpath, filename)
+                file_path = self.outpath / filename
 
-                if os.path.isfile(file_path) or os.path.islink(file_path):
-                    os.unlink(file_path)
-                elif os.path.isdir(file_path):
+                if file_path.is_file() or file_path.is_symlink():
+                    file_path.unlink()
+                elif file_path.is_dir():
                     shutil.rmtree(file_path)
 
         except FileNotFoundError:
@@ -79,8 +80,8 @@ class CharTokenizer:
         else:
             day_outfile.close()
             current_file_day = str(line_day)
-            temp_path = os.path.join(self.outpath, current_file_day + ".txt")
-            if os.path.isfile(temp_path):
+            temp_path = self.outpath / (current_file_day + ".txt")
+            if temp_path.is_file():
                 # If the file exists, reopen the file and append new lines.
                 day_outfile = open(temp_path, "a", encoding="utf8")
             else:
@@ -96,7 +97,7 @@ class CharTokenizer:
             infile.readline()  # Skip the first line.
 
             self.current_day = "0"
-            day_outfile = open(os.path.join(self.outpath, self.current_day + ".txt"), "w", encoding="utf8")
+            day_outfile = open(self.outpath / (self.current_day + ".txt"), "w", encoding="utf8")
 
             for line_num, line in enumerate(infile):
                 if line_num % 10000 == 0:
@@ -161,9 +162,9 @@ class WordTokenizer(CharTokenizer):
             "pc_OOV": self.pc_OOV,
             "domain_OOV": self.domain_OOV,
         }
-        self.path_usr_cnts = os.path.join(self.recordpath, "usr_counts")
-        self.path_pc_cnts = os.path.join(self.recordpath, "pc_counts")
-        self.path_domain_cnts = os.path.join(self.recordpath, "domain_counts")
+        self.path_usr_cnts = self.recordpath / "usr_counts"
+        self.path_pc_cnts = self.recordpath / "pc_counts"
+        self.path_domain_cnts = self.recordpath / "domain_counts"
 
     def build_record_dir(self):
         try:
@@ -312,7 +313,7 @@ class WordTokenizer(CharTokenizer):
             sys.exit()
 
         current_day = "0"
-        day_outfile = open(os.path.join(self.outpath, current_day + ".txt"), "w", encoding="utf8")
+        day_outfile = open(self.outpath / (current_day + ".txt"), "w", encoding="utf8")
 
         with open(self.redfile, "r", encoding="utf8") as red:
             redevents = set(red.readlines())
@@ -348,9 +349,7 @@ class WordTokenizer(CharTokenizer):
 
     def save_jsons(self):
 
-        with open(
-            os.path.join(self.recordpath, str(self.OOV_CUTOFF) + "_em_size.txt"), "w", encoding="utf8"
-        ) as emsize_file:
+        with open(self.recordpath / (str(self.OOV_CUTOFF) + "_em_size.txt"), "w", encoding="utf8") as emsize_file:
             emsize_file.write(f"{self.curr_ind}")
 
         for data, file in zip(
@@ -376,7 +375,7 @@ class WordTokenizer(CharTokenizer):
             ],
         ):
 
-            json.dump(data, open(os.path.join(self.recordpath, file), "w", encoding="utf8"))
+            json.dump(data, open(self.recordpath / file, "w", encoding="utf8"))
 
         b_usr_inds = {v: k for k, v in self.usr_inds.items()}
         b_pc_inds = {v: k for k, v in self.pc_inds.items()}
@@ -400,7 +399,7 @@ class WordTokenizer(CharTokenizer):
 
         json.dump(
             back_mappings,
-            open(os.path.join(self.recordpath, "word_token_map.json"), "w", encoding="utf8"),
+            open(self.recordpath / "word_token_map.json", "w", encoding="utf8"),
         )
 
     def prepare_routes(self, key):

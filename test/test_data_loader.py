@@ -1,9 +1,11 @@
+from pathlib import Path
+
 import pytest
 import torch
 
-from log_analyzer.config.trainer_config import DataConfig
 from log_analyzer.data.data_loader import create_data_loaders, create_data_loaders_multiline
-from log_analyzer.tokenizer.tokenizer_neo import CharTokenizer, LANLTokenizer, LANLVocab
+from log_analyzer.tokenizer.tokenizer_neo import CharTokenizer
+from log_analyzer.train_loop import get_tokenizer
 
 
 def batch_equal(v1: torch.Tensor, v2: torch.Tensor):
@@ -16,15 +18,14 @@ def batch_equal(v1: torch.Tensor, v2: torch.Tensor):
 def test_data_loader_char(shuffle, task):
 
     filepath = "data/test_data/6.csv"
-    batch_size = 10
-    vocab = LANLVocab("data/vocab_field_cutoff=40.json")
-    tokenizer = CharTokenizer(vocab)
-    data_handler, _ = create_data_loaders(filepath, batch_size, tokenizer, task, shuffle=shuffle)
+    batch_sizes = (10, 10)
+    tokenizer = CharTokenizer(None)
+    data_handler, _ = create_data_loaders([filepath], batch_sizes, tokenizer, task, shuffle=shuffle)
     bidirectional = task == "bidir-lm"
     for batch in data_handler:
         x: torch.Tensor = batch["input"]
         x_length = batch["length"]
-        for i in range(0, batch_size):
+        for i in range(0, batch_sizes[0]):
             # Confirm that the targets are equal to the inputs shifted
             # by 1
             all(
@@ -34,19 +35,21 @@ def test_data_loader_char(shuffle, task):
 
 @pytest.mark.parametrize("shuffle", [False, True])
 @pytest.mark.parametrize("task", ["lm", "bidir-lm"])
-def test_data_loader_word(shuffle, task):
+@pytest.mark.parametrize("mode", ["word-field", "word-global"])
+def test_data_loader_word(shuffle, task, mode):
 
     filepath = "data/test_data/6.csv"
-    batch_size = 10
-    vocab = LANLVocab("data/vocab_field_cutoff=40.json")
-    tokenizer = LANLTokenizer(vocab)
+    batch_sizes = (10, 10)
+    counts_file = Path("data/counts678.json")
 
-    data_handler, _ = create_data_loaders(filepath, batch_size, tokenizer, task, shuffle)
+    tokenizer = get_tokenizer(mode, "", counts_file, cutoff=40)
+
+    data_handler, _ = create_data_loaders([filepath], batch_sizes, tokenizer, task, shuffle)
     bidirectional = task == "bidir-lm"
-    expected_input_length = len(tokenizer.field_names) - 1 if task == "lm" else len(tokenizer.field_names) + 2
+    expected_input_length = 10 - 1 if task == "lm" else 10 + 2
     for batch in data_handler:
         x: torch.Tensor = batch["input"]
-        assert x.shape == torch.Size([batch_size, expected_input_length]), (
+        assert x.shape == torch.Size([batch_sizes[0], expected_input_length]), (
             "bidirectional" if bidirectional else "forward"
         )
         # Confirm that the targets are equal to the inputs shifted by 1
@@ -67,21 +70,21 @@ def test_data_loader_multiline(shuffle, memory_type):
         pytest.skip()
 
     filepath = "data/test_data/6.csv"
-    batch_size = 10
-    vocab = LANLVocab("data/vocab_field_cutoff=40.json")
-    tokenizer = LANLTokenizer(vocab)
+    counts_file = Path("data/counts678.json")
+    batch_sizes = (10, 10)
+    tokenizer = get_tokenizer("sentence", "multiline-transformer", counts_file, cutoff=49)
     task = "sentence-lm"
 
     window_size = 5
     input_length = calculate_max_input_length(task, tokenizer)
-    data_handler, _ = create_data_loaders_multiline(filepath, batch_size, tokenizer, task, window_size, memory_type, shuffle=shuffle)
+    data_handler, _ = create_data_loaders_multiline(filepath, batch_sizes, tokenizer, task, window_size, memory_type, shuffle=shuffle)
     final_batch = False
     for batch in data_handler:
         # Final batch doesn't have to be full length - roundabout way to check this because dataset might not have a known length
         if final_batch:
             raise AssertionError("Encountered non-full batch that wasn't final batch of dataloader.")
         try:
-            assert batch["input"].shape == torch.Size([batch_size, 2 * window_size - 1, input_length])
+            assert batch["input"].shape == torch.Size([batch_sizes[0], 2 * window_size - 1, input_length])
         except AssertionError:
             assert batch["input"].shape[1:] == torch.Size([2 * window_size - 1, input_length])
             final_batch = True
