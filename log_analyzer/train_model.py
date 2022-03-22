@@ -30,7 +30,8 @@ def prepare_args():
     )
     parser.add_argument("-df", "--data-folder", type=str, help="Path to data files.", required=True)
     parser.add_argument("-tc", "--trainer-config", type=str, help="Trainer configuration file.", required=True)
-    parser.add_argument("--load-from-checkpoint", type=str, help="Checkpoint to resume training from")
+    parser.add_argument("--load-model", type=str, help="Path to saved model for initialization.", dest="saved_model")
+    parser.add_argument("--eval-only", action="store_true", help="Skip training and only run evaluator.")
     parser.add_argument(
         "--bidir",
         dest="bidirectional",
@@ -93,10 +94,18 @@ def main():
 
     # Create the trainer+model
     trainer, evaluator, train_loader, val_loader, test_loader = init_from_args(args)
+
+    # If provided, load weights from file:
+    if args.saved_model is not None:
+        with open(args.saved_model, "rb") as f:
+            logging.info("Loading weights from %s", args.saved_model)
+            trainer.load_model_weights(f)
+
     # Train the model
-    train_model(trainer, train_loader, val_loader)
+    if not args.eval_only:
+        train_model(trainer, train_loader, val_loader)
     # Test the model
-    eval_model(evaluator, test_loader, store_eval_data=(not args.no_eval_model))
+    eval_model(evaluator, test_loader, store_eval_data=(not args.no_eval_model), model_file_name=args.saved_model)
 
     # Perform standard evaluation on the model
     if Application.instance().wandb_initialized and not args.no_eval_model:
