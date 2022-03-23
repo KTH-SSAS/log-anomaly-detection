@@ -19,3 +19,4 @@ class TrainerConfig(Config):
     scheduler_gamma: float
     scheduler_step_size: int
     mixed_precision: bool
+    gradient_accumulation: int
