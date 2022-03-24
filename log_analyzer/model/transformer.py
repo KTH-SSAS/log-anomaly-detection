@@ -231,7 +231,7 @@ class TieredTransformer(TieredLogModel):
             mask = None
         return mask.to(device)
 
-    def forward(self, sequences: Tensor, lengths=None, mask=None, targets=None):
+    def forward(self, sequences, lengths=None, mask=None, targets=None):
         users, src = sequences
         # Convert users list to python list
         users = [user.item() for user in users]
