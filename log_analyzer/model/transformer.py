@@ -181,8 +181,7 @@ class TieredTransformer(TieredLogModel):
 
     def __init__(self, config: TieredTransformerConfig, bidirectional):
         super().__init__(config)
-        self.config: TransformerConfig = config
-        self.bidirectional = False
+        self.bidirectional = bidirectional
         self.dropout = config.dropout
         self.model_dim = config.model_dim
         self.layers = config.layers
@@ -193,12 +192,12 @@ class TieredTransformer(TieredLogModel):
         self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout)
         self.word_embedding = nn.Embedding(self.vocab_size, self.model_dim)
         self.transformer_model = nn.Transformer(
-            d_model=self.config.model_dim,
-            nhead=self.config.attention_heads,
-            num_encoder_layers=self.config.layers,
-            num_decoder_layers=self.config.context_config.layers,
-            dim_feedforward=self.config.feedforward_dim,
-            dropout=self.dropout,
+            d_model=config.model_dim,
+            nhead=config.attention_heads,
+            num_encoder_layers=config.layers,
+            num_decoder_layers=config.context_config.layers,
+            dim_feedforward=config.feedforward_dim,
+            dropout=config.dropout,
             batch_first=True,
         )
         self.shift_window = config.shift_window + 1
@@ -208,8 +207,8 @@ class TieredTransformer(TieredLogModel):
         self.context_model_dim = config.context_config.model_dim
         self.context_input_dimension = config.input_dim
         self.n_users = config.number_of_users
-        self.reduce_dim = self.reduce_dimension = nn.Linear(self.config.context_dim, self.model_dim)
-        self.saved_context_histories = torch.zeros([self.n_users, self.shift_window, self.config.context_dim])
+        self.reduce_dim = self.reduce_dimension = nn.Linear(config.context_dim, self.model_dim)
+        self.saved_context_histories = torch.zeros([self.n_users, self.shift_window, config.context_dim])
         self.saved_context_history_lengths = torch.ones([self.n_users], dtype=torch.int16)
 
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
