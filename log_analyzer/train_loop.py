@@ -98,6 +98,8 @@ def get_task(model: str, bidirectional: bool) -> str:
         return data_utils.MASKED_LM
     if bidirectional and model in (LSTM, TIERED_LSTM):
         return data_utils.BIDIR_LSTM_LM
+    if model in (MULTILINE_TRANSFORMER):
+        return data_utils.SENTENCE_LM
 
     return data_utils.AUTOREGRESSIVE_LM
 

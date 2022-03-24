@@ -103,7 +103,7 @@ class MultilineLogModel(LogModel):
     def sentence_deembedding(self):
         pass
 
-    def compute_loss(self, output: torch.Tensor, Y: torch.Tensor, lengths, mask: torch.Tensor):
+    def compute_loss(self, output: Tensor, Y: Tensor):
         """Computes the loss for the given model output and ground truth."""
         # If the shapes don't match the output was created via one-way sentence embedding and we need to do the same
         # Embedding on Y to compute loss.
@@ -129,8 +129,6 @@ class MultilineLogModel(LogModel):
             embedding_losses = embedding_losses.reshape(original_shape)
         else:
             embedding_losses = self.criterion(output, Y)
-        if mask is not None:
-            embedding_losses = embedding_losses * mask
         line_losses = torch.mean(embedding_losses, dim=2) if len(embedding_losses.shape) > 2 else embedding_losses
         sequence_losses = torch.mean(line_losses, dim=1)
         loss = torch.mean(sequence_losses, dim=0)

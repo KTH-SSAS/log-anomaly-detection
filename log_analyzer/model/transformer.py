@@ -468,7 +468,7 @@ class MultilineTransformer(MultilineLogModel):
             pad_mask = mask == 0
         tf_hidden = self.transformer_encoder(line_embeddings, self.src_mask, src_key_padding_mask=pad_mask)
         # Discard all but the last window_size entries
-        logits = tf_hidden[:, -self.config.window_size :, :]  # Compute loss directly in embedding space
+        logits = tf_hidden[:, -self.config.window_size :, :]
 
         # Try to reverse sentence embedding to produce logits
         deembedded_sentence = self.sentence_deembedding(logits)
@@ -478,6 +478,6 @@ class MultilineTransformer(MultilineLogModel):
         loss = None
         if targets is not None:
             # Compute and return loss if targets is given
-            loss, _ = self.compute_loss(logits, targets, lengths, mask)
+            loss, _ = self.compute_loss(logits, targets)
 
         return logits, loss

@@ -225,7 +225,7 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
     """
 
     def __init__(self, filepaths, tokenizer, task, window_size=100) -> None:
-        assert task == SENTENCE_LM, "Task must be 'sentence-lm' when using this dataset."
+        assert task == SENTENCE_LM, f"Task must be 'sentence-lm' when using this dataset. Got '{task}'."
         super().__init__(filepaths, tokenizer, task)
 
         self.window_size = window_size
