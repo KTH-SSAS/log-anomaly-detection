@@ -23,7 +23,7 @@ if __name__ == "__main__":
     weekend_days = [3, 4, 10, 11, 17, 18, 24, 25, 31, 32, 38, 39, 45, 46, 47, 52, 53]
     if args.type == "char_level":
         tokenizer = CharTokenizer(args, weekend_days)
-        tokenizer.prepare_routes()
+        tokenizer.prepare_routes(args.type)
     else:
         tokenizer = WordTokenizer(args, weekend_days)
         tokenizer.prepare_routes(args.type)
