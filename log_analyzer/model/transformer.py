@@ -129,7 +129,7 @@ class Transformer(TransformerLanguageModel):
                 self.reduce_dimension = self.reduce_dimension.cuda()
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
-    def forward(self, sequences, lengths=None, context_vectors=None, mask=None, targets=None):
+    def forward(self, sequences, lengths=None, mask=None, targets=None):
         # batch size, sequence length, embedded dimension
         # lengths is currently ignored, added for compatibility with LSTM-training code
 
@@ -139,22 +139,6 @@ class Transformer(TransformerLanguageModel):
             self.src_mask = None
 
         word_embeddings = self.word_embedding(sequences) * math.sqrt(self.config.model_dim)
-        if context_vectors is not None:
-            cat_word_embeddings = torch.Tensor([]).to(sequences.device)
-            trans_word_embeddings = word_embeddings.transpose(0, 1).to(sequences.device)
-            # Output: trans_word_embeddings: (sequence length x batch x embedded dimension)
-            for trans_word_embedding in trans_word_embeddings:
-                # trans_word_embedding (batch x embedding)
-                trans_word_embedding = torch.cat((trans_word_embedding, context_vectors), dim=-1).unsqueeze(0)
-                # Input: trans_word_embedding (batch x embedded dimension), context_vector (batch x context dimension)
-                # Output: trans_word_embedding: (1 x batch x embedded dimension + context dimension)
-                cat_word_embeddings = torch.cat((cat_word_embeddings, trans_word_embedding), dim=0)
-                # Output: cat_word_embeddings: (sequence length x batch x embedded dimension + context dimension)
-            trans_cat_word_embeddings = cat_word_embeddings.transpose(0, 1)
-            # Output: trans_cat_word_embeddings: (batch x sequence length x embedded dimension + context dimension)
-            word_embeddings = self.reduce_dimension(trans_cat_word_embeddings)
-            # Output: word_embeddings: (batch x sequence length x embedded dimension)
-            word_embeddings = word_embeddings * math.sqrt(self.config.model_dim)
         tf_input = self.pos_encoder(word_embeddings)
         if mask is None:
             pad_mask = None
