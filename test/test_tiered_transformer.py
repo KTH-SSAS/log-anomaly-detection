@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from log_analyzer.config.model_config import TieredTransformerConfig, TransformerConfig
+from log_analyzer.config.model_config import TieredTransformerConfig
 from log_analyzer.model.transformer import TieredTransformer
 
 CONSECUTIVE_LOG = 3
