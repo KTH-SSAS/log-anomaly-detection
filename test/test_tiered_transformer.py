@@ -20,10 +20,15 @@ NUM_USERS = 100
 
 @pytest.fixture
 def test_config():
-    context_config = TransformerConfig(LAYERS, FFW_DIM, MODEL_DIM, ATTENTION_HEAD, DROPOUT_RATE)
-    config = TieredTransformerConfig(
-        LAYERS, FFW_DIM, MODEL_DIM, ATTENTION_HEAD, DROPOUT_RATE, context_config, SHIFT_WINDOW
-    )
+    args = {
+        "layers": LAYERS,
+        "feedforward_dim": FFW_DIM,
+        "model_dim": MODEL_DIM,
+        "attention_heads": ATTENTION_HEAD,
+        "dropout": DROPOUT_RATE,
+        "shift_window": SHIFT_WINDOW,
+    }
+    config = TieredTransformerConfig(**args)
     config.vocab_size = VOCAB_SIZE
     config.number_of_users = NUM_USERS
     config.sequence_length = SEQUENCE_LENGTH
