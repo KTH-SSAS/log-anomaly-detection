@@ -196,23 +196,14 @@ class TieredTransformer(TieredLogModel):
         self.src_mask = None
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
-    def gen_mask(self, seq_len, device=None, mask=None, has_mask=True):
+    def get_mask(self, src: torch.Tensor):
         # batch size, sequence length, embedded dimension
-        # lengths is currently ignored, added for compatibility with LSTM-training code
-        if has_mask:
+        seq_len = src.shape[-1]
+        device = src.device
+        if self.src_mask is None or self.src_mask.shape[-1] != seq_len:
             mask = _generate_square_subsequent_mask(seq_len).to(device)
-        else:
-            mask = None
-        return mask
-
-    def gen_pad_mask(self, ctx_history, history_length, device=None, has_mask=True):
-        if has_mask:
-            mask = torch.ones([ctx_history.shape[0], ctx_history.shape[1]]) == 1
-            for p, i in zip(history_length, range(mask.shape[0])):
-                mask[i, :p] = False
-        else:
-            mask = None
-        return mask.to(device)
+            self.src_mask = mask
+        return self.src_mask
 
     def forward(self, sequences, lengths=None, mask=None, targets=None):
         users, src = sequences
