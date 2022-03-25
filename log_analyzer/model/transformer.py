@@ -222,10 +222,10 @@ class TieredTransformer(TieredLogModel):
         # token_output = token_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
 
         for idx, batch in enumerate(src):
-            tgt_mask = self.gen_mask(batch.shape[-1], device=src.device)
+            tgt_mask = self.get_mask(batch)
             src_compressed = self.reduce_dim(context_history)
 
-            src_pad_mask = self.gen_pad_mask(src_compressed, history_length, device=src.device)
+            src_pad_mask = _generate_padding_mask(src_compressed, history_length)
             embedding_tgt_input = self.word_embedding(batch) * math.sqrt(self.model_dim)
 
             src_input = self.pos_encoder(src_compressed * math.sqrt(self.model_dim))[
@@ -251,9 +251,7 @@ class TieredTransformer(TieredLogModel):
             history_length = torch.min(
                 history_length + 1, torch.ones(history_length.shape, dtype=torch.int16) * self.shift_window
             )
-            if self.shift_window == 1:
-                context_history = context_history
-            else:
+            if self.shift_window != 1:
                 context_history = new_context_history[:, -max(history_length) :, :]
             logits = tf_hidden @ self.word_embedding.weight.t()
             token_output[idx][: logits.shape[0], : logits.shape[1], : logits.shape[2]] = logits
