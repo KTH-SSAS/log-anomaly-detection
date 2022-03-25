@@ -189,13 +189,11 @@ class TieredTransformer(TieredLogModel):
         # To use transformer structure, the input lenghth for transformer encoder should be 1+.
 
         # User model state
-        self.context_model_dim = config.context_config.model_dim
-        self.context_input_dimension = config.input_dim
         self.n_users = config.number_of_users
-        self.reduce_dim = self.reduce_dimension = nn.Linear(config.context_dim, self.model_dim)
-        self.saved_context_histories = torch.zeros([self.n_users, self.shift_window, config.context_dim])
+        self.reduce_dim = self.reduce_dimension = nn.Linear(config.input_dim, self.model_dim)
+        self.saved_context_histories = torch.zeros([self.n_users, self.shift_window, config.input_dim])
         self.saved_context_history_lengths = torch.ones([self.n_users], dtype=torch.int16)
-
+        self.src_mask = None
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
     def gen_mask(self, seq_len, device=None, mask=None, has_mask=True):
