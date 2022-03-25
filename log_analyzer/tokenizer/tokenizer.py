@@ -398,8 +398,7 @@ class WordTokenizer(CharTokenizer):
         }
 
         json.dump(
-            back_mappings,
-            open(self.recordpath / "word_token_map.json", "w", encoding="utf8"),
+            back_mappings, open(self.recordpath / "word_token_map.json", "w", encoding="utf8"),
         )
 
     def prepare_routes(self, key):
