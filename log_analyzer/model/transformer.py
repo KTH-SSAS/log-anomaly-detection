@@ -175,12 +175,12 @@ class TieredTransformer(TieredLogModel):
         self.model_dim = config.model_dim
         self.name = "Tiered_Transformer"
         self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout)
-        self.word_embedding = nn.Embedding(self.vocab_size, self.model_dim)
+        self.word_embedding = nn.Embedding(config.vocab_size, self.model_dim)
         self.transformer_model = nn.Transformer(
             d_model=config.model_dim,
             nhead=config.attention_heads,
             num_encoder_layers=config.layers,
-            num_decoder_layers=config.context_config.layers,
+            num_decoder_layers=config.layers,
             dim_feedforward=config.feedforward_dim,
             dropout=config.dropout,
             batch_first=True,
