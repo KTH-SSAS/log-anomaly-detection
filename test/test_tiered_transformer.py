@@ -50,7 +50,7 @@ def context_history():
 
 def test_tiered_transformer_forward_word(test_config: TieredTransformerConfig, test_input, context_history):
     tieredTransformer = TieredTransformer(test_config, bidirectional=False)
-    token_output, loss = tieredTransformer(test_input, context_history)
+    token_output, _ = tieredTransformer(test_input, context_history)
 
     assert torch.all(
         torch.ones(BATCH_SIZE) + CONSECUTIVE_LOG == tieredTransformer.saved_context_history_lengths[test_input[0]]
