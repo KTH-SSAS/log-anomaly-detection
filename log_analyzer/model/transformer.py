@@ -16,11 +16,13 @@ def _generate_square_subsequent_mask(sz):
     mask = mask.float().masked_fill(mask == 0, float("-inf")).masked_fill(mask == 1, float(0.0))
     return mask
 
+
 def _generate_padding_mask(ctx_history, history_length):
     mask = torch.ones(ctx_history.shape[:-1]) == 1
     for p, i in zip(history_length, range(mask.shape[0])):
         mask[i, :p] = False
     return mask.to(ctx_history.device)
+
 
 # Positional Encoding class taken from PyTorch word_language_model example code:
 # https://github.com/pytorch/examples/blob/master/word_language_model/model.py
