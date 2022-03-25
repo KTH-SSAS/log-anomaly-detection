@@ -63,7 +63,6 @@ class TransformerConfig(ModelConfig):
 class TieredTransformerConfig(TransformerConfig):
     """Configuration class for Tiered Transformer models."""
 
-    context_config: TransformerConfig
     shift_window: int
     _number_of_users: Optional[int] = field(init=False, default=None)
 
@@ -76,7 +75,6 @@ class TieredTransformerConfig(TransformerConfig):
     @vocab_size.setter
     def vocab_size(self, value):
         self._vocab_size = value
-        self.context_config.vocab_size = value
 
     @property
     def number_of_users(self) -> int:
@@ -91,24 +89,11 @@ class TieredTransformerConfig(TransformerConfig):
     @property
     def input_dim(self):
         """Feature length of input to LSTM."""
-        return self.model_dim + self.context_config.model_dim
-
-    @property
-    def context_dim(self):
-        """Feature length of input to context history for tiered transformer.
-
-        (i.e., dimension by concatenation of final hidden and mean of
-        hidden
-        """
         return self.model_dim * 2
 
     @classmethod
     def init_from_file(cls, filename):
         with open(filename, "r", encoding="utf8") as f:
             data: dict = json.load(f)
-
-        data["context_config"] = TransformerConfig(
-            **data["context_config"],
-        )
 
         return cls.init_from_dict(data)
