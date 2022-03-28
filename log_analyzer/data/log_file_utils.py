@@ -234,18 +234,24 @@ def count_fields(infile_path, outfile_path=None, fields_to_exclude=None, normali
                 del fields[f]
 
             for line in reader:
-                for k in fields:
-                    try:
-                        field_counts = counts[k]
-                    except KeyError:
-                        counts[k] = {}
-                        field_counts = counts[k]
+                for field in fields:
+                    
+                    value = line[field]
 
-                    v = line[k]
+                    # Count PCs that appear in the "dst_user" as "dst_pc"
+                    if field == "dst_user" and value.startswith("C"):
+                        field = "dst_pc"
+
                     try:
-                        field_counts[v] += 1
+                        field_counts = counts[field]
                     except KeyError:
-                        field_counts[v] = 1
+                        counts[field] = {}
+                        field_counts = counts[field]
+
+                    try:
+                        field_counts[value] += 1
+                    except KeyError:
+                        field_counts[value] = 1
 
         if outfile_path is not None:
             with open(outfile_path, "w", encoding="utf8") as f:
