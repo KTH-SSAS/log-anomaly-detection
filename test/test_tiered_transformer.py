@@ -1,9 +1,9 @@
 import pytest
 import torch
+from torch.nn.utils.rnn import pad_sequence
 
 from log_analyzer.config.model_config import TieredTransformerConfig
 from log_analyzer.model.transformer import TieredTransformer
-from torch.nn.utils.rnn import pad_sequence
 
 CONSECUTIVE_LOG = 3
 SEQUENCE_LENGTH = 10
@@ -51,8 +51,12 @@ def context_history():
 
 def test_tiered_transformer_forward_word(test_config: TieredTransformerConfig, test_input, context_history):
     tieredTransformer = TieredTransformer(test_config(), bidirectional=False)
-    ctx_lengths_before_run = pad_sequence(tieredTransformer.get_ctx_data(torch.squeeze(test_data[0]))[0], batch_first= True).shape[0]
+    ctx_lengths_before_run = pad_sequence(
+        tieredTransformer.get_ctx_data(torch.squeeze(test_data[0]))[0], batch_first=True
+    ).shape[0]
     token_output, _ = tieredTransformer(test_data, context_history)
-    ctx_lengths_after_run = pad_sequence(tieredTransformer.get_ctx_data(torch.squeeze(test_data[0]))[0], batch_first= True).shape[0]
+    ctx_lengths_after_run = pad_sequence(
+        tieredTransformer.get_ctx_data(torch.squeeze(test_data[0]))[0], batch_first=True
+    ).shape[0]
     assert min(ctx_lengths_before_run + CONSECUTIVE_LOG, SHIFT_WINDOW) == ctx_lengths_after_run
     assert token_output.shape == torch.Size([CONSECUTIVE_LOG, BATCH_SIZE, SEQUENCE_LENGTH, VOCAB_SIZE])
