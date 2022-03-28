@@ -9,7 +9,7 @@ from log_analyzer.application import Application
 from log_analyzer.config.model_config import TieredTransformerConfig, TransformerConfig
 from log_analyzer.model.lstm import LogModel, TieredLogModel
 from log_analyzer.model.model_util import initialize_weights
-
+from torch.nn.utils.rnn import pad_sequence
 
 def _generate_square_subsequent_mask(sz):
     mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
