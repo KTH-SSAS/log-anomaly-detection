@@ -52,11 +52,11 @@ def context_history():
 def test_tiered_transformer_forward_word(test_config: TieredTransformerConfig, test_input, context_history):
     tieredTransformer = TieredTransformer(test_config(), bidirectional=False)
     ctx_lengths_before_run = pad_sequence(
-        tieredTransformer.get_ctx_data(torch.squeeze(test_data[0]))[0], batch_first=True
+        tieredTransformer.get_ctx_data(torch.squeeze(test_input[0]))[0], batch_first=True
     ).shape[0]
-    token_output, _ = tieredTransformer(test_data, context_history)
+    token_output, _ = tieredTransformer(test_input, context_history)
     ctx_lengths_after_run = pad_sequence(
-        tieredTransformer.get_ctx_data(torch.squeeze(test_data[0]))[0], batch_first=True
+        tieredTransformer.get_ctx_data(torch.squeeze(test_input[0]))[0], batch_first=True
     ).shape[0]
     assert min(ctx_lengths_before_run + CONSECUTIVE_LOG, SHIFT_WINDOW) == ctx_lengths_after_run
     assert token_output.shape == torch.Size([CONSECUTIVE_LOG, BATCH_SIZE, SEQUENCE_LENGTH, VOCAB_SIZE])
