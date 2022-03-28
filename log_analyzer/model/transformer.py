@@ -277,18 +277,16 @@ class TieredTransformer(TieredLogModel):
             loss, _ = self.compute_loss(token_output, targets)
         return token_output, loss
 
-    def get_batch_data(self, users, device):
+    def get_ctx_data(self, users):
         """Given a list of users, fetch the relevant history and model data for
         each user."""
-        history = self.saved_context_histories[torch.tensor(users)]
-        history_lengths = self.saved_context_history_lengths[torch.tensor(users)]
-        # Crop the length of history returned to max history_length amongst users in this batch
-        max_length = torch.max(history_lengths)
-        return history[:, -max_length:, :].to(device), history_lengths
+        history = []
+        for u in users :
+            history.append(self.ctx_histories[u])
+        history_lengths = self.ctx_history_lengths[users]
+        return history, history_lengths
 
-    def update_state(self, users, context_history, history_length):
-        """Given one batch of history/model data output by the model, update
-        the stored state for future use."""
-        context_history = context_history.detach().cpu()
-        self.saved_context_history_lengths[torch.tensor(users)] = history_length
-        self.saved_context_histories[torch.tensor(users), -(context_history.shape[1]) :, :] = context_history
+    def update_ctx_data(self, users, ctx_histories, history_lengths):
+        for u, ctx_history in zip(users, ctx_histories):
+            self.ctx_histories[u] = ctx_history
+        self.ctx_history_lengths[torch.tensor(users)] = history_lengths
