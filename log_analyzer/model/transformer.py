@@ -282,4 +282,4 @@ class TieredTransformer(TieredLogModel):
 
     def update_ctx_data(self, users, ctx_histories):
         for u, ctx_history in zip(users, ctx_histories):
-            self.ctx_histories[u] = ctx_history
+            self.ctx_histories[u] = ctx_history.detach().cpu()
