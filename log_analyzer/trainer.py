@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 
 import torch
 from torch.cuda.amp.grad_scaler import GradScaler
@@ -36,11 +35,8 @@ class Trainer:
             gamma=config.scheduler_gamma,
         )
         self.use_scheduler = bool(config.scheduler_step_size)
-        self.scaler: Optional[GradScaler]
-        if config.mixed_precision:
-            self.scaler = torch.cuda.amp.GradScaler()
-        else:
-            self.scaler = None
+        if self.config.mixed_precision:
+            self.scaler: GradScaler = torch.cuda.amp.GradScaler()
 
     def early_stopping(self, val_loss):
         """Performs early stopping check after validation, if enabled."""
@@ -49,7 +45,7 @@ class Trainer:
 
     def optimizer_step(self, loss: torch.Tensor):
         """Performs one step of optimization on the given loss."""
-        using_mp = self.config.mixed_precision and isinstance(self.scaler, GradScaler)
+        using_mp = self.config.mixed_precision
         if using_mp:
             self.scaler.scale(loss).backward()
         else:
