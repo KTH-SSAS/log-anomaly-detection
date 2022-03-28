@@ -35,7 +35,7 @@ def test_data_loader_char(shuffle, task):
 
 @pytest.mark.parametrize("shuffle", [False, True])
 @pytest.mark.parametrize("task", ["lm", "bidir-lm"])
-@pytest.mark.parametrize("mode", ["word-field", "word-global"])
+@pytest.mark.parametrize("mode", ["word-fields", "word-global"])
 def test_data_loader_word(shuffle, task, mode):
 
     filepath = "data/test_data/6.csv"

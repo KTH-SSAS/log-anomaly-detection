@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 import torch
 
@@ -80,7 +82,7 @@ def fixture_single_line_test_file(tmp_path):
 
 
 @pytest.fixture(name="counts_file")
-def fixture_counts_file(tmp_path, single_line_test_file):
+def fixture_counts_file(tmp_path):
     field_names = [
         "time",
         "src_user",
@@ -97,27 +99,27 @@ def fixture_counts_file(tmp_path, single_line_test_file):
 
     outfile = tmp_path / "countsfile.json"
 
-    counts = count_fields(single_line_test_file, outfile_path=outfile, fields_to_exclude=[0], normalized=False)
+    data_path = Path("data/test_data/")
+    in_files = [data_path / "7.csv", data_path / "8.csv"]
+
+    counts = count_fields(in_files, outfile_path=outfile, fields_to_exclude=[0, -1], normalized=True, has_red=True)
 
     assert list(counts.keys()) == field_names[1:]
 
-    assert counts["src_user"]["U24"] == 1
-    assert counts["dst_domain"]["DOM1"] == 1
+    assert counts["src_user"]["U7499"] == 6
+    assert counts["src_user"]["U7893"] == 3
 
     return outfile
 
 
-@pytest.fixture(name="vocab_file")
-def fixture_vocab_file(tmp_path, counts_file):
+@pytest.fixture(name="vocab")
+def fixture_vocab(counts_file):
 
-    filename = tmp_path / "vocabfile.json"
+    vocab = LANLVocab.counts2vocab(counts=counts_file, cutoff=0)
 
-    LANLVocab.counts2vocab(counts=counts_file, outfile=filename, cutoff=0)
-
-    return filename
+    return vocab
 
 
 @pytest.fixture()
-def tokenizer(vocab_file):
-    vocab = LANLVocab(vocab_file)
+def tokenizer(vocab):
     return LANLTokenizer(vocab)

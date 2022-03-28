@@ -5,7 +5,7 @@ import pytest
 from . import utils
 
 
-@pytest.mark.parametrize("tokenization", ["word-field", "char"])
+@pytest.mark.parametrize("tokenization", ["word-fields", "char"])
 @pytest.mark.parametrize("bidir", [True, False])
 @pytest.mark.parametrize("attention_type", ["fixed", "semantic"])
 def test_attention(tmpdir, tokenization, bidir, attention_type):
@@ -22,8 +22,8 @@ def test_attention(tmpdir, tokenization, bidir, attention_type):
 @pytest.mark.parametrize(
     "tokenization,bidir",
     [
-        ("word-field", True),
-        ("word-field", False),
+        ("word-fields", True),
+        ("word-fields", False),
         pytest.param("char", False, marks=pytest.mark.xfail),
         pytest.param("char", True, marks=pytest.mark.xfail),
     ],
