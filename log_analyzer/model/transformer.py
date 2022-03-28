@@ -175,8 +175,10 @@ class TieredTransformer(TieredLogModel):
         self.bidirectional = bidirectional
         self.dropout = config.dropout
         self.model_dim = config.model_dim
+        self.ctx_dim = config.input_dim
         self.name = "Tiered_Transformer"
-        self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout)
+        self.src_pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout)
+        self.tgt_pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout)
         self.word_embedding = nn.Embedding(config.vocab_size, self.model_dim)
         self.transformer_model = nn.Transformer(
             d_model=config.model_dim,
@@ -187,15 +189,18 @@ class TieredTransformer(TieredLogModel):
             dropout=config.dropout,
             batch_first=True,
         )
-        self.shift_window = config.shift_window + 1
+        self.shift_window = config.shift_window
         # To use transformer structure, the input lenghth for transformer encoder should be 1+.
 
         # User model state
         self.n_users = config.number_of_users
-        self.reduce_dim = self.reduce_dimension = nn.Linear(config.input_dim, self.model_dim)
-        self.saved_context_histories = torch.zeros([self.n_users, self.shift_window, config.input_dim])
-        self.saved_context_history_lengths = torch.ones([self.n_users], dtype=torch.int16)
+        self.reduce_dim = nn.Linear(self.ctx_dim, self.model_dim)
+        self.ctx_history_lengths = torch.zeros([self.n_users], dtype=torch.int16)
         self.src_mask = None
+        self.tgt_mask = None
+        self.ctx_histories = []
+        for u in range(self.n_users):
+            self.ctx_histories.append(torch.zeros([1, self.ctx_dim]))
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
     def get_mask(self, src: torch.Tensor):
