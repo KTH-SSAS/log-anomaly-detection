@@ -4,12 +4,13 @@ from abc import abstractmethod
 
 import torch
 from torch import Tensor, nn
+from torch.nn.utils.rnn import pad_sequence
 
 from log_analyzer.application import Application
 from log_analyzer.config.model_config import TieredTransformerConfig, TransformerConfig
 from log_analyzer.model.lstm import LogModel, TieredLogModel
 from log_analyzer.model.model_util import initialize_weights
-from torch.nn.utils.rnn import pad_sequence
+
 
 def _generate_square_subsequent_mask(sz):
     mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
@@ -223,7 +224,7 @@ class TieredTransformer(TieredLogModel):
         users = [user.item() for user in users]
 
         # Get the state for the users in the batch
-        ctx_histories, history_lengths = self.get_ctx_data(users)
+        ctx_histories = self.get_ctx_data(users)
 
         # Get the number of steps in the batch
         self.num_steps = tgt.shape[0]
@@ -236,15 +237,15 @@ class TieredTransformer(TieredLogModel):
         for idx, batch in enumerate(tgt):
             tgt_input = self.tgt_pos_encoder(self.word_embedding(batch) * math.sqrt(self.model_dim))
 
-            src_padded = pad_sequence(ctx_histories, batch_first= True).to(tgt.device)
+            src_padded = pad_sequence(ctx_histories, batch_first=True).to(tgt.device)
             src_compressed = self.reduce_dim(src_padded)
             src_input = self.src_pos_encoder(src_compressed * math.sqrt(self.model_dim))
-            src_pad_mask = torch.all(src_padded == 0, dim = -1)
-            src_pad_mask[:,0] = False
+            src_pad_mask = torch.all(src_padded == 0, dim=-1)
+            src_pad_mask[:, 0] = False
             src_mask = self.get_src_mask(src_padded)
             tgt_mask = self.get_tgt_mask(batch)
 
-            # e.g., 
+            # e.g.,
             # i 0 0 0 0
             # i i 0 0 0
             # So we can apply padding mask to history input as
@@ -253,24 +254,17 @@ class TieredTransformer(TieredLogModel):
             # where T stands for True and padding, and F stands for False and no padding.
 
             tf_hidden = self.transformer_model(
-                src=src_input, 
-                src_mask = src_mask, 
-                src_key_padding_mask=src_pad_mask, 
-                tgt=tgt_input, 
-                tgt_mask=tgt_mask
+                src=src_input, src_mask=src_mask, src_key_padding_mask=src_pad_mask, tgt=tgt_input, tgt_mask=tgt_mask
             )
             ctx_inputs = torch.cat([torch.mean(tf_hidden, dim=1), tf_hidden[:, -1, :]], dim=-1)
             for i, ctx in enumerate(ctx_inputs):
-                ctx_histories[i] = torch.cat([ctx_histories[i], ctx.reshape(1,-1)], dim = 0)[-self.shift_window:,:]
-            history_lengths = torch.min(
-                history_lengths + 1, torch.ones(history_lengths.shape, dtype=torch.int16) * self.shift_window
-            )
+                ctx_histories[i] = torch.cat([ctx_histories[i], ctx.reshape(1, -1)], dim=0)[-self.shift_window :, :]
             if self.shift_window == 0:
                 ctx_histories = torch.zeros([tgt.shape[0], 1, self.ctx_dim])
             logits = tf_hidden @ self.word_embedding.weight.t()
             token_output[idx][: logits.shape[0], : logits.shape[1], : logits.shape[2]] = logits
         # Update context state
-        self.update_ctx_data(users, ctx_histories, history_lengths)
+        self.update_ctx_data(users, ctx_histories)
 
         loss = None
         if targets is not None:
@@ -282,10 +276,10 @@ class TieredTransformer(TieredLogModel):
         """Given a list of users, fetch the relevant history and model data for
         each user."""
         history = []
-        for u in users :
+        for u in users:
             history.append(self.ctx_histories[u])
         return history
 
-    def update_ctx_data(self, users, ctx_histories, history_lengths):
+    def update_ctx_data(self, users, ctx_histories):
         for u, ctx_history in zip(users, ctx_histories):
             self.ctx_histories[u] = ctx_history
