@@ -235,7 +235,7 @@ def count_fields(infile_path, outfile_path=None, fields_to_exclude=None, normali
 
             for line in reader:
                 for field in fields:
-                    
+
                     value = line[field]
 
                     # Count PCs that appear in the "dst_user" as "dst_pc"
@@ -322,11 +322,14 @@ def generate_vocab_from_counts():
     args = parser.parse_args()
 
     if args.mode == "fields":
-        LANLVocab.counts2vocab(args.counts_file, args.output, args.cutoff)
+        vocab = LANLVocab.counts2vocab(args.counts_file, args.cutoff)
     elif args.mode == "global":
-        GlobalVocab.counts2vocab(args.counts_file, args.output, args.cutoff)
+        vocab = GlobalVocab.counts2vocab(args.counts_file, args.cutoff)
     else:
         sys.exit(0)
+
+    with open(args.output, mode="w", encoding="utf-8") as f:
+        json.dump(vocab, f)
 
 
 # count_days("/home/jakob/lanl/redteam.txt")
