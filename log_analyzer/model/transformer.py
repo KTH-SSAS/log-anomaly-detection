@@ -195,7 +195,6 @@ class TieredTransformer(TieredLogModel):
         # User model state
         self.n_users = config.number_of_users
         self.reduce_dim = nn.Linear(self.ctx_dim, self.model_dim)
-        self.ctx_history_lengths = torch.zeros([self.n_users], dtype=torch.int16)
         self.src_mask = None
         self.tgt_mask = None
         self.ctx_histories = []
@@ -285,10 +284,8 @@ class TieredTransformer(TieredLogModel):
         history = []
         for u in users :
             history.append(self.ctx_histories[u])
-        history_lengths = self.ctx_history_lengths[users]
-        return history, history_lengths
+        return history
 
     def update_ctx_data(self, users, ctx_histories, history_lengths):
         for u, ctx_history in zip(users, ctx_histories):
             self.ctx_histories[u] = ctx_history
-        self.ctx_history_lengths[torch.tensor(users)] = history_lengths
