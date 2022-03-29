@@ -137,7 +137,7 @@ class Transformer(TransformerLanguageModel):
                 self.reduce_dimension = self.reduce_dimension.cuda()
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
-    def forward(self, sequences, lengths=None, mask=None, targets=None):
+    def forward(self, sequences, lengths=None, context_vectors=None, mask=None, targets=None):
         # batch size, sequence length, embedded dimension
         # lengths is currently ignored, added for compatibility with LSTM-training code
 
@@ -211,7 +211,7 @@ class TieredTransformer(TieredLogModel):
             self.tgt_mask = _generate_square_subsequent_mask(seq_len).to(device)
         return self.tgt_mask
 
-    def forward(self, sequences, lengths=None, mask=None, targets=None):
+    def forward(self, sequences, lengths=None, context_vectors=None, mask=None, targets=None):
         users, tgt = sequences
         # Convert users list to python list
         users = [user.item() for user in users]
