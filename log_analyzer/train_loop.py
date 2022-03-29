@@ -389,7 +389,11 @@ def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, mode
 
     if Application.instance().wandb_initialized:
         # Save the model weights as a versioned artifact
-        artifact = wandb.Artifact(Application.artifact_name, "model", metadata=lm_evaluator.model.config.__dict__,)
+        artifact = wandb.Artifact(
+            Application.artifact_name,
+            "model",
+            metadata=lm_evaluator.model.config.__dict__,
+        )
         artifact.add_file(model_save_path)
         artifact.save()
 
@@ -402,7 +406,11 @@ def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, mode
             wandb_log(
                 iteration,
                 LOGGING_FREQUENCY,
-                {"eval/loss": loss, "eval/iteration": iteration, "eval/day": batch["day"][0],},
+                {
+                    "eval/loss": loss,
+                    "eval/iteration": iteration,
+                    "eval/day": batch["day"][0],
+                },
             )
 
     return test_losses

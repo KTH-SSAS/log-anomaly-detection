@@ -50,7 +50,7 @@ def context_history():
 
 
 def test_tiered_transformer_forward_word(test_config: TieredTransformerConfig, test_input, context_history):
-    tieredTransformer = TieredTransformer(test_config(), bidirectional=False)
+    tieredTransformer = TieredTransformer(test_config, bidirectional=False)
     ctx_lengths_before_run = pad_sequence(
         tieredTransformer.get_ctx_data(torch.squeeze(test_input[0]))[0], batch_first=True
     ).shape[0]

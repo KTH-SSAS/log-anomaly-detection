@@ -15,7 +15,10 @@ def prepare_args():
     parser = ArgumentParser()
     parser.add_argument("model_type", choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer"])
     parser.add_argument(
-        "tokenization", type=str, help="Tokenization method", choices=["word-field", "word-global", "char"],
+        "tokenization",
+        type=str,
+        help="Tokenization method",
+        choices=["word-field", "word-global", "char"],
     )
     parser.add_argument("-mc", "--model-config", type=str, help="Model configuration file.", required=True)
     parser.add_argument(

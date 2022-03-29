@@ -49,7 +49,9 @@ def mask_tokens(
     inp_mask_2random = inp_mask_2mask & (np.random.rand(length) < p_random)
 
     masked_tokens[inp_mask_2random] = np.random.randint(
-        vocab_range[0], high=vocab_range[1], size=(inp_mask_2random.sum(),),
+        vocab_range[0],
+        high=vocab_range[1],
+        size=(inp_mask_2random.sum(),),
     )
 
     # Set targets to -1 by default
@@ -329,7 +331,8 @@ class LANLTokenizer(Tokenizer):
                 )
             else:
                 masked_tokens[inp_mask_2random] = np.random.randint(
-                    low=low, high=high + 1,  # +1 since randint is exclusive of high value
+                    low=low,
+                    high=high + 1,  # +1 since randint is exclusive of high value
                 )
 
         # Set targets to -1 by default

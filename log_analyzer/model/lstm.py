@@ -93,7 +93,11 @@ class LSTMLanguageModel(LogModel):
         # Layers
         self.embeddings = nn.Embedding(config.vocab_size, config.embedding_dim)
         self.stacked_lstm = nn.LSTM(
-            config.input_dim, config.layers[0], len(config.layers), batch_first=True, bidirectional=self.bidirectional,
+            config.input_dim,
+            config.layers[0],
+            len(config.layers),
+            batch_first=True,
+            bidirectional=self.bidirectional,
         )
 
         fc_input_dim = config.layers[-1]
@@ -108,7 +112,10 @@ class LSTMLanguageModel(LogModel):
             else:
                 seq_len = None
             self.attention = SelfAttention(
-                fc_input_dim, config.attention_dim, attention_type=config.attention_type, seq_len=seq_len,
+                fc_input_dim,
+                config.attention_dim,
+                attention_type=config.attention_type,
+                seq_len=seq_len,
             )
             fc_input_dim *= 2
             self.has_attention = True
@@ -341,7 +348,12 @@ class TieredLSTM(TieredLogModel):
 
         if self.event_level_lstm.bidirectional:
             token_output = torch.empty(
-                (user_sequences.shape[0], user_sequences.shape[1], user_sequences.shape[2] - 2,), dtype=torch.float,
+                (
+                    user_sequences.shape[0],
+                    user_sequences.shape[1],
+                    user_sequences.shape[2] - 2,
+                ),
+                dtype=torch.float,
             )
         else:
             token_output = torch.empty_like(user_sequences, dtype=torch.float)
@@ -358,7 +370,8 @@ class TieredLSTM(TieredLogModel):
                 length = length.cuda()
             # Apply the context LSTM to get context vector
             context_vector, (context_hidden_state, context_cell_state) = self.context_lstm(
-                context_lstm_input, (context_hidden_state, context_cell_state),
+                context_lstm_input,
+                (context_hidden_state, context_cell_state),
             )
             context_vector = torch.squeeze(context_vector, dim=1)
 

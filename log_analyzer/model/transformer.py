@@ -199,16 +199,9 @@ class TieredTransformer(TieredLogModel):
         self.src_mask = None
         self.tgt_mask = None
         self.ctx_histories = []
-        for u in range(self.n_users):
+        for _ in range(self.n_users):
             self.ctx_histories.append(torch.zeros([1, self.ctx_dim]))
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
-
-    def get_src_mask(self, src: torch.Tensor):
-        # batch size, sequence length, embedded dimension
-        seq_len = src.shape[1]
-        device = src.device
-        mask = _generate_square_subsequent_mask(seq_len).to(device)
-        return mask
 
     def get_tgt_mask(self, tgt: torch.Tensor):
         # batch size, sequence length, embedded dimension
@@ -242,7 +235,7 @@ class TieredTransformer(TieredLogModel):
             src_input = self.src_pos_encoder(src_compressed * math.sqrt(self.model_dim))
             src_pad_mask = torch.all(src_padded == 0, dim=-1)
             src_pad_mask[:, 0] = False
-            src_mask = self.get_src_mask(src_padded)
+            src_mask = _generate_square_subsequent_mask(src_input.shape[1]).to(src_input.device)
             tgt_mask = self.get_tgt_mask(batch)
 
             # e.g.,
