@@ -10,9 +10,9 @@ def test_tiered_transformer_forward_word(
 ):
     consecutive_log = test_tiered_transformer_input[1].shape[0]
     batch_size = test_tiered_transformer_input[1].shape[1]
+    sequence_length = test_tiered_transformer_input[1].shape[2]
     shift_window = test_tiered_transformer_config.shift_window
     vocab_size = test_tiered_transformer_config.vocab_size
-    sequence_length = test_tiered_transformer_config.sequence_length
 
     tieredTransformer = TieredTransformer(test_tiered_transformer_config, bidirectional=False)
     ctx_lengths_before_run = pad_sequence(

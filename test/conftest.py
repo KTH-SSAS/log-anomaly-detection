@@ -150,10 +150,12 @@ def fixture_vocab_file(tmp_path, counts_file):
 
     return filename
 
+
 @pytest.fixture()
 def tokenizer(vocab_file):
     vocab = LANLVocab(vocab_file)
     return LANLTokenizer(vocab)
+
 
 @pytest.fixture
 def context_history():
