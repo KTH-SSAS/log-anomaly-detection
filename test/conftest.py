@@ -1,13 +1,22 @@
 import pytest
 import torch
 
-from log_analyzer.config.model_config import TransformerConfig
+from log_analyzer.config.model_config import TieredTransformerConfig, TransformerConfig
 from log_analyzer.data.log_file_utils import add_redteam_to_log, count_fields
 from log_analyzer.tokenizer.tokenizer_neo import LANLTokenizer, LANLVocab
 
 SEQUENCE_LENGTH = 10
 VOCAB_SIZE = 128
 BATCH_SIZE = 64
+CONSECUTIVE_LOG = 3
+SHIFT_WINDOW = 10
+LAYERS = 2
+MODEL_DIM = 64
+FFW_DIM = 64
+DROPOUT_RATE = 0.1
+ATTENTION_HEAD = 2
+LEN_SAVED_HISTORY = 10
+NUM_USERS = 100
 
 
 @pytest.fixture()
@@ -18,9 +27,34 @@ def test_config():
     return config
 
 
+@pytest.fixture
+def test_tiered_transformer_config():
+    args = {
+        "layers": LAYERS,
+        "feedforward_dim": FFW_DIM,
+        "model_dim": MODEL_DIM,
+        "attention_heads": ATTENTION_HEAD,
+        "dropout": DROPOUT_RATE,
+        "shift_window": SHIFT_WINDOW,
+    }
+    config = TieredTransformerConfig(**args)
+    config.vocab_size = VOCAB_SIZE
+    config.number_of_users = NUM_USERS
+    config.sequence_length = SEQUENCE_LENGTH
+    return config
+
+
 @pytest.fixture()
 def test_input():
     return torch.randint(low=0, high=VOCAB_SIZE, size=(BATCH_SIZE, SEQUENCE_LENGTH))
+
+
+@pytest.fixture
+def test_tiered_transformer_input():
+    return (
+        torch.randint(low=0, high=NUM_USERS, size=(BATCH_SIZE, 1)),
+        torch.randint(low=0, high=VOCAB_SIZE, size=(CONSECUTIVE_LOG, BATCH_SIZE, SEQUENCE_LENGTH)),
+    )
 
 
 @pytest.fixture(name="redteam_file")
@@ -121,3 +155,8 @@ def fixture_vocab_file(tmp_path, counts_file):
 def tokenizer(vocab_file):
     vocab = LANLVocab(vocab_file)
     return LANLTokenizer(vocab)
+
+
+@pytest.fixture
+def context_history():
+    return torch.randint(low=0, high=VOCAB_SIZE, size=(BATCH_SIZE, LEN_SAVED_HISTORY, VOCAB_SIZE))
