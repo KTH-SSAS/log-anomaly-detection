@@ -217,7 +217,7 @@ class TieredTransformer(TieredLogModel):
         users = [user.item() for user in users]
 
         # Get the state for the users in the batch
-        ctx_histories = self.get_ctx_data(users)
+        ctx_histories = self.get_ctx_data(users, tgt.device)
 
         # Get the number of steps in the batch
         self.num_steps = tgt.shape[0]
@@ -253,7 +253,7 @@ class TieredTransformer(TieredLogModel):
             for i, ctx in enumerate(ctx_inputs):
                 ctx_histories[i] = torch.cat([ctx_histories[i], ctx.reshape(1, -1)], dim=0)[-self.shift_window :, :]
             if self.shift_window == 0:
-                ctx_histories = torch.zeros([tgt.shape[0], 1, self.ctx_dim])
+                ctx_histories = [torch.zeros([1, self.ctx_dim]).to(tgt.device) for _ in users]
             logits = tf_hidden @ self.word_embedding.weight.t()
             token_output[idx][: logits.shape[0], : logits.shape[1], : logits.shape[2]] = logits
         # Update context state
@@ -265,12 +265,12 @@ class TieredTransformer(TieredLogModel):
             loss, _ = self.compute_loss(token_output, targets)
         return token_output, loss
 
-    def get_ctx_data(self, users):
+    def get_ctx_data(self, users, device):
         """Given a list of users, fetch the relevant history and model data for
         each user."""
         history = []
         for u in users:
-            history.append(self.ctx_histories[u])
+            history.append(self.ctx_histories[u].to(device))
         return history
 
     def update_ctx_data(self, users, ctx_histories):
