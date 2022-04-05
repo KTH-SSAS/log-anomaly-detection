@@ -29,6 +29,10 @@ ifdef PYFLAGS
 FLAGS += $(PYFLAGS)
 endif
 
+counts: data/full_data/*.csv
+	generate-counts $^ -o data/counts678.json
+
+
 tox:
 	tox .
 
@@ -42,8 +46,9 @@ profile-%: config/lanl_config_%.json
 	python -m cProfile $(TRAIN_MODEL) lstm -cf $(COUNTS_FILE) -mc $^ 
 
 .PHONY: %_word
-%_word-field: TOKENIZATION=word-field
+%_word-fields: TOKENIZATION=word-fields
 %_word-global: TOKENIZATION=word-global
+%_word-merged: TOKENIZATION=word-merged
 %_char: TOKENIZATION=char
 
 %_word-field %_word-global %_char: config/lanl_config_%.json

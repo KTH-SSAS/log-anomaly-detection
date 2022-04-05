@@ -4,7 +4,7 @@ from typing import Dict, Iterable, List, Optional, Tuple, Union
 import numpy as np
 from numpy.typing import NDArray
 
-from .vocab import CLS_TOKEN, EOS_TOKEN, MSK_TOKEN, PAD_TOKEN, SOS_TOKEN, GlobalVocab, LANLVocab
+from .vocab import CLS_TOKEN, EOS_TOKEN, MSK_TOKEN, PAD_TOKEN, SOS_TOKEN, FieldVocab, GlobalVocab, LANLVocab
 
 
 def mask_tokens(
@@ -78,6 +78,7 @@ class Tokenizer(ABC):
     add_eos: bool
     _num_users: int
     users: Dict[str, int]
+    vocab: FieldVocab
 
     @abstractmethod
     def __init__(self, vocab, users: List[str] = None) -> None:
@@ -214,7 +215,7 @@ class LANLTokenizer(Tokenizer):
         super().__init__(vocab, users)
         self.vocab: LANLVocab = vocab
         self.delimiter = ","
-        self.num_fields = len(self.field_names)
+        self.num_fields = 10  # From LANL log data
         self.jagged = False
 
         if users is not None:
@@ -245,7 +246,8 @@ class LANLTokenizer(Tokenizer):
         return self._num_users
 
     def tokenize(self, line, add_sos=False, add_eos=False):
-
+        """Expects a line in the format 'src_user,src_domain,dst_user,dst_domai
+        n,src_pc,dst_pc,auth_type,logon_type,auth_orient,success'."""
         if isinstance(line, str):
             tokens = line.split(",")
         else:
@@ -254,9 +256,6 @@ class LANLTokenizer(Tokenizer):
         return self.encode(tokens, add_sos, add_eos)
 
     def encode(self, tokens, add_sos, add_eos):
-
-        if len(tokens) != len(self.field_names):
-            raise RuntimeError("Number of fields in input does not match number of fields in vocabulary.")
 
         total_length = self.num_fields + int(add_sos) + int(add_eos)
 
@@ -268,8 +267,7 @@ class LANLTokenizer(Tokenizer):
             indexes[0] = self.vocab.sos_idx
 
         for i in iterator:
-            field = self.field_names[i]
-            indexes[i] = self.vocab.token2idx(tokens[i], field)
+            indexes[i] = self.vocab.token2idx(tokens[i], i)
 
         if add_eos:
             indexes[-1] = self.vocab.eos_idx
@@ -277,7 +275,7 @@ class LANLTokenizer(Tokenizer):
         return indexes
 
     def decode(self, indexes: Iterable[int]) -> List[str]:
-        return [self.vocab.idx2token(i) for i in indexes]
+        return [self.vocab.idx2token(idx, field) for field, idx in enumerate(indexes)]
 
     def detokenize(self, indexes) -> str:
         return ",".join(self.decode(indexes))
@@ -350,7 +348,7 @@ class LANLTokenizer(Tokenizer):
         return masked_tokens, labels, sample_weights
 
 
-class FieldTokenizer(Tokenizer):
+class GlobalTokenizer(Tokenizer):
     """Tokenizes the fields of a log line."""
 
     def detokenize(self, indexes) -> str:
@@ -358,7 +356,7 @@ class FieldTokenizer(Tokenizer):
 
     def __init__(self, vocab: GlobalVocab, users=None) -> None:
         super().__init__(vocab, users)
-        self.vocab = vocab
+        self.vocab: GlobalVocab = vocab
         self.mask_idx = vocab.mask_idx
         self.offset = vocab.num_special_tokens
         self.jagged = False
@@ -382,7 +380,7 @@ class FieldTokenizer(Tokenizer):
             indexes[0] = self.vocab.sos_idx
 
         for i in iterator:
-            indexes[i] = self.vocab.token2idx(tokens[i], "")
+            indexes[i] = self.vocab.token2idx(tokens[i], 0)
 
         if add_eos:
             indexes[-1] = self.vocab.eos_idx
@@ -390,7 +388,7 @@ class FieldTokenizer(Tokenizer):
         return indexes
 
     def decode(self, indexes: Iterable[int]) -> List[str]:
-        return [self.vocab.idx2token(i) for i in indexes]
+        return [self.vocab.idx2token(idx, field) for field, idx in enumerate(indexes)]
 
     @property
     def num_users(self) -> int:

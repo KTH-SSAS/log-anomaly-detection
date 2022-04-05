@@ -234,18 +234,24 @@ def count_fields(infile_path, outfile_path=None, fields_to_exclude=None, normali
                 del fields[f]
 
             for line in reader:
-                for k in fields:
-                    try:
-                        field_counts = counts[k]
-                    except KeyError:
-                        counts[k] = {}
-                        field_counts = counts[k]
+                for field in fields:
 
-                    v = line[k]
+                    value = line[field]
+
+                    # Count PCs that appear in the "dst_user" as "dst_pc"
+                    if field == "dst_user" and value.startswith("C"):
+                        field = "dst_pc"
+
                     try:
-                        field_counts[v] += 1
+                        field_counts = counts[field]
                     except KeyError:
-                        field_counts[v] = 1
+                        counts[field] = {}
+                        field_counts = counts[field]
+
+                    try:
+                        field_counts[value] += 1
+                    except KeyError:
+                        field_counts[value] = 1
 
         if outfile_path is not None:
             with open(outfile_path, "w", encoding="utf8") as f:
@@ -316,11 +322,14 @@ def generate_vocab_from_counts():
     args = parser.parse_args()
 
     if args.mode == "fields":
-        LANLVocab.counts2vocab(args.counts_file, args.output, args.cutoff)
+        vocab = LANLVocab.counts2vocab(args.counts_file, args.cutoff)
     elif args.mode == "global":
-        GlobalVocab.counts2vocab(args.counts_file, args.output, args.cutoff)
+        vocab = GlobalVocab.counts2vocab(args.counts_file, args.cutoff)
     else:
         sys.exit(0)
+
+    with open(args.output, mode="w", encoding="utf-8") as f:
+        json.dump(vocab, f)
 
 
 # count_days("/home/jakob/lanl/redteam.txt")

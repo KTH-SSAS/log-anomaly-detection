@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import socket
-import tempfile
 from argparse import Namespace
 from datetime import datetime
 from pathlib import Path
@@ -30,12 +29,13 @@ from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel, TieredLSTM
 from log_analyzer.model.transformer import TieredTransformer, Transformer
 from log_analyzer.tokenizer.tokenizer_neo import (
     CharTokenizer,
-    FieldTokenizer,
+    GlobalTokenizer,
     GlobalVocab,
     LANLTokenizer,
     LANLVocab,
     Tokenizer,
 )
+from log_analyzer.tokenizer.vocab import MergedLANLVocab
 from log_analyzer.trainer import Trainer
 
 try:
@@ -55,32 +55,29 @@ VALIDATION_FREQUENCY: int = (
 )
 
 WORD_GLOBAL = "word-global"
-WORD_FIELD = "word-field"
+WORD_FIELDS = "word-fields"
+WORD_MERGED = "word-merged"
 CHAR = "char"
 
 tokenizer_vocabs = {
     CHAR: (CharTokenizer, None),
-    WORD_FIELD: (LANLTokenizer, LANLVocab),
-    WORD_GLOBAL: (FieldTokenizer, GlobalVocab),
+    WORD_FIELDS: (LANLTokenizer, LANLVocab),
+    WORD_GLOBAL: (GlobalTokenizer, GlobalVocab),
+    WORD_MERGED: (LANLTokenizer, MergedLANLVocab),
 }
 
 
-def get_tokenizer(tokenization, model_type, counts_file: Path, cutoff) -> Tokenizer:
+def get_tokenizer(tokenization, tiered, counts_file: Path, cutoff) -> Tokenizer:
     tokenizer: Tokenizer
-    users = None
     vocab = None
     tokenizer_cls, vocab_cls = tokenizer_vocabs[tokenization]
     if counts_file is not None:
         with open(counts_file, encoding="utf8") as f:
             counts = json.load(f)
-        if "tiered" in model_type:
-            users = list(counts["src_user"].keys())
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            tmp_vocab_file = Path(tmpdirname) / "vocab.json"
-            vocab = vocab_cls.counts2vocab(counts, tmp_vocab_file, cutoff) if vocab_cls is not None else None
+        users = list(counts["src_user"].keys()) if tiered else None
+        vocab = vocab_cls.counts2vocab(counts, cutoff) if vocab_cls is not None else None
     else:
-        if "word" in tokenization or "tiered" in model_type:
+        if "word" in tokenization or tiered:
             raise RuntimeError("No counts file was supplied!")
 
     tokenizer = tokenizer_cls(vocab, users)
@@ -185,7 +182,7 @@ def init_from_config_classes(
 
     shuffle_train_data = trainer_config.shuffle_train_data
 
-    tokenizer = get_tokenizer(tokenization, model_type, counts_file, cutoff)
+    tokenizer = get_tokenizer(tokenization, ("tiered" in model_type), counts_file, cutoff)
 
     task = get_task(model_type, bidirectional)
 
