@@ -11,7 +11,7 @@ from . import utils
 @pytest.mark.parametrize("model_type", ["lstm", "tiered-lstm", "transformer"])
 def test_evaluator(tmpdir, model_type):
     bidir = False
-    token_level = "word-field"
+    token_level = "word-fields"
 
     args = utils.set_args(bidir, model_type, token_level)
     args["base_logdir"] = Path(tmpdir) / "runs"

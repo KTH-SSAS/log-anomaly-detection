@@ -5,6 +5,7 @@ from abc import abstractmethod
 
 import torch
 from torch import Tensor, nn
+from torch.nn.utils.rnn import pad_sequence
 
 from log_analyzer.application import Application
 from log_analyzer.config.model_config import MultilineTransformerConfig, TieredTransformerConfig, TransformerConfig
@@ -35,6 +36,13 @@ def _generate_subsquare_subsequent_mask(seq_len, window_len):
     # Replace the ones with -inf
     mask = mask.float().masked_fill(mask == 1, float("-inf"))
     return mask
+
+
+def _generate_padding_mask(ctx_history, history_length):
+    mask = torch.ones(ctx_history.shape[:-1]) == 1
+    for p, i in zip(history_length, range(mask.shape[0])):
+        mask[i, :p] = False
+    return mask.to(ctx_history.device)
 
 
 # Positional Encoding class taken from PyTorch word_language_model example code:
@@ -118,14 +126,11 @@ class TransformerLanguageModel(LogModel):
         encoder_layers = nn.TransformerEncoderLayer(
             self.model_dim, self.attention_heads, self.feedforward_dim, dropout=self.dropout, batch_first=True
         )
-        self.transformer_encoder: nn.TransformerEncoder = nn.TransformerEncoder(encoder_layers, self.layers)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, self.layers)
 
     def get_mask(self, src: torch.Tensor):
         # batch size, sequence length, embedded dimension
-        if isinstance(self, ContextTransformer):
-            seq_len = src.shape[1]
-        else:
-            seq_len = src.shape[-1]
+        seq_len = src.shape[-1]
         device = src.device
         if self.src_mask is None or self.src_mask.shape[-1] != seq_len:
             mask = _generate_square_subsequent_mask(seq_len).to(device)
@@ -162,21 +167,6 @@ class Transformer(TransformerLanguageModel):
             self.src_mask = None
 
         word_embeddings = self.word_embedding(sequences) * math.sqrt(self.config.model_dim)
-        if context_vectors is not None:
-            cat_word_embeddings = torch.Tensor([]).to(sequences.device)
-            trans_word_embeddings = word_embeddings.transpose(0, 1).to(sequences.device)
-            # Output: trans_word_embeddings: (sequence length x batch x embedded dimension)
-            for trans_word_embedding in trans_word_embeddings:
-                # trans_word_embedding (batch x embedding)
-                trans_word_embedding = torch.cat((trans_word_embedding, context_vectors), dim=-1).unsqueeze(0)
-                # Input: trans_word_embedding (batch x embedded dimension), context_vector (batch x context dimension)
-                # Output: trans_word_embedding: (1 x batch x embedded dimension + context dimension)
-                cat_word_embeddings = torch.cat((cat_word_embeddings, trans_word_embedding), dim=0)
-                # Output: cat_word_embeddings: (sequence length x batch x embedded dimension + context dimension)
-            trans_cat_word_embeddings = cat_word_embeddings.transpose(0, 1)
-            # Output: trans_cat_word_embeddings: (batch x sequence length x embedded dimension + context dimension)
-            word_embeddings = self.reduce_dimension(trans_cat_word_embeddings)
-            # Output: word_embeddings: (batch x sequence length x embedded dimension)
         tf_input = self.pos_encoder(word_embeddings)
         if mask is None:
             pad_mask = None
@@ -197,141 +187,115 @@ class Transformer(TransformerLanguageModel):
         return logits, loss
 
 
-class ContextTransformer(TransformerLanguageModel):
-    """Container module with an encoder, a recurrent or transformer module, and
-    a decoder."""
-
-    def __init__(self, config: TieredTransformerConfig):
-        self.name = "Context_Transformer"
-        super().__init__(config.context_config)
-        self.reduce_dimension = nn.Linear(2 * config.model_dim, config.context_config.model_dim)
-        initialize_weights(self, dist_func=nn.init.xavier_uniform_)
-
-    def forward(self, sequences, _lengths: Tensor = None, _context_vectors=None, _length=None, _mask=None):
-        self.src_mask = self.get_mask(sequences)
-        ctx_input = self.reduce_dimension(sequences)  # ctx_input (batch size, sequence length, 2 * model dimension)
-        ctx_embeddings = ctx_input * math.sqrt(
-            self.config.model_dim * 2
-        )  # ctx_embeddings (batch size, sequence length, model dimension)
-        tf_input = self.pos_encoder(ctx_embeddings)  # tf_input (batch size, sequence length, model dimension)
-        context_output = self.transformer_encoder(tf_input, self.src_mask)[
-            :, -1, :
-        ]  # context_output (batch size, model dimension)
-
-        return context_output
-
-
 class TieredTransformer(TieredLogModel):
 
     num_steps: int
 
     def __init__(self, config: TieredTransformerConfig, bidirectional):
         super().__init__(config)
+        self.bidirectional = bidirectional
+        self.dropout = config.dropout
+        self.model_dim = config.model_dim
+        self.ctx_dim = config.input_dim
         self.name = "Tiered_Transformer"
-        self.config: TieredTransformerConfig = config
-        self.src_mask = None
-        self.log_transformer = Transformer(config, bidirectional)
-        self.log_transformer.tiered = True
-        self.context_transformer = ContextTransformer(config)
+        self.src_pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout)
+        self.tgt_pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout)
+        self.word_embedding = nn.Embedding(config.vocab_size, self.model_dim)
+        self.transformer_model = nn.Transformer(
+            d_model=config.model_dim,
+            nhead=config.attention_heads,
+            num_encoder_layers=config.layers,
+            num_decoder_layers=config.layers,
+            dim_feedforward=config.feedforward_dim,
+            dropout=config.dropout,
+            batch_first=True,
+        )
         self.shift_window = config.shift_window
+        # To use transformer structure, the input lenghth for transformer encoder should be 1+.
 
         # User model state
-        self.context_model_dim = config.context_config.model_dim
-        self.context_input_dimension = config.input_dim
-        self.shift_window = config.shift_window
         self.n_users = config.number_of_users
-        self.saved_context_vectors = torch.zeros([self.n_users, self.context_model_dim])
-        self.saved_context_histories = torch.zeros([self.n_users, self.shift_window, self.context_input_dimension])
-        self.saved_context_history_lengths = torch.zeros([self.n_users], dtype=torch.int16)
+        self.reduce_dim = nn.Linear(self.ctx_dim, self.model_dim)
+        self.src_mask = None
+        self.tgt_mask = None
+        self.ctx_histories = []
+        for _ in range(self.n_users):
+            self.ctx_histories.append(torch.zeros([1, self.ctx_dim]))
+        initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
-        self.using_cuda = Application.instance().using_cuda
+    def get_tgt_mask(self, tgt: torch.Tensor):
+        # batch size, sequence length, embedded dimension
+        seq_len = tgt.shape[-1]
+        device = tgt.device
+        if self.tgt_mask is None or self.tgt_mask.shape[-1] != seq_len:
+            self.tgt_mask = _generate_square_subsequent_mask(seq_len).to(device)
+        return self.tgt_mask
 
-    def forward(self, sequences: Tensor, lengths=None, context_vectors=None, mask=None, targets=None):
-        # sequences (num of series, batch size, sequence length, embedded dimension)
-        # Split the input into users list and sequences
-        users, sequences = sequences
+    def forward(self, sequences, lengths=None, context_vectors=None, mask=None, targets=None):
+        users, tgt = sequences
+        # Convert users list to python list
+        users = [user.item() for user in users]
 
         # Get the state for the users in the batch
-        context_vector, context_history, _ = self.get_batch_data(users)
+        ctx_histories = self.get_ctx_data(users, tgt.device)
 
         # Get the number of steps in the batch
-        self.num_steps = sequences.shape[0]
-        batch_size = sequences.shape[1]
+        self.num_steps = tgt.shape[0]
 
-        shape = sequences.shape + (self.config.vocab_size,)
-        token_output = torch.zeros(shape, dtype=torch.float)
+        shape = tgt.shape + (self.config.vocab_size,)
+        token_output = torch.zeros(shape, dtype=torch.float).to(tgt.device)
 
         # token_output = token_output.unsqueeze(3).repeat(1, 1, 1, self.config.vocab_size)
+        # src = context info, tgt = log line info
+        for idx, batch in enumerate(tgt):
+            tgt_input = self.tgt_pos_encoder(self.word_embedding(batch) * math.sqrt(self.model_dim))
 
-        for idx, batch in enumerate(sequences):
-            # batch (batch size, sequence length, embedded dimension)
-            if context_vector is None:
-                ################ First loop without any history ##############################
-                device = sequences.device
-                context_vector = torch.zeros(batch_size, self.config.context_config.model_dim).to(device)
+            src_padded = pad_sequence(ctx_histories, batch_first=True).to(tgt.device)
+            src_compressed = self.reduce_dim(src_padded)
+            src_input = self.src_pos_encoder(src_compressed * math.sqrt(self.model_dim))
+            src_pad_mask = torch.all(src_padded == 0, dim=-1)
+            src_pad_mask[:, 0] = False
+            src_mask = _generate_square_subsequent_mask(src_input.shape[1]).to(src_input.device)
+            tgt_mask = self.get_tgt_mask(batch)
 
-            ################ Low level transformer ############################################
-            idx_mask = None if mask is None else mask[idx]
-            logits, tf_hidden, _ = self.log_transformer(
-                batch, context_vectors=context_vector, mask=idx_mask
-            )  # (batch size, sequence length, model dimension)
+            # e.g.,
+            # i 0 0 0 0
+            # i i 0 0 0
+            # So we can apply padding mask to history input as
+            # F T T T T
+            # F F T T T
+            # where T stands for True and padding, and F stands for False and no padding.
+
+            tf_hidden = self.transformer_model(
+                src=src_input, src_mask=src_mask, src_key_padding_mask=src_pad_mask, tgt=tgt_input, tgt_mask=tgt_mask
+            )
+            ctx_inputs = torch.cat([torch.mean(tf_hidden, dim=1), tf_hidden[:, -1, :]], dim=-1)
+            for i, ctx in enumerate(ctx_inputs):
+                ctx_histories[i] = torch.cat([ctx_histories[i], ctx.reshape(1, -1)], dim=0)[-self.shift_window :, :]
+            if self.shift_window == 0:
+                ctx_histories = [torch.zeros([1, self.ctx_dim]).to(tgt.device) for _ in users]
+            logits = tf_hidden @ self.word_embedding.weight.t()
             token_output[idx][: logits.shape[0], : logits.shape[1], : logits.shape[2]] = logits
-
-            ################ Process the output of the low level transformer ##################
-            mean_hidden = torch.mean(tf_hidden, dim=1)
-            # mean_hidden: Mean of a low level output. (batch size, model dimension)
-            final_hidden = tf_hidden[:, -1, :]  # final_hidden: The last token step output of the low level output
-            context_input = torch.cat(
-                (mean_hidden, final_hidden), dim=1
-            )  # cat_input: concatenation of mean_hidden and final_hidden (batch size, 2 * model dimension)
-            unsqueezed_context_input = torch.unsqueeze(context_input, dim=1)
-            # synthetic_input: unsqueeze to concatenate with the history of a specific user.
-            # (batch size, 1, 2 * model dimension)
-
-            if len(context_history.shape) == 2:
-                context_history = unsqueezed_context_input
-            else:
-                context_history = torch.cat((unsqueezed_context_input, context_history), dim=1)
-            # ctx_history: concatination to generate a sequence of low level outputs
-            # (batch size, history length, 2 * model dimension)
-            context_history = context_history[:, -self.shift_window :, :]
-            ################ Context level transformer with history #######################
-            context_vector = self.context_transformer(context_history)
-
         # Update context state
-        self.update_state(users, context_vector, context_history)
+        self.update_ctx_data(users, ctx_histories)
 
         loss = None
         if targets is not None:
             # Compute and return loss if targets is given
             loss, _ = self.compute_loss(token_output, targets)
-
         return token_output, loss
 
-    def get_batch_data(self, users):
+    def get_ctx_data(self, users, device):
         """Given a list of users, fetch the relevant history and model data for
         each user."""
-        users = users[:, 0]
-        context_vector = self.saved_context_vectors[users]
-        history = self.saved_context_histories[users]
-        history_lengths = self.saved_context_history_lengths[users]
-        # Crop the length of history returned to max history_length amongst users in this batch
-        max_length = torch.max(history_lengths)
-        return context_vector, history[:, -max_length:, :], history_lengths
+        history = []
+        for u in users:
+            history.append(self.ctx_histories[u].to(device))
+        return history
 
-    def update_state(self, users, context_vectors, context_history):
-        """Given one batch of history/model data output by the model, update
-        the stored state for future use."""
-        context_vectors = context_vectors.detach().cpu()
-        context_history = context_history.detach().cpu()
-        users = users[:, 0]
-        self.saved_context_vectors[users] = context_vectors
-        for user in users:
-            self.saved_context_history_lengths[user] = min(
-                self.saved_context_history_lengths[user] + self.num_steps, self.shift_window
-            )
-        max_length = torch.max(self.saved_context_history_lengths[users])
-        self.saved_context_histories[users, -max_length:, :] = context_history[:, -max_length:, :]
+    def update_ctx_data(self, users, ctx_histories):
+        for u, ctx_history in zip(users, ctx_histories):
+            self.ctx_histories[u] = ctx_history.detach().cpu()
 
 
 class MultilineTransformer(MultilineLogModel):

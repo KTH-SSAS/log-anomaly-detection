@@ -18,7 +18,7 @@ def prepare_args():
         "tokenization",
         type=str,
         help="Tokenization method",
-        choices=["word-field", "word-global", "char", "sentence"],
+        choices=["word-fields", "word-global", "word-merged", "char", "sentence"],
     )
     parser.add_argument("-mc", "--model-config", type=str, help="Model configuration file.", required=True)
     parser.add_argument(

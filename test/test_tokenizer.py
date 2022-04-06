@@ -4,7 +4,9 @@ import numpy as np
 import pytest
 
 from log_analyzer.data.log_file_utils import count_fields, process_logfiles_for_training
-from log_analyzer.tokenizer.tokenizer_neo import LANLTokenizer, LANLVocab
+from log_analyzer.tokenizer.tokenizer_neo import CharTokenizer, GlobalTokenizer, LANLTokenizer, LANLVocab
+from log_analyzer.tokenizer.vocab import GlobalVocab, MergedLANLVocab
+from log_analyzer.train_loop import get_tokenizer
 
 
 def test_counter(processed_log_file):
@@ -15,30 +17,12 @@ def test_counter(processed_log_file):
     assert counts["src_domain"]["DOM1"] == 97
 
 
-@pytest.mark.parametrize(
-    "line",
-    [
-        ["U24", "DOM1", "U24", "DOM1", "C2198", "TGT", "?", "?", "TGS", "Success"],
-        "U24,DOM1,U24,DOM1,C2198,TGT,?,?,TGS,Success",
-        pytest.param("691200,U24@DOM1,U24@DOM1,C2198,TGT,?,?,TGS,Success", marks=pytest.mark.xfail),
-    ],
-)
-def test_tokenizer(tokenizer: LANLTokenizer, line):
-    expected_detokenized = "U24,DOM1,U24,DOM1,C2198,TGT,?,?,TGS,Success"
-    indexes = tokenizer.tokenize(line)
-    expected = np.array([24, 25, 26, 27, 28, 29, 30, 31, 32, 33])
-    assert (indexes == expected).all()
-
-    detokenized_line = tokenizer.detokenize(indexes)
-    assert detokenized_line == expected_detokenized
-
-
 def test_counts2vocab(counts_file):
 
-    vocab = LANLVocab.counts2vocab(counts_file, "vocab.json", 0)
+    vocab = LANLVocab.counts2vocab(counts_file, 0)
 
     assert vocab.special_tokens["[PAD]"] == 0
-    assert "U24" in vocab.vocab["src_user"]
+    assert "U1" in vocab.vocab[0]
 
 
 @pytest.mark.parametrize(
@@ -79,3 +63,42 @@ def test_log_processing(tmp_path, auth_file, redteam_file):
     outfile.mkdir()
 
     process_logfiles_for_training(auth_file, redteam_file, outfile, [0])
+
+
+@pytest.mark.parametrize(
+    "tokenization,expected",
+    [
+        (
+            "word-global",
+            (GlobalTokenizer, GlobalVocab, "U1053,DOM1,U1053,DOM1,[OOV],C625,Kerberos,Network,LogOn,Success"),
+        ),
+        ("word-fields", (LANLTokenizer, LANLVocab, "[OOV],DOM1,[OOV],DOM1,[OOV],C625,Kerberos,Network,LogOn,Success")),
+        (
+            "word-merged",
+            (LANLTokenizer, MergedLANLVocab, "U1053,DOM1,U1053,DOM1,[OOV],C625,Kerberos,Network,LogOn,Success"),
+        ),
+        ("char", (CharTokenizer, None, "U1053,DOM1,U1053,DOM1,C862,C625,Kerberos,Network,LogOn,Success")),
+    ],
+)
+@pytest.mark.parametrize("tiered", [True, False])
+def test_tokenizers(tokenization, tiered, counts_file, expected):
+
+    tokenizer = get_tokenizer(tokenization, tiered, counts_file, cutoff=2)
+
+    e_tokenizer, e_vocab, expected_decoded = expected
+
+    assert isinstance(tokenizer, e_tokenizer)
+    if tokenization != "char":
+        assert isinstance(tokenizer.vocab, e_vocab)
+
+    data = "U1053,DOM1,U1053,DOM1,C862,C625,Kerberos,Network,LogOn,Success"
+    indexes = tokenizer.tokenize(data)
+
+    if tokenization == "char":
+        assert len(indexes) == len(data)
+    else:
+        assert len(indexes) == len(data.split(","))
+
+    data_decoded = tokenizer.detokenize(indexes)
+
+    assert expected_decoded == data_decoded
