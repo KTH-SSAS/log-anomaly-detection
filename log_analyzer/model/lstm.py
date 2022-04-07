@@ -126,7 +126,7 @@ class MultilineLogModel(LogModel):
             Y = Y.flatten(start_dim=1, end_dim=2)
             embedding_losses = self.criterion(output, Y)
             # Reshape the loss tensor to (batch, line sequence, word)
-            embedding_losses = embedding_losses.reshape(original_shape)
+            embedding_losses = embedding_losses.view(original_shape)
         else:
             embedding_losses = self.criterion(output, Y)
         line_losses = torch.mean(embedding_losses, dim=2) if len(embedding_losses.shape) > 2 else embedding_losses

@@ -83,7 +83,7 @@ def test_log_processing(tmp_path, auth_file, redteam_file):
 @pytest.mark.parametrize("tiered", [True, False])
 def test_tokenizers(tokenization, tiered, counts_file, expected):
 
-    tokenizer = get_tokenizer(tokenization, tiered, counts_file, cutoff=2)
+    tokenizer = get_tokenizer(tokenization, counts_file, cutoff=2)
 
     e_tokenizer, e_vocab, expected_decoded = expected
 

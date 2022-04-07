@@ -42,7 +42,7 @@ def test_data_loader_word(shuffle, task, mode):
     batch_sizes = (10, 10)
     counts_file = Path("data/counts678.json")
 
-    tokenizer = get_tokenizer(mode, "", counts_file, cutoff=40)
+    tokenizer = get_tokenizer(mode, counts_file, cutoff=40)
 
     data_handler, _ = create_data_loaders([filepath], batch_sizes, tokenizer, task, shuffle)
     bidirectional = task == "bidir-lm"
@@ -72,7 +72,7 @@ def test_data_loader_multiline(shuffle, memory_type):
     filepath = "data/test_data/6.csv"
     counts_file = Path("data/counts678.json")
     batch_sizes = (10, 10)
-    tokenizer = get_tokenizer("sentence", "multiline-transformer", counts_file, cutoff=49)
+    tokenizer = get_tokenizer("sentence", counts_file, cutoff=49)
     task = "sentence-lm"
 
     window_size = 5

@@ -71,18 +71,17 @@ tokenizer_vocabs = {
 }
 
 
-def get_tokenizer(tokenization, tiered, counts_file: Path, cutoff) -> Tokenizer:
+def get_tokenizer(tokenization, counts_file: Path, cutoff) -> Tokenizer:
     tokenizer: Tokenizer
     vocab = None
     tokenizer_cls, vocab_cls = tokenizer_vocabs[tokenization]
     if counts_file is not None:
         with open(counts_file, encoding="utf8") as f:
             counts = json.load(f)
-        users = list(counts["src_user"].keys()) if tiered else None
+        users = list(counts["src_user"].keys())
         vocab = vocab_cls.counts2vocab(counts, cutoff) if vocab_cls is not None else None
     else:
-        if "word" in tokenization or tiered:
-            raise RuntimeError("No counts file was supplied!")
+        users = None
 
     tokenizer = tokenizer_cls(vocab, users)
     return tokenizer
@@ -190,7 +189,7 @@ def init_from_config_classes(
 
     shuffle_train_data = trainer_config.shuffle_train_data
 
-    tokenizer = get_tokenizer(tokenization, ("tiered" in model_type), counts_file, cutoff)
+    tokenizer = get_tokenizer(tokenization, counts_file, cutoff)
 
     task = get_task(model_type, bidirectional)
 
