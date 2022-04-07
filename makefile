@@ -52,6 +52,6 @@ profile-%: config/lanl_config_%.json
 %_char: TOKENIZATION=char
 %_sentence: TOKENIZATION=sentence
 
-%_word-field %_word-global %_char %_sentence: config/lanl_config_%.json
+%_word-fields %_word-global %_word-merged %_char %_sentence: config/lanl_config_%.json
 	$(TRAIN_MODEL) $* $(TOKENIZATION) -cf $(COUNTS_FILE) -mc $^ $(FLAGS)
 
