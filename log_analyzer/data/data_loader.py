@@ -546,7 +546,7 @@ def load_data_multiline(
     data_folder,
     train_files,
     test_files,
-    batch_size,
+    batch_sizes,
     tokenizer: Tokenizer,
     task,
     window_size,
@@ -557,7 +557,7 @@ def load_data_multiline(
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
     train_loader, val_loader = create_data_loaders_multiline(
         filepaths_train,
-        batch_size,
+        batch_sizes,
         tokenizer,
         task,
         window_size=window_size,
@@ -566,7 +566,7 @@ def load_data_multiline(
     )
     test_loader, _ = create_data_loaders_multiline(
         filepaths_eval,
-        batch_size,
+        (batch_sizes[1], batch_sizes[1]),
         tokenizer,
         task,
         window_size=window_size,
