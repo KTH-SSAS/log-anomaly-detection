@@ -146,10 +146,11 @@ class Evaluator:
 
         # Save the results if desired
         if store_eval_data:
-            if isinstance(self.model, MultilineLogModel):
-                # Multiline logmodels do not produce predictions over a discrete space that can/should be argmaxed
-                # The predictions are instead placed in the continuous sentence-embedding space
-                # Therefore we cannot track token-accuracy, and we thus do not pass Y or preds to add_evaluation_data()
+            if isinstance(self.model, MultilineLogModel) and not self.model.criterion == torch.nn.CrossEntropyLoss:
+                # Multiline logmodels do not necessarily produce predictions over a discrete space that can/should be
+                # argmaxed. If CrossEntropyLoss is not used, this means the predictions are placed in the continuous
+                # sentence-embedding space. Therefore we cannot track token-accuracy and do not pass Y or preds to
+                # add_evaluation_data().
                 Y = None
                 preds = None
             else:
