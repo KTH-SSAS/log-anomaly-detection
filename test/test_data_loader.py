@@ -19,15 +19,15 @@ def test_data_loader_char(shuffle, task):
 
     filepath = "data/test_data/6.csv"
     batch_sizes = (10, 10)
-    tokenizer = CharTokenizer(None)
+    counts_file = Path("data/counts678.json")
+    tokenizer = get_tokenizer("char", counts_file, cutoff=40)
     data_handler, _ = create_data_loaders([filepath], batch_sizes, tokenizer, task, shuffle=shuffle)
     bidirectional = task == "bidir-lm"
     for batch in data_handler:
         x: torch.Tensor = batch["input"]
         x_length = batch["length"]
         for i in range(0, batch_sizes[0]):
-            # Confirm that the targets are equal to the inputs shifted
-            # by 1
+            # Confirm that the targets are equal to the inputs shifted by 1
             all(
                 x[i, 1 : x_length[i] - int(bidirectional)] == batch["target"][i, : x_length[i] - 1 - int(bidirectional)]
             )
