@@ -258,8 +258,8 @@ def init_model(model_config: ModelConfig, bidirectional) -> LogModel:
 
 def wandb_log(iteration, frequency, data: dict):
     # Don't log every result (unless LOGGING_FREQUENCY is 1)
-    if iteration % frequency == 0:
-        if Application.instance().wandb_initialized:
+    if Application.instance().wandb_initialized:
+        if iteration % frequency == 0:
             wandb.log(data)
 
 
@@ -320,7 +320,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
             split_batch = train_loader.split_batch(batch)
             if lm_trainer.model.tiered:
                 if train_loader.flush is False:
-                    loss, done = lm_trainer.train_step(split_batch)
+                    loss, gradient_norm, done = lm_trainer.train_step(split_batch)
                 else:
                     if iteration == 0:
                         raise Exception("Flush happened before any training could be done.")
@@ -329,7 +329,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                     train_loader.skip_file = True
                     continue
             else:
-                loss, done = lm_trainer.train_step(split_batch)
+                loss, gradient_norm, done = lm_trainer.train_step(split_batch)
             iteration += 1  # Total iterations in training (cumulative)
             train_losses.append(loss.item())
             wandb_log(
@@ -341,6 +341,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                     "train/day": batch["day"][0],
                     "train/lr": lm_trainer.scheduler.get_last_lr()[0],
                     "train/epoch": epoch,
+                    "train/gradient_norm": gradient_norm
                 },
             )
             if run_validation and epoch_iteration > 0 and (epoch_iteration % validation_period == 0):
