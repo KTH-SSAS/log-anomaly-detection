@@ -4,7 +4,6 @@ import pytest
 import torch
 
 from log_analyzer.data.data_loader import create_data_loaders, create_data_loaders_multiline
-from log_analyzer.tokenizer.tokenizer_neo import CharTokenizer
 from log_analyzer.train_loop import get_tokenizer
 
 
@@ -62,10 +61,12 @@ def test_data_loader_word(shuffle, task, mode):
 def test_data_loader_tiered():
     pytest.skip()
 
+
 @pytest.mark.parametrize("shuffle", [False, True])
 @pytest.mark.parametrize("memory_type", ["global", "user"])
 def test_data_loader_multiline(shuffle, memory_type):
     from log_analyzer.train_loop import calculate_max_input_length
+
     if shuffle:
         pytest.skip()
 
@@ -77,7 +78,9 @@ def test_data_loader_multiline(shuffle, memory_type):
 
     window_size = 5
     input_length = calculate_max_input_length(task, tokenizer)
-    data_handler, _ = create_data_loaders_multiline(filepath, batch_sizes, tokenizer, task, window_size, memory_type, shuffle=shuffle)
+    data_handler, _ = create_data_loaders_multiline(
+        filepath, batch_sizes, tokenizer, task, window_size, memory_type, shuffle=shuffle
+    )
     final_batch = False
     for batch in data_handler:
         # Final batch doesn't have to be full length - roundabout way to check this because dataset might not have a known length

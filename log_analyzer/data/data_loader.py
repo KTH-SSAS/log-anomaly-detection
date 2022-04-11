@@ -148,6 +148,7 @@ class IterableLogDataset(LogDataset, IterableDataset):  # pylint: disable=abstra
         def generate_iterator():
             for line in parse_multiple_files(self.filepaths):
                 yield prepare_datadict(line, self.task, self.tokenizer)
+
         self.iterator = generate_iterator()
 
 
@@ -239,7 +240,9 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
         return self.iterator
 
     def refresh_iterator(self):
-        """Generates a (new) iterator over the data as specified by class parameters."""
+        """Generates a (new) iterator over the data as specified by class
+        parameters."""
+
         def generate_iterator():
             data = parse_multiple_files(self.filepaths)
             # Actual input to the model (that will produce an output prediction): window_size
@@ -255,6 +258,7 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
                 # window_size*2 (window_size-1 history, window_size inputs, 1 final target)
                 if len(self.user_loglines[line_user]) >= self.window_size * 2:
                     yield self.produce_output_sequence(line_user)
+
         self.iterator = generate_iterator()
 
     def produce_output_sequence(self, user):
@@ -442,7 +446,7 @@ def create_data_loaders_multiline(
     tokenizer: Tokenizer,
     task: str,
     window_size: int,
-    memory_type: str, 
+    memory_type: str,
     shuffle: bool = False,
     dataset_split: Tuple[int, int] = (1, 0),
 ):
@@ -592,7 +596,7 @@ class TieredLogDataLoader:
         num_steps=5,
         delimiter=" ",
     ):
-        self.dataset = None # This dataloader handles the data directly
+        self.dataset = None  # This dataloader handles the data directly
         self.tokenizer: Tokenizer = tokenizer
         self.task = task
         self.delimiter = delimiter  # delimiter for input file

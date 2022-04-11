@@ -67,7 +67,7 @@ tokenizer_vocabs = {
     WORD_FIELDS: (LANLTokenizer, LANLVocab),
     WORD_GLOBAL: (GlobalTokenizer, GlobalVocab),
     WORD_MERGED: (LANLTokenizer, MergedLANLVocab),
-    SENTENCE: (LANLTokenizer, MergedLANLVocab)
+    SENTENCE: (LANLTokenizer, MergedLANLVocab),
 }
 
 

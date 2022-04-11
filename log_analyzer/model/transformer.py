@@ -1,7 +1,7 @@
 """Code related to Transformer language model."""
 import math
-from functools import partial
 from abc import abstractmethod
+from functools import partial
 
 import torch
 from torch import Tensor, nn
