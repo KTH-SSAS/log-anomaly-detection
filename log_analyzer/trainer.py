@@ -8,6 +8,18 @@ from log_analyzer.config import TrainerConfig
 from log_analyzer.model import early_stopping
 from log_analyzer.model.lstm import LogModel
 
+def calculate_gradient_norm(model: torch.nn.Module):
+    parameters = [p for p in model.parameters() if p.grad is not None]
+    total_norm: torch.Tensor = torch.norm(
+        torch.stack(
+            [
+                torch.norm(p.grad.detach(), 2)
+                for p in parameters
+            ]
+        ),
+        2,
+    )
+    return total_norm.item()
 
 class Trainer:
     def __init__(self, config: TrainerConfig, model: LogModel, checkpoint_dir: Path):
@@ -51,6 +63,8 @@ class Trainer:
         else:
             loss.backward()
 
+        gradient_norm = calculate_gradient_norm(self.model)
+
         if self.accumulated_steps == self.config.gradient_accumulation:
             if using_mp:
                 self.scaler.step(self.optimizer)
@@ -65,6 +79,8 @@ class Trainer:
 
         if self.use_scheduler:
             self.scheduler.step()
+
+        return gradient_norm
 
     def load_model_weights(self, file_pointer):
         state_dict = torch.load(file_pointer)
@@ -104,7 +120,6 @@ class Trainer:
             _, loss = self.model(X, lengths=L, mask=M, targets=Y)
 
         # Take an optimization step based on the loss
-        if not validation:
-            self.optimizer_step(loss)
+        gradient_norm = self.optimizer_step(loss) if not validation else 0.0
 
-        return loss, self.earlystopping.early_stop
+        return loss, gradient_norm, self.earlystopping.early_stop
