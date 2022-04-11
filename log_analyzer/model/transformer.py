@@ -304,7 +304,7 @@ class MultilineTransformer(MultilineLogModel):
     The type of sentence embedding used is defined in the config. Valid options are currently:
     "mean": embeds words to the full model_dim, then takes the element-wise mean of the words in the log line.
                    in this case loss is computed in the embedding space (since mean is not reversible)
-    "concatenate": embeds words to model_dim/sentence_length dimensions, then concatenates them to form sentence embedding.
+    "stack": embeds words to model_dim/sentence_length dims, then stacks them to form sentence embedding.
                    in this case loss is computed for each word prediction (since concatenation is reversible)
 
     Output: predicted embedding value for the next logline."""
@@ -335,14 +335,14 @@ class MultilineTransformer(MultilineLogModel):
             self._sentence_embedding = partial(torch.mean, dim=2)
             self._sentence_deembedding = lambda x: None  # Cannot reverse mean() so return None
             embedding_dim = self.model_dim
-        elif self.config.sentence_embedding == "concatenate":
-            # In this case words will be embedded to self.model_dim/sentence_length dims, then concatenated to form
+        elif self.config.sentence_embedding == "stack":
+            # In this case words will be embedded to self.model_dim/sentence_length dims, then stackd to form
             # a self.model_dim long sentence embedding
             # Loss function will be cross entropy
             embedding_dim = int(self.model_dim / 10)
             assert (
                 embedding_dim == self.model_dim / 10
-            ), "For 'Concatenate' sentence embedding, model_dim must be divisible by 10"
+            ), "For 'stack' sentence embedding, model_dim must be divisible by 10"
             self._sentence_embedding = partial(torch.flatten, start_dim=2)
             self._sentence_deembedding = lambda t: t.reshape(t.shape[0], t.shape[1], 10, embedding_dim)
             self.criterion = nn.CrossEntropyLoss(reduction="none", ignore_index=0)
