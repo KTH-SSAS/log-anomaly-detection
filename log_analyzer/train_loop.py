@@ -119,7 +119,7 @@ def get_model_config(filename: Path, model_type: str) -> ModelConfig:
         return TransformerConfig.init_from_file(filename)
     if model_type == TIERED_TRANSFORMER:
         return TieredTransformerConfig.init_from_file(filename)
-    elif model_type == MULTILINE_TRANSFORMER:
+    if model_type == MULTILINE_TRANSFORMER:
         return MultilineTransformerConfig.init_from_file(filename)
 
     raise RuntimeError("Invalid model type.")
@@ -263,16 +263,16 @@ def init_model(model_config: ModelConfig, bidirectional) -> LogModel:
     if isinstance(model_config, TieredLSTMConfig):
         # TieredLSTMConfig is a type of LSTMConfig, so check for tiered first
         return TieredLSTM(model_config, bidirectional)
-    elif isinstance(model_config, LSTMConfig):
+    if isinstance(model_config, LSTMConfig):
         model = BidLSTM(model_config) if bidirectional else FwdLSTM(model_config)
         return model
-    elif isinstance(model_config, TieredTransformerConfig):
+    if isinstance(model_config, TieredTransformerConfig):
         # TieredTransformerConfig is a type of TransformerConfig, so check for tiered first
         return TieredTransformer(model_config, bidirectional)
-    elif isinstance(model_config, MultilineTransformerConfig):
+    if isinstance(model_config, MultilineTransformerConfig):
         # MultilineTransformerConfig is a type of TransformerConfig, so check for Multiline first
         return MultilineTransformer(model_config, bidirectional)
-    elif isinstance(model_config, TransformerConfig):
+    if isinstance(model_config, TransformerConfig):
         return Transformer(model_config, bidirectional)
 
     raise RuntimeError("Invalid model config type.")

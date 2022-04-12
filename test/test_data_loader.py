@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from log_analyzer.data.data_loader import create_data_loaders, create_data_loaders_multiline
-from log_analyzer.train_loop import get_tokenizer
+from log_analyzer.train_loop import calculate_max_input_length, get_tokenizer
 
 
 def batch_equal(v1: torch.Tensor, v2: torch.Tensor):
@@ -65,7 +65,6 @@ def test_data_loader_tiered():
 @pytest.mark.parametrize("shuffle", [False, True])
 @pytest.mark.parametrize("memory_type", ["global", "user"])
 def test_data_loader_multiline(shuffle, memory_type):
-    from log_analyzer.train_loop import calculate_max_input_length
 
     if shuffle:
         pytest.skip()
@@ -83,7 +82,8 @@ def test_data_loader_multiline(shuffle, memory_type):
     )
     final_batch = False
     for batch in data_handler:
-        # Final batch doesn't have to be full length - roundabout way to check this because dataset might not have a known length
+        # Final batch doesn't have to be full length
+        # Roundabout way to check this because dataset might not have a known length (Iterable)
         if final_batch:
             raise AssertionError("Encountered non-full batch that wasn't final batch of dataloader.")
         try:

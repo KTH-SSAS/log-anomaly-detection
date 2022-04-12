@@ -92,16 +92,16 @@ class MultilineLogModel(LogModel):
         # self.criterion = nn.CosineEmbeddingLoss(reduction="none")
 
     @abstractmethod
-    def word_embedding(self):
-        pass
+    def word_embedding(self, src):
+        ...
 
     @abstractmethod
-    def sentence_embedding(self):
-        pass
+    def sentence_embedding(self, src):
+        ...
 
     @abstractmethod
-    def sentence_deembedding(self):
-        pass
+    def sentence_deembedding(self, src):
+        ...
 
     def compute_loss(self, output: Tensor, Y: Tensor):
         """Computes the loss for the given model output and ground truth."""
@@ -121,7 +121,7 @@ class MultilineLogModel(LogModel):
             embedding_losses = self.criterion(criterion_output, criterion_Y, targets)
             embedding_losses = embedding_losses.view(Y.shape[0], Y.shape[1])
         elif isinstance(self.criterion, nn.CrossEntropyLoss):
-            # Flatten dims 1 and 2 (line sequence, word) then transpose so order becomes (batch, vocab_dim, sequence+word position)
+            # Flatten dims 1 and 2 (line sequence, word) then transpose to: (batch, vocab_dim, sequence+word position)
             output = output.flatten(start_dim=1, end_dim=2).transpose(1, 2)
             Y = Y.flatten(start_dim=1, end_dim=2)
             embedding_losses = self.criterion(output, Y)

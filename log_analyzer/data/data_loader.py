@@ -172,12 +172,12 @@ class MapMultilineDataset(LogDataset, Dataset):
 
         self.loglines.extend(iterator)
         # Length explanation: Divide by window size and floor since we can't/don't want to pass on incomplete sequences
-        # Subtract one because we lose the first window_size lines because they can't have a history of length window_size
+        # -1 because we lose the first window_size lines because they can't have a history of length window_size
         self.length = (len(self.loglines) // self.window_size) - 1
 
     def __getitem__(self, index):
         # Actual input to the model (that will produce an output prediction): window_size
-        # Extra history before the start of this input needed to ensure a full window_size history for every entry: window_size-1
+        # Extra history before needed to ensure a full window_size history for every entry: window_size-1
         # Length of each item: 2*window_size - 1 long
         start_index = index * self.window_size
         end_index = start_index + 2 * self.window_size  # Add 1 line that will be the target for the last input
@@ -239,6 +239,9 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
     def __iter__(self):
         return self.iterator
 
+    def __getitem__(self, index):
+        raise NotImplementedError("Iterable dataset must be accessed via __iter__.")
+
     def refresh_iterator(self):
         """Generates a (new) iterator over the data as specified by class
         parameters."""
@@ -246,7 +249,7 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
         def generate_iterator():
             data = parse_multiple_files(self.filepaths)
             # Actual input to the model (that will produce an output prediction): window_size
-            # Extra history before the start of this input needed to ensure a full window_size history for every entry: window_size-1
+            # Extra history needed to ensure a full window_size history for every entry: window_size-1
             # Length of each item: 2*window_size - 1 long
             for line in data:
                 line_data = prepare_datadict(line, self.task, self.tokenizer)
@@ -290,7 +293,7 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
                 datadict["red"].append(line_data["red"])
                 datadict["target"].append(line_data["target"])
                 datadict["length"].append(line_data["length"])
-        # Remove all lines from this user, except the ones necessary for history for the next sequence (last window_size - 1)
+        # Remove all lines from this user not needed for history for the next sequence (last window_size - 1)
         lines = lines[self.window_size - 1 :]
         self.user_loglines[user] = lines
         return datadict
@@ -456,7 +459,7 @@ def create_data_loaders_multiline(
     set to None.
     """
 
-    def collate_fn(data, jagged=False, pad_idx=0):
+    def multiline_collate_fn(data, jagged=False, pad_idx=0):
         """Pads the input fields to the length of the longest sequence in the
         batch."""
         batch = {}
@@ -475,12 +478,12 @@ def create_data_loaders_multiline(
 
             batch["mask"] = batch["input"] != pad_idx
 
-        for key in batch:
-            for sequence_index in range(len(batch[key])):
-                if isinstance(batch[key][sequence_index], list):
-                    batch[key][sequence_index] = torch.stack(batch[key][sequence_index])
-            if isinstance(batch[key], list):
-                batch[key] = torch.stack(batch[key])
+        for key, value in batch.items():
+            for index, sequence in enumerate(value):
+                if isinstance(sequence, list):
+                    value[index] = torch.stack(sequence)
+            if isinstance(value, list):
+                batch[key] = torch.stack(value)
 
         return batch
 
@@ -509,7 +512,7 @@ def create_data_loaders_multiline(
         # Return just a single dataset
         datasets = [dataset, None]
 
-    collate = partial(collate_fn, jagged=tokenizer.jagged)
+    collate = partial(multiline_collate_fn, jagged=tokenizer.jagged)
 
     data_handlers = [
         LogDataLoader(dataset, batch_size=bs, shuffle=shuffle, collate_function=collate)
