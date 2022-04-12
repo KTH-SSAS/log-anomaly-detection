@@ -399,7 +399,7 @@ def create_data_loaders(
     tokenizer: Tokenizer,
     task: str,
     shuffle: bool = False,
-    dataset_split: Tuple[int, int] = (1, 0),
+    validation_portion: float = 0,
 ) -> Sequence[Optional[LogDataLoader]]:
     """Creates and returns 2 data loaders.
 
@@ -408,35 +408,26 @@ def create_data_loaders(
     """
 
     dataset: LogDataset
-    if shuffle or dataset_split is not None:
+    if shuffle or validation_portion > 0:
         dataset = MapLogDataset(filepaths, tokenizer, task)
     else:
         dataset = IterableLogDataset(filepaths, tokenizer, task)
 
-    datasets: Sequence[Union[Subset, Dataset, Optional[Dataset]]]
+    datasets: Sequence[Union[Subset, LogDataset]]
     # Split the dataset according to the split list
-    if dataset_split != (1, 0):
-        # Ensure the list has 2 values and sums to 1
-        if sum(dataset_split) != 1:
-            raise ValueError("Sum of list of splits is not 1.")
-        if len(dataset_split) != 2:
-            raise ValueError("Split list does not contain exactly 2 values.")
-        # Convert splits into lengths as proportion of dataset length
-        splits = [int(split_val * len(dataset)) for split_val in dataset_split]
-        # Ensure sum of dataset_split is the same as dataset length
-        size_diff = len(dataset) - sum(splits)
-        splits[0] += size_diff
+    if 0 < validation_portion < 1 and isinstance(dataset, MapLogDataset):
+        # Convert val portion into length as proportion of dataset length
+        val_size = int(validation_portion * len(dataset))
+        train_size = len(dataset) - val_size
 
-        datasets = random_split(dataset, splits)
+        datasets = random_split(dataset, (train_size, val_size))
     else:
         # Return just a single dataset
-        datasets = [dataset, None]
+        datasets = [dataset]
 
     collate = partial(collate_fn, jagged=tokenizer.jagged)
     data_handlers = [
         LogDataLoader(dataset, batch_size=bs, shuffle=shuffle, collate_function=collate)
-        if dataset is not None
-        else None
         for bs, dataset in zip(batch_sizes, datasets)
     ]
 
@@ -451,8 +442,8 @@ def create_data_loaders_multiline(
     window_size: int,
     memory_type: str,
     shuffle: bool = False,
-    dataset_split: Tuple[int, int] = (1, 0),
-):
+    validation_portion: float = 0,
+) -> List[LogDataLoader]:
     """Creates and returns 2 data loaders.
 
     If dataset_split is not provided the second data loader is instead
@@ -487,6 +478,7 @@ def create_data_loaders_multiline(
 
         return batch
 
+    dataset: LogDataset
     if memory_type.lower() == "global":
         dataset = MapMultilineDataset(filepaths, tokenizer, task, window_size=window_size)
     elif memory_type.lower() == "user":
@@ -494,30 +486,22 @@ def create_data_loaders_multiline(
     else:
         raise ValueError(f"Invalid memory_type. Expected 'global' or 'user', got '{memory_type}'")
 
+    datasets: Sequence[Union[Subset, LogDataset]]
     # Split the dataset according to the split list
-    if dataset_split is not None and not isinstance(dataset, IterableDataset):
-        # Ensure the list has 2 values and sums to 1
-        if sum(dataset_split) != 1:
-            raise ValueError("Sum of list of splits is not 1.")
-        if len(dataset_split) != 2:
-            raise ValueError("Split list does not contain exactly 2 values.")
-        # Convert splits into lengths as proportion of dataset length
-        dataset_split = [int(split_val * len(dataset)) for split_val in dataset_split]
-        # Ensure sum of dataset_split is the same as dataset length
-        size_diff = len(dataset) - sum(dataset_split)
-        dataset_split[0] += size_diff
+    if 0 < validation_portion < 1 and isinstance(dataset, MapMultilineDataset):
+        # Convert val portion into length as proportion of dataset length
+        val_size = int(validation_portion * len(dataset))
+        train_size = len(dataset) - val_size
 
-        datasets = torch.utils.data.random_split(dataset, dataset_split)
+        datasets = random_split(dataset, (train_size, val_size))
     else:
         # Return just a single dataset
-        datasets = [dataset, None]
+        datasets = [dataset]
 
     collate = partial(multiline_collate_fn, jagged=tokenizer.jagged)
 
     data_handlers = [
         LogDataLoader(dataset, batch_size=bs, shuffle=shuffle, collate_function=collate)
-        if dataset is not None
-        else None
         for bs, dataset in zip(batch_sizes, datasets)
     ]
     return data_handlers
@@ -530,35 +514,35 @@ def load_data(
     batch_sizes: Tuple[int, int],
     tokenizer: Tokenizer,
     task: str,
-    train_val_split: Tuple[int, int] = (1, 0),
+    validation_portion: float = 0,
     shuffle_train_data: bool = True,
 ):
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
     train_loader, val_loader = create_data_loaders(
-        filepaths_train, batch_sizes, tokenizer, task, shuffle_train_data, train_val_split
+        filepaths_train, batch_sizes, tokenizer, task, shuffle_train_data, validation_portion
     )
-    test_loader, _ = create_data_loaders(
+    test_loader = create_data_loaders(
         filepaths_eval,
         (batch_sizes[1], batch_sizes[1]),
         tokenizer,
         task,
         shuffle=False,
-    )
+    )[0]
 
     return train_loader, val_loader, test_loader
 
 
 def load_data_multiline(
-    data_folder,
-    train_files,
-    test_files,
-    batch_sizes,
+    data_folder: str,
+    train_files: List[str],
+    test_files: List[str],
+    batch_sizes: Tuple[int, int],
     tokenizer: Tokenizer,
-    task,
-    window_size,
-    memory_type,
-    train_val_split=(1, 0),
+    task: str,
+    window_size: int,
+    memory_type: str,
+    validation_portion: float = 0,
 ):
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
@@ -569,17 +553,16 @@ def load_data_multiline(
         task,
         window_size=window_size,
         memory_type=memory_type,
-        dataset_split=train_val_split,
+        validation_portion=validation_portion,
     )
-    test_loader, _ = create_data_loaders_multiline(
+    test_loader = create_data_loaders_multiline(
         filepaths_eval,
         (batch_sizes[1], batch_sizes[1]),
         tokenizer,
         task,
         window_size=window_size,
         memory_type=memory_type,
-        dataset_split=None,
-    )
+    )[0]
 
     return train_loader, val_loader, test_loader
 

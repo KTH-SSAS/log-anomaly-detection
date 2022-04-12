@@ -221,7 +221,7 @@ def init_from_config_classes(
             (trainer_config.train_batch_size, trainer_config.eval_batch_size),
             tokenizer,
             task,
-            trainer_config.train_val_split,
+            trainer_config.validation_portion,
             shuffle_train_data,
         )
     elif model_type in (MULTILINE_TRANSFORMER) and isinstance(model_config, MultilineTransformerConfig):
@@ -234,7 +234,7 @@ def init_from_config_classes(
             task,
             model_config.window_size,
             model_config.memory_type,
-            trainer_config.train_val_split,
+            trainer_config.validation_portion,
         )
     else:
         raise RuntimeError("Invalid model type.")
@@ -334,7 +334,10 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
     val_run = 0
     iteration = 0
     for epoch in tqdm(range(epochs), desc="Epoch   "):
-        if isinstance(train_loader.dataset, torch.utils.data.IterableDataset) and epoch > 0:
+        if (
+            isinstance(train_loader.dataset, (data_utils.IterableLogDataset, data_utils.IterableUserMultilineDataset))
+            and epoch > 0
+        ):
             # Refresh the iterator so we can run another epoch
             train_loader.dataset.refresh_iterator()
         # Shuffle train data order for each epoch?
