@@ -51,17 +51,14 @@ class Trainer:
         else:
             loss.backward()
 
-        if self.accumulated_steps == self.config.gradient_accumulation:
+        self.accumulated_steps = (self.accumulated_steps + 1) % self.config.gradient_accumulation
+        if self.accumulated_steps == 0:
             if using_mp:
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
             else:
                 self.optimizer.step()
-
             self.optimizer.zero_grad()
-            self.accumulated_steps = 0
-        else:
-            self.accumulated_steps += 1
 
         if self.use_scheduler:
             self.scheduler.step()
