@@ -46,7 +46,7 @@ class LogModel(nn.Module):
         return loss, line_losses.unsqueeze(-1)
 
     @abstractmethod
-    def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None, targets=None):
+    def forward(self, sequences, lengths: Tensor = None, mask=None, targets=None):
         ...
 
 
@@ -78,7 +78,7 @@ class TieredLogModel(LogModel):
         return loss, line_losses_list
 
     @abstractmethod
-    def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None, targets=None):
+    def forward(self, sequences, lengths: Tensor = None, mask=None, targets=None):
         ...
 
 
@@ -131,7 +131,7 @@ class LSTMLanguageModel(LogModel):
     def bidirectional(self):
         raise NotImplementedError("Bidirectional property has to be set in child class.")
 
-    def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None, targets=None):
+    def forward(self, sequences, lengths: Tensor = None, mask=None, targets=None):
         """Performs token embedding, context-prepending if model is tiered, and
         runs the LSTM on the input sequences."""
         # batch size, sequence length, embedded dimension
@@ -173,7 +173,7 @@ class FwdLSTM(LSTMLanguageModel):
         self.name = "LSTM"
         super().__init__(config)
 
-    def forward(self, sequences, lengths=None, context_vectors=None, mask=None, targets=None):
+    def forward(self, sequences, lengths=None, mask=None, targets=None):
         """Handles attention (if relevant) and grabs the final token output
         guesses.
 
@@ -324,7 +324,7 @@ class TieredLSTM(TieredLogModel):
         # Weight initialization
         initialize_weights(self)
 
-    def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None, targets=None):
+    def forward(self, sequences, lengths: Tensor = None, mask=None, targets=None):
         """Forward pass of tiered LSTM model.
 
         1. Applies context LSTM to the saved context information to generate context input for event LSTM.
