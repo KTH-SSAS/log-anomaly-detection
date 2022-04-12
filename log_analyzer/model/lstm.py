@@ -167,7 +167,7 @@ class FwdLSTM(LSTMLanguageModel):
         Returns: predicted_tokens, (lstm_output_features, final_hidden_state), loss
         If targets is None then loss is returned as None
         """
-        lstm_out, hx = super().forward(sequences, lengths, context_vectors)
+        lstm_out, hx = super().forward(sequences, lengths)
 
         if self.has_attention:
             attention, _ = self.attention(lstm_out, mask)
@@ -198,14 +198,14 @@ class BidLSTM(LSTMLanguageModel):
         self.name = "LSTM-Bid"
         super().__init__(config)
 
-    def forward(self, sequences: torch.Tensor, lengths=None, context_vectors=None, mask=None, targets=None):
+    def forward(self, sequences: torch.Tensor, lengths=None, mask=None, targets=None):
         """Handles bidir-state-alignment, attention (if relevant) and grabs the
         final token output guesses.
 
         Returns: predicted_tokens, (lstm_output_features, final_hidden_state), loss
         If targets is None then loss is returned as None
         """
-        lstm_out, hx = super().forward(sequences, lengths, context_vectors)
+        lstm_out, hx = super().forward(sequences, lengths)
         # Reshape lstm_out to make forward/backward into separate dims
 
         if lengths is not None:
