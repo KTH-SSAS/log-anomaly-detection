@@ -360,12 +360,14 @@ class TieredLSTM(TieredLogModel):
                 context_lstm_input,
                 (context_hidden_state, context_cell_state),
             )
-            context_vector = torch.squeeze(context_vector, dim=1)
+
+            x_lookups = self.event_level_lstm.embeddings(sequence)
+            seq_length = sequence.shape[1]
+            context = context_vector.tile([1, seq_length, 1])
+            sequence = torch.cat([x_lookups, context], dim=-1)
 
             # Apply the event model to get token predictions
-            event_model_output, (all_hidden, final_hidden), _ = self.event_level_lstm(
-                sequence, lengths=length, context_vectors=context_vector
-            )
+            event_model_output, (all_hidden, final_hidden), _ = self.event_level_lstm(sequence, lengths=length)
             if self.event_level_lstm.bidirectional:
                 final_hidden = final_hidden.view(1, final_hidden.shape[1], -1)
             token_output[idx][
