@@ -135,23 +135,10 @@ class LSTMLanguageModel(LogModel):
         """Performs token embedding, context-prepending if model is tiered, and
         runs the LSTM on the input sequences."""
         # batch size, sequence length, embedded dimension
-        x_lookups = self.embeddings(sequences)
-        if self.tiered:
-            cat_x_lookups = torch.Tensor([])
-            if Application.instance().using_cuda:
-                cat_x_lookups = cat_x_lookups.cuda()
-            # x_lookups (seq len x batch x embedding)
-            x_lookups = x_lookups.transpose(0, 1)
-            for x_lookup in x_lookups:  # x_lookup (batch x embedding).
-                # x_lookup (1 x batch x embedding)
-                x_lookup = torch.unsqueeze(torch.cat((x_lookup, context_vectors), dim=1), dim=0)
-                # cat_x_lookups (n x batch x embedding) n = number of iteration
-                # where 1 =< n =< seq_len
-                cat_x_lookups = torch.cat((cat_x_lookups, x_lookup), dim=0)
-            # x_lookups (batch x seq len x embedding + context)
-            x_lookups = cat_x_lookups.transpose(0, 1)
-
-        lstm_in = x_lookups
+        if sequences.shape[-1] == self.config.input_dim:
+            lstm_in = sequences
+        else:
+            lstm_in = self.embeddings(sequences)
 
         if lengths is not None:
             if len(lengths.shape) > 1:
