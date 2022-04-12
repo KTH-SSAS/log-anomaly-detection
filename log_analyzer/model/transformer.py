@@ -407,16 +407,16 @@ class MultilineTransformer(MultilineLogModel):
         and yielding a sequence of embedded word tokens."""
         return self._sentence_deembedding(src)
 
-    def forward(self, src: Tensor, lengths=None, mask=None, targets=None):
-        # src: (batch, sequence, log_line)
+    def forward(self, sequences: Tensor, lengths=None, context_vectors=None, mask=None, targets=None):
+        # sequences: (batch, sequence, log_line)
         # Step 1: Use sentence embedding to summarise each logline as a single token
         # Step 2: Apply transformer across this sequence of logline tokens
 
         # Prepare mask
-        self.src_mask = self.get_mask(src)
+        self.src_mask = self.get_mask(sequences)
 
         # Apply word embedding to each log line in each sequence in each batch
-        word_embeddings = self.word_embedding(src)
+        word_embeddings = self.word_embedding(sequences)
         # word_embeddings: (batch size, sequence length, logline length, embedded dimension)
         line_embeddings = self.sentence_embedding(
             word_embeddings
