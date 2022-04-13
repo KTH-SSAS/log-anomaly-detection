@@ -232,7 +232,7 @@ def init_from_config_classes(
             (trainer_config.train_batch_size, trainer_config.eval_batch_size),
             tokenizer,
             task,
-            model_config.window_size,
+            model_config.shift_window,
             model_config.memory_type,
             trainer_config.validation_portion,
         )
@@ -369,7 +369,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                     "train/day": batch["day"][0],
                     "train/lr": lm_trainer.scheduler.get_last_lr()[0],
                     "train/epoch": epoch,
-                    "train/gradient_norm": gradient_norm
+                    "train/gradient_norm": gradient_norm,
                 },
             )
             if run_validation and epoch_iteration > 0 and (epoch_iteration % validation_period == 0):

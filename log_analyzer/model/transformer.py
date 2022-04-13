@@ -326,7 +326,7 @@ class MultilineTransformer(MultilineLogModel):
         self.feedforward_dim = config.feedforward_dim
         self.vocab_size = config.vocab_size
         # Window size for the purposes of pe, etc.
-        self.virtual_window_size = self.config.window_size * 2 - 1
+        self.virtual_shift_window = self.config.shift_window * 2 - 1
 
         self.using_cuda = Application.instance().using_cuda
 
@@ -362,7 +362,7 @@ class MultilineTransformer(MultilineLogModel):
             # Normal, learnable embeddings
             self._word_embedding = nn.Embedding(self.vocab_size, embedding_dim)
 
-        self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout, max_len=self.virtual_window_size)
+        self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout, max_len=self.virtual_shift_window)
         encoder_layers = nn.TransformerEncoderLayer(
             self.model_dim, self.attention_heads, self.feedforward_dim, dropout=self.dropout, batch_first=True
         )
@@ -374,20 +374,20 @@ class MultilineTransformer(MultilineLogModel):
         # batch size, sequence length, embedded dimension
         seq_len = src.shape[1]
         device = src.device
-        # Simple case - input sequences are window_size long, generate standard self-attention mask
+        # Simple case - input sequences are shift_window long, generate standard self-attention mask
         if self.src_mask is None or self.src_mask.shape[0] != seq_len:
-            if seq_len == self.config.window_size:
+            if seq_len == self.config.shift_window:
                 mask = _generate_square_subsequent_mask(seq_len).to(device)
-            # Sequences contain extra history so that each step can have the full window_size history length.
-            # We must generate an appropriate mask so each step has exactly window_size long history
-            # E.g. , with window_size of 3, this might look like:
+            # Sequences contain extra history so that each step can have the full shift_window history length.
+            # We must generate an appropriate mask so each step has exactly shift_window long history
+            # E.g. , with shift_window of 3, this might look like:
             # 0 0 0 0 0
             # 0 0 0 0 0
             # i i i 0 0
             # 0 i i i 0
             # 0 0 i i i
             else:
-                mask = _generate_subsquare_subsequent_mask(seq_len, self.config.window_size).to(device)
+                mask = _generate_subsquare_subsequent_mask(seq_len, self.config.shift_window).to(device)
             self.src_mask = mask
 
         return self.src_mask
@@ -431,8 +431,8 @@ class MultilineTransformer(MultilineLogModel):
         else:
             pad_mask = mask == 0
         tf_hidden = self.transformer_encoder(line_embeddings, self.src_mask, src_key_padding_mask=pad_mask)
-        # Discard all but the last window_size entries
-        logits = tf_hidden[:, -self.config.window_size :, :]
+        # Discard all but the last shift_window entries
+        logits = tf_hidden[:, -self.config.shift_window :, :]
 
         # Try to reverse sentence embedding to produce logits
         deembedded_sentence = self.sentence_deembedding(logits)

@@ -156,14 +156,14 @@ class MapMultilineDataset(LogDataset, Dataset):
     """Provides data via __getitem__, allowing arbitrary data entries to be
     accessed via index.
 
-    Provides sequences of loglines of length window_size * 2 - 1.
+    Provides sequences of loglines of length shift_window * 2 - 1.
     """
 
-    def __init__(self, filepaths, tokenizer, task, window_size=100) -> None:
+    def __init__(self, filepaths, tokenizer, task, shift_window=100) -> None:
         assert task == SENTENCE_LM, "Task must be 'sentence-lm' when using this dataset."
         super().__init__(filepaths, tokenizer, task)
 
-        self.window_size = window_size
+        self.shift_window = shift_window
 
         self.loglines = []
         self.skipsos = True
@@ -172,15 +172,15 @@ class MapMultilineDataset(LogDataset, Dataset):
 
         self.loglines.extend(iterator)
         # Length explanation: Divide by window size and floor since we can't/don't want to pass on incomplete sequences
-        # -1 because we lose the first window_size lines because they can't have a history of length window_size
-        self.length = (len(self.loglines) // self.window_size) - 1
+        # -1 because we lose the first shift_window lines because they can't have a history of length shift_window
+        self.length = (len(self.loglines) // self.shift_window) - 1
 
     def __getitem__(self, index):
-        # Actual input to the model (that will produce an output prediction): window_size
-        # Extra history before needed to ensure a full window_size history for every entry: window_size-1
-        # Length of each item: 2*window_size - 1 long
-        start_index = index * self.window_size
-        end_index = start_index + 2 * self.window_size  # Add 1 line that will be the target for the last input
+        # Actual input to the model (that will produce an output prediction): shift_window
+        # Extra history before needed to ensure a full shift_window history for every entry: shift_window-1
+        # Length of each item: 2*shift_window - 1 long
+        start_index = index * self.shift_window
+        end_index = start_index + 2 * self.shift_window  # Add 1 line that will be the target for the last input
         sequence = self.loglines[start_index:end_index]
         parsed_sequence = self.parse_lines(sequence)
         return parsed_sequence
@@ -207,8 +207,8 @@ class MapMultilineDataset(LogDataset, Dataset):
             # The last line in the input is only used as the target for the 2nd to last line, not as input
             if idx < this_sequence_len - 1:
                 datadict["input"].append(data["input"])
-            # The first window_size lines processed are not the target of anything (in this sequence) - only history
-            if idx > self.window_size - 1:
+            # The first shift_window lines processed are not the target of anything (in this sequence) - only history
+            if idx > self.shift_window - 1:
                 datadict["second"].append(data["second"])
                 datadict["day"].append(data["day"])
                 datadict["user"].append(data["user"])
@@ -222,14 +222,14 @@ class MapMultilineDataset(LogDataset, Dataset):
 class IterableUserMultilineDataset(LogDataset, IterableDataset):
     """Provides data via __iter__, allowing data to be accessed in order only.
 
-    Provides sequences of loglines of length window_size * 2 - 1. Each sequence contains loglines from a single user.
+    Provides sequences of loglines of length shift_window * 2 - 1. Each sequence contains loglines from a single user.
     """
 
-    def __init__(self, filepaths, tokenizer, task, window_size=100) -> None:
+    def __init__(self, filepaths, tokenizer, task, shift_window=100) -> None:
         assert task == SENTENCE_LM, f"Task must be 'sentence-lm' when using this dataset. Got '{task}'."
         super().__init__(filepaths, tokenizer, task)
 
-        self.window_size = window_size
+        self.shift_window = shift_window
 
         self.skipsos = True
         self.skipeos = True
@@ -248,9 +248,9 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
 
         def generate_iterator():
             data = parse_multiple_files(self.filepaths)
-            # Actual input to the model (that will produce an output prediction): window_size
-            # Extra history needed to ensure a full window_size history for every entry: window_size-1
-            # Length of each item: 2*window_size - 1 long
+            # Actual input to the model (that will produce an output prediction): shift_window
+            # Extra history needed to ensure a full shift_window history for every entry: shift_window-1
+            # Length of each item: 2*shift_window - 1 long
             for line in data:
                 line_data = prepare_datadict(line, self.task, self.tokenizer)
                 line_user = line_data["user"].item()
@@ -258,8 +258,8 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
                     self.user_loglines[line_user] = []
                 self.user_loglines[line_user].append(line_data)
                 # Check if this user has enough lines to produce a sequence:
-                # window_size*2 (window_size-1 history, window_size inputs, 1 final target)
-                if len(self.user_loglines[line_user]) >= self.window_size * 2:
+                # shift_window*2 (shift_window-1 history, shift_window inputs, 1 final target)
+                if len(self.user_loglines[line_user]) >= self.shift_window * 2:
                     yield self.produce_output_sequence(line_user)
 
         self.iterator = generate_iterator()
@@ -285,16 +285,16 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
             # The last line in the input is only used as the target for the 2nd to last line, not as input
             if idx < this_sequence_len - 1:
                 datadict["input"].append(line_data["input"])
-            # The first window_size lines processed are not the target of anything (in this sequence) - only history
-            if idx > self.window_size - 1:
+            # The first shift_window lines processed are not the target of anything (in this sequence) - only history
+            if idx > self.shift_window - 1:
                 datadict["second"].append(line_data["second"])
                 datadict["day"].append(line_data["day"])
                 datadict["user"].append(line_data["user"])
                 datadict["red"].append(line_data["red"])
                 datadict["target"].append(line_data["target"])
                 datadict["length"].append(line_data["length"])
-        # Remove all lines from this user not needed for history for the next sequence (last window_size - 1)
-        lines = lines[self.window_size - 1 :]
+        # Remove all lines from this user not needed for history for the next sequence (last shift_window - 1)
+        lines = lines[self.shift_window - 1 :]
         self.user_loglines[user] = lines
         return datadict
 
@@ -439,7 +439,7 @@ def create_data_loaders_multiline(
     batch_sizes: Tuple[int, int],
     tokenizer: Tokenizer,
     task: str,
-    window_size: int,
+    shift_window: int,
     memory_type: str,
     shuffle: bool = False,
     validation_portion: float = 0,
@@ -480,9 +480,9 @@ def create_data_loaders_multiline(
 
     dataset: LogDataset
     if memory_type.lower() == "global":
-        dataset = MapMultilineDataset(filepaths, tokenizer, task, window_size=window_size)
+        dataset = MapMultilineDataset(filepaths, tokenizer, task, shift_window=shift_window)
     elif memory_type.lower() == "user":
-        dataset = IterableUserMultilineDataset(filepaths, tokenizer, task, window_size=window_size)
+        dataset = IterableUserMultilineDataset(filepaths, tokenizer, task, shift_window=shift_window)
     else:
         raise ValueError(f"Invalid memory_type. Expected 'global' or 'user', got '{memory_type}'")
 
@@ -540,7 +540,7 @@ def load_data_multiline(
     batch_sizes: Tuple[int, int],
     tokenizer: Tokenizer,
     task: str,
-    window_size: int,
+    shift_window: int,
     memory_type: str,
     validation_portion: float = 0,
 ):
@@ -551,7 +551,7 @@ def load_data_multiline(
         batch_sizes,
         tokenizer,
         task,
-        window_size=window_size,
+        shift_window=shift_window,
         memory_type=memory_type,
         validation_portion=validation_portion,
     )
@@ -560,7 +560,7 @@ def load_data_multiline(
         (batch_sizes[1], batch_sizes[1]),
         tokenizer,
         task,
-        window_size=window_size,
+        shift_window=shift_window,
         memory_type=memory_type,
     )[0]
 

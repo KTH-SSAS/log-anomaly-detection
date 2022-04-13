@@ -4,7 +4,7 @@
 	"model_dim": 240,
 	"attention_heads": 16,
 	"dropout": 0.25,
-	"window_size": 100,
+	"shift_window": 100,
 	"memory_type": "user",
 	"sentence_embedding": "stack",
 	"embeddings_path": ""

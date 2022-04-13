@@ -103,7 +103,7 @@ class TieredTransformerConfig(TransformerConfig):
 class MultilineTransformerConfig(TransformerConfig):
     """Configuration class for Multiline Transformer models."""
 
-    window_size: int
+    shift_window: int
     memory_type: str
     sentence_embedding: str
     embeddings_path: str

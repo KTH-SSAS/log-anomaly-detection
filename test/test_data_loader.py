@@ -75,10 +75,10 @@ def test_data_loader_multiline(shuffle, memory_type):
     tokenizer = get_tokenizer("sentence", counts_file, cutoff=49)
     task = "sentence-lm"
 
-    window_size = 5
+    shift_window = 5
     input_length = calculate_max_input_length(task, tokenizer)
     data_handler = create_data_loaders_multiline(
-        filepath, batch_sizes, tokenizer, task, window_size, memory_type, shuffle=shuffle
+        filepath, batch_sizes, tokenizer, task, shift_window, memory_type, shuffle=shuffle
     )[0]
     final_batch = False
     for batch in data_handler:
@@ -87,15 +87,15 @@ def test_data_loader_multiline(shuffle, memory_type):
         if final_batch:
             raise AssertionError("Encountered non-full batch that wasn't final batch of dataloader.")
         try:
-            assert batch["input"].shape == torch.Size([batch_sizes[0], 2 * window_size - 1, input_length])
+            assert batch["input"].shape == torch.Size([batch_sizes[0], 2 * shift_window - 1, input_length])
         except AssertionError:
-            assert batch["input"].shape[1:] == torch.Size([2 * window_size - 1, input_length])
+            assert batch["input"].shape[1:] == torch.Size([2 * shift_window - 1, input_length])
             final_batch = True
         for b in range(batch["input"].shape[0]):
             # Confirm that the targets are equal to the last window-size input.
-            # Note that the first of these window_size inputs won't be present in targets, and likewise
+            # Note that the first of these shift_window inputs won't be present in targets, and likewise
             # The last target won't be present in the input
             assert batch_equal(
-                batch["input"][b, -(window_size - 1) :],
+                batch["input"][b, -(shift_window - 1) :],
                 batch["target"][b, :-1],
             ), "forward-shift"
