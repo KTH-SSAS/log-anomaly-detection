@@ -89,8 +89,28 @@ class Tokenizer(ABC):
         ...
 
     @abstractmethod
-    def encode(self, tokens: Union[str, List[str]], add_sos, add_eos) -> NDArray[np.int64]:
+    def _encode_single_position(self, token: str, field: int):
         ...
+
+    def encode(self, tokens: Union[str, List[str]], add_sos, add_eos) -> NDArray[np.int64]:
+
+        num_pre_tokens = int(add_sos)
+        num_post_tokens = int(add_eos)
+
+        total_length = num_pre_tokens + len(tokens) + num_post_tokens
+
+        indexes = np.zeros(total_length, dtype=np.int64)
+
+        for i in range(num_pre_tokens):
+            indexes[i] = self.sos_idx
+
+        for i in range(num_pre_tokens, total_length - num_post_tokens):
+            indexes[i] = self._encode_single_position(tokens[i - num_pre_tokens], i - num_pre_tokens)
+
+        for i in range(num_post_tokens):
+            indexes[total_length - num_post_tokens + i] = self.eos_idx
+
+        return indexes
 
     @abstractmethod
     def decode(self, indexes: NDArray[np.int64]) -> List[str]:
@@ -98,6 +118,16 @@ class Tokenizer(ABC):
 
     @abstractmethod
     def detokenize(self, indexes: NDArray[np.int64]) -> str:
+        ...
+
+    @property
+    @abstractmethod
+    def sos_idx(self):
+        ...
+
+    @property
+    @abstractmethod
+    def eos_idx(self):
         ...
 
     def user_idx(self, user):
@@ -148,8 +178,8 @@ class CharTokenizer(Tokenizer):
         self.pad_token = PAD_TOKEN
         self.pad_idx = self.special_tokens[PAD_TOKEN]
 
-        self.eos_idx = self.special_tokens[EOS_TOKEN]
-        self.sos_idx = self.special_tokens[SOS_TOKEN]
+        self._eos_idx = self.special_tokens[EOS_TOKEN]
+        self._sos_idx = self.special_tokens[SOS_TOKEN]
         self.mask_idx = self.special_tokens[MSK_TOKEN]
 
         if users is not None:
@@ -160,6 +190,14 @@ class CharTokenizer(Tokenizer):
         self._num_users = len(self.users)
 
     @property
+    def eos_idx(self):
+        return self._eos_idx
+
+    @property
+    def sos_idx(self):
+        return self._sos_idx
+
+    @property
     def vocab_size(self):
         """There are 126 printable ASCII characters."""
         return 126 + self.offset
@@ -168,25 +206,8 @@ class CharTokenizer(Tokenizer):
     def sequence_length(self):
         return None
 
-    def encode(self, tokens, add_sos, add_eos):
-
-        input_length = len(tokens)
-        total_length = input_length + int(add_sos) + int(add_eos)
-
-        indexes = np.zeros(total_length, dtype=np.int64)
-
-        iterator = range(int(add_sos), input_length - int(add_eos))
-
-        if add_sos:
-            indexes[0] = self.sos_idx
-
-        for i in iterator:
-            indexes[i] = ord(tokens[i]) + self.offset
-
-        if add_eos:
-            indexes[-1] = self.eos_idx
-
-        return indexes
+    def _encode_single_position(self, token, field):
+        return ord(token) + self.offset
 
     def decode(self, indexes):
 
@@ -229,6 +250,14 @@ class LANLTokenizer(Tokenizer):
         self._num_users = len(self.users)
 
     @property
+    def sos_idx(self):
+        return self.vocab.sos_idx
+
+    @property
+    def eos_idx(self):
+        return self.vocab.eos_idx
+
+    @property
     def sequence_length(self):
         return self.num_fields
 
@@ -258,24 +287,8 @@ class LANLTokenizer(Tokenizer):
 
         return self.encode(tokens, add_sos, add_eos)
 
-    def encode(self, tokens, add_sos, add_eos):
-
-        total_length = self.num_fields + int(add_sos) + int(add_eos)
-
-        indexes = np.zeros(total_length, dtype=np.int64)
-
-        iterator = range(int(add_sos), self.num_fields - int(add_eos))
-
-        if add_sos:
-            indexes[0] = self.vocab.sos_idx
-
-        for i in iterator:
-            indexes[i] = self.vocab.token2idx(tokens[i], i)
-
-        if add_eos:
-            indexes[-1] = self.vocab.eos_idx
-
-        return indexes
+    def _encode_single_position(self, token, field):
+        return self.vocab.token2idx(token, field)
 
     def decode(self, indexes: Iterable[int]) -> List[str]:
         return [self.vocab.idx2token(idx, field) for field, idx in enumerate(indexes)]
@@ -357,6 +370,14 @@ class GlobalTokenizer(Tokenizer):
     def detokenize(self, indexes) -> str:
         return ",".join(self.decode(indexes))
 
+    @property
+    def sos_idx(self):
+        return self.vocab.sos_idx
+
+    @property
+    def eos_idx(self):
+        return self.vocab.eos_idx
+
     def __init__(self, vocab: GlobalVocab, users=None) -> None:
         super().__init__(vocab, users)
         self.vocab: GlobalVocab = vocab
@@ -371,24 +392,8 @@ class GlobalTokenizer(Tokenizer):
 
         self._num_users = len(self.users)
 
-    def encode(self, tokens, add_sos, add_eos):
-        input_length = len(tokens)
-        total_length = input_length + int(add_sos) + int(add_eos)
-
-        indexes = np.zeros(total_length, dtype=np.int64)
-
-        iterator = range(int(add_sos), input_length - int(add_eos))
-
-        if add_sos:
-            indexes[0] = self.vocab.sos_idx
-
-        for i in iterator:
-            indexes[i] = self.vocab.token2idx(tokens[i], 0)
-
-        if add_eos:
-            indexes[-1] = self.vocab.eos_idx
-
-        return indexes
+    def _encode_single_position(self, token, field):
+        return self.vocab.token2idx(token, field)
 
     def decode(self, indexes: Iterable[int]) -> List[str]:
         return [self.vocab.idx2token(idx, field) for field, idx in enumerate(indexes)]
