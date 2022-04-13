@@ -473,11 +473,15 @@ class Evaluator:
         losses = self.data["normalised_losses"] if normalised else self.data["losses"]
 
         full_fp_rate, full_tp_rate, _ = metrics.roc_curve(self.data["red_flags"], losses, pos_label=1)
-        # Scale fp_rate, tp_rate down to contain <10'000 values
-        # E.g. if original length is 1'000'000, only take every 100th value
-        step_size = (len(full_fp_rate) // 10000) + 1
+        # Scale fp_rate, tp_rate down to contain <2'000 values
+        # E.g. if original length is 1'000'000, only take every 500th value
+        step_size = (len(full_fp_rate) // 2000) + 1
         fp_rate = full_fp_rate[::step_size]
         tp_rate = full_tp_rate[::step_size]
+        # Y value (tp_rate) is monotonically increasing in ROC curves, so ignore any values after we reach 1.0 tp_rate
+        last_index = np.where(np.isclose(tp_rate, 1.0))[0][0]
+        fp_rate = fp_rate[:last_index+1]
+        tp_rate = tp_rate[:last_index+1]
         # Ensure the last value in full_fp_rate and full_tp_rate is included
         if fp_rate[-1] != full_fp_rate[-1]:
             fp_rate = np.append(fp_rate, full_fp_rate[-1])
@@ -543,9 +547,9 @@ class Evaluator:
         # Get average precision score as a summary score for PR
         AP_score = metrics.average_precision_score(self.data["red_flags"], losses)
 
-        # Scale precision, recall down to contain <10'000 values
-        # E.g. if original length is 1'000'000, only take every 100th value
-        step_size = (len(full_precision) // 10000) + 1
+        # Scale precision, recall down to contain <2'000 values
+        # E.g. if original length is 1'000'000, only take every 500th value
+        step_size = (len(full_precision) // 2000) + 1
         precision = full_precision[::step_size]
         recall = full_recall[::step_size]
 
