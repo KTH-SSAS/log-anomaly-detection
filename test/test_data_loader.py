@@ -20,7 +20,7 @@ def test_data_loader_char(shuffle, task):
     batch_sizes = (10, 10)
     counts_file = Path("data/counts678.json")
     tokenizer = get_tokenizer("char", counts_file, cutoff=40)
-    data_handler, _ = create_data_loaders([filepath], batch_sizes, tokenizer, task, shuffle=shuffle)
+    data_handler = create_data_loaders([filepath], batch_sizes, tokenizer, task, shuffle=shuffle)[0]
     bidirectional = task == "bidir-lm"
     for batch in data_handler:
         x: torch.Tensor = batch["input"]
@@ -43,7 +43,7 @@ def test_data_loader_word(shuffle, task, mode):
 
     tokenizer = get_tokenizer(mode, counts_file, cutoff=40)
 
-    data_handler, _ = create_data_loaders([filepath], batch_sizes, tokenizer, task, shuffle)
+    data_handler = create_data_loaders([filepath], batch_sizes, tokenizer, task, shuffle)[0]
     bidirectional = task == "bidir-lm"
     expected_input_length = 10 - 1 if task == "lm" else 10 + 2
     for batch in data_handler:
@@ -77,9 +77,9 @@ def test_data_loader_multiline(shuffle, memory_type):
 
     window_size = 5
     input_length = calculate_max_input_length(task, tokenizer)
-    data_handler, _ = create_data_loaders_multiline(
+    data_handler = create_data_loaders_multiline(
         filepath, batch_sizes, tokenizer, task, window_size, memory_type, shuffle=shuffle
-    )
+    )[0]
     final_batch = False
     for batch in data_handler:
         # Final batch doesn't have to be full length

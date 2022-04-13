@@ -13,6 +13,8 @@ class Trainer:
     def __init__(self, config: TrainerConfig, model: LogModel, checkpoint_dir: Path):
 
         self.config = config
+        # Ensure gradient_accumulation is at least 1
+        self.config.gradient_accumulation = max(self.config.gradient_accumulation, 1)
 
         self.model = model
 
