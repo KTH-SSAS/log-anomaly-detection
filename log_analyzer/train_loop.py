@@ -311,53 +311,58 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
 
     val_run = 0
     iteration = 0
-    for epoch in tqdm(range(epochs), desc="Epoch   "):
-        # Shuffle train data order for each epoch?
-        # Count iteration continuously up through each epoch
-        for epoch_iteration, batch in enumerate(tqdm(train_loader, desc="Training")):
-            # epoch_iteration = iterations in this epoch (used to determine when to run validation)
-            # Split the batch
-            split_batch = train_loader.split_batch(batch)
-            if lm_trainer.model.tiered:
-                if train_loader.flush is False:
-                    loss, gradient_norm, done = lm_trainer.train_step(split_batch)
-                else:
-                    if iteration == 0:
-                        raise Exception("Flush happened before any training could be done.")
+    try:
+        for epoch in tqdm(range(epochs), desc="Epoch   "):
+            # Shuffle train data order for each epoch?
+            # Count iteration continuously up through each epoch
+            for epoch_iteration, batch in enumerate(tqdm(train_loader, desc="Training")):
+                # epoch_iteration = iterations in this epoch (used to determine when to run validation)
+                # Split the batch
+                split_batch = train_loader.split_batch(batch)
+                if lm_trainer.model.tiered:
+                    if train_loader.flush is False:
+                        loss, gradient_norm, done = lm_trainer.train_step(split_batch)
+                    else:
+                        if iteration == 0:
+                            raise Exception("Flush happened before any training could be done.")
 
-                    logger.info("Due to flush, skipping the rest of the current file.")
-                    train_loader.skip_file = True
-                    continue
-            else:
-                loss, gradient_norm, done = lm_trainer.train_step(split_batch)
-            iteration += 1  # Total iterations in training (cumulative)
-            train_losses.append(loss.item())
-            wandb_log(
-                epoch_iteration,
-                LOGGING_FREQUENCY,
-                {
-                    "train/loss": loss,
-                    "train/iteration": iteration,
-                    "train/day": batch["day"][0],
-                    "train/lr": lm_trainer.scheduler.get_last_lr()[0],
-                    "train/epoch": epoch,
-                    "train/gradient_norm": gradient_norm
-                },
-            )
-            if run_validation and epoch_iteration > 0 and (epoch_iteration % validation_period == 0):
+                        logger.info("Due to flush, skipping the rest of the current file.")
+                        train_loader.skip_file = True
+                        continue
+                else:
+                    loss, gradient_norm, done = lm_trainer.train_step(split_batch)
+                iteration += 1  # Total iterations in training (cumulative)
+                train_losses.append(loss.item())
+                wandb_log(
+                    epoch_iteration,
+                    LOGGING_FREQUENCY,
+                    {
+                        "train/loss": loss,
+                        "train/iteration": iteration,
+                        "train/day": batch["day"][0],
+                        "train/lr": lm_trainer.scheduler.get_last_lr()[0],
+                        "train/epoch": epoch,
+                        "train/gradient_norm": gradient_norm
+                    },
+                )
+                if run_validation and epoch_iteration > 0 and (epoch_iteration % validation_period == 0):
+                    validation_run(iteration, val_run)
+                    val_run += 1
+
+                if done:
+                    logger.info("Early stopping.")
+                    break
+
+            if run_validation:
                 validation_run(iteration, val_run)
                 val_run += 1
 
             if done:
-                logger.info("Early stopping.")
                 break
-
-        if run_validation:
-            validation_run(iteration, val_run)
-            val_run += 1
-
-        if done:
-            break
+    except KeyboardInterrupt:
+            # Proceed to evaluation
+            print("Ctrl+C received, cancelling training and proceeding to evaluation.")
+            print("If you wish to stop execution completely, please Ctrl+C again.")
 
     if lm_trainer.config.early_stopping:
         # Save the best performing model version to file
