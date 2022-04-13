@@ -13,11 +13,7 @@ from log_analyzer.tokenizer.tokenizer import CharTokenizer
 
 
 def create_attention_matrix(
-    model: LSTMLanguageModel,
-    sequences,
-    output_dir: Path,
-    lengths=None,
-    mask=None,
+    model: LSTMLanguageModel, sequences, output_dir: Path, lengths=None, mask=None,
 ):
     """Plot attention matrix over batched input.
 
@@ -148,12 +144,7 @@ class Evaluator:
         if store_eval_data:
             preds = torch.argmax(output, dim=-1)
             self.add_evaluation_data(
-                Y,
-                preds,
-                users,
-                line_losses,
-                seconds,
-                red_flags,
+                Y, preds, users, line_losses, seconds, red_flags,
             )
             self.test_loss += loss
             self.test_count += 1
@@ -240,10 +231,7 @@ class Evaluator:
             self.data["seconds"] = np.concatenate((self.data["seconds"], np.zeros(1050000, int)))
             self.data["red_flags"] = np.concatenate((self.data["red_flags"], np.zeros(1050000, bool)))
 
-        for key, new_data in zip(
-            ["users", "losses", "seconds", "red_flags"],
-            [users, losses, seconds, red_flags],
-        ):
+        for key, new_data in zip(["users", "losses", "seconds", "red_flags"], [users, losses, seconds, red_flags],):
             self.data[key][self.index[key] : self.index[key] + len(new_data)] = new_data.squeeze()
 
             self.index[key] += len(new_data)
@@ -485,18 +473,13 @@ class Evaluator:
             # ROC Curve is to be uploaded to wandb, so plot using a "fixed"
             # version of their plot.roc_curve function
             table = wandb.Table(
-                columns=["class", "fpr", "tpr"],
-                data=list(zip(["" for _ in fp_rate], fp_rate, tp_rate)),
+                columns=["class", "fpr", "tpr"], data=list(zip(["" for _ in fp_rate], fp_rate, tp_rate)),
             )
             wandb_plot = wandb.plot_table(
                 "wandb/area-under-curve/v0",
                 table,
                 {"x": "fpr", "y": "tpr", "class": "class"},
-                {
-                    "title": title,
-                    "x-axis-title": "False positive rate",
-                    "y-axis-title": "True positive rate",
-                },
+                {"title": title, "x-axis-title": "False positive rate", "y-axis-title": "True positive rate",},
             )
             return auc_score, wandb_plot
 
@@ -506,11 +489,7 @@ class Evaluator:
         xlabel = "False Positive Rate"
 
         plt.plot(
-            fp_rate,
-            tp_rate,
-            color="orange",
-            lw=2,
-            label=f"ROC curve (area = {auc_score:.2f})",
+            fp_rate, tp_rate, color="orange", lw=2, label=f"ROC curve (area = {auc_score:.2f})",
         )
         plt.xlabel(xlabel)
         plt.ylabel("True Positive Rate")
@@ -561,18 +540,13 @@ class Evaluator:
             # PR Curve is to be uploaded to wandb, so plot using a "fixed"
             # version of their plot.pr_curve function
             table = wandb.Table(
-                columns=["class", "recall", "precision"],
-                data=list(zip(["" for _ in recall], recall, precision)),
+                columns=["class", "recall", "precision"], data=list(zip(["" for _ in recall], recall, precision)),
             )
             wandb_plot = wandb.plot_table(
                 "wandb/area-under-curve/v0",
                 table,
                 {"x": "recall", "y": "precision", "class": "class"},
-                {
-                    "title": "Precision v. Recall",
-                    "x-axis-title": "Recall",
-                    "y-axis-title": "Precision",
-                },
+                {"title": "Precision v. Recall", "x-axis-title": "Recall", "y-axis-title": "Precision",},
             )
             return AP_score, wandb_plot
 
@@ -580,11 +554,7 @@ class Evaluator:
         xlabel = "Recall"
         ylabel = "Precision"
         plt.plot(
-            recall,
-            precision,
-            color="orange",
-            lw=2,
-            label="Intrusion events",
+            recall, precision, color="orange", lw=2, label="Intrusion events",
         )
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)

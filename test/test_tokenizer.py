@@ -26,8 +26,7 @@ def test_counts2vocab(counts_file):
 
 
 @pytest.mark.parametrize(
-    "seed,num_masked_positions,expected_num_mask_tokens",
-    [(6, 5, 5), (7, 5, 4), (8, 5, 3)],
+    "seed,num_masked_positions,expected_num_mask_tokens", [(6, 5, 5), (7, 5, 4), (8, 5, 3)],
 )
 def test_mask_tokens(tokenizer, seed, num_masked_positions, expected_num_mask_tokens):
     """This test runs the input masking function for different seeds, with
