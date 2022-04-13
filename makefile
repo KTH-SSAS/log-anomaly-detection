@@ -25,6 +25,10 @@ ifdef LOAD
 FLAGS += --load-model $(LOAD)
 endif
 
+ifdef EVAL
+FLAGS += --eval-only
+endif
+
 ifdef PYFLAGS
 FLAGS += $(PYFLAGS)
 endif
