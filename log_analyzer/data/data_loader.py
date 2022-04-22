@@ -651,6 +651,11 @@ class TieredLogDataLoader:
                             break
                         self.mb_size = self.num_steps * self.mb_size
                         self.num_steps = self.staggler_num_steps
+                        # Update batch_ready_users_list for the smaller num_steps
+                        for user, logs in self.user_logs.items():
+                            if len(logs) >= self.num_steps:
+                                self.batch_ready_users_list.append(user)
+
 
                 if not batch_data:
                     break
