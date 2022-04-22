@@ -460,10 +460,6 @@ class Evaluator:
         """Plots the ROC (Receiver Operating Characteristic) curve, i.e. TP-FP
         tradeoff. Also returns the corresponding auc score.
 
-        Options for xaxis are:
-        'FPR': False-positive rate. The default.
-        'alerts': # of alerts per second (average) the FPR would be equivalent to.
-        'alerts-FPR': What % of produced alerts would be false alerts.
         """
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
