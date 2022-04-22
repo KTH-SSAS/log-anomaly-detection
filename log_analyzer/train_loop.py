@@ -20,13 +20,14 @@ from log_analyzer.config import TrainerConfig
 from log_analyzer.config.model_config import (
     LSTMConfig,
     ModelConfig,
+    MultilineTransformerConfig,
     TieredLSTMConfig,
     TieredTransformerConfig,
     TransformerConfig,
 )
 from log_analyzer.evaluator import Evaluator
 from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel, TieredLSTM
-from log_analyzer.model.transformer import TieredTransformer, Transformer
+from log_analyzer.model.transformer import MultilineTransformer, TieredTransformer, Transformer
 from log_analyzer.tokenizer.tokenizer_neo import (
     CharTokenizer,
     GlobalTokenizer,
@@ -48,6 +49,7 @@ LSTM: str = "lstm"
 TRANSFORMER: str = "transformer"
 TIERED_LSTM: str = "tiered-lstm"
 TIERED_TRANSFORMER: str = "tiered-transformer"
+MULTILINE_TRANSFORMER: str = "multiline-transformer"
 
 LOGGING_FREQUENCY: int = 10  # How often to log results. Set to 1 to log everything.
 VALIDATION_FREQUENCY: int = (
@@ -58,27 +60,28 @@ WORD_GLOBAL = "word-global"
 WORD_FIELDS = "word-fields"
 WORD_MERGED = "word-merged"
 CHAR = "char"
+SENTENCE = "sentence"
 
 tokenizer_vocabs = {
     CHAR: (CharTokenizer, None),
     WORD_FIELDS: (LANLTokenizer, LANLVocab),
     WORD_GLOBAL: (GlobalTokenizer, GlobalVocab),
     WORD_MERGED: (LANLTokenizer, MergedLANLVocab),
+    SENTENCE: (LANLTokenizer, MergedLANLVocab),
 }
 
 
-def get_tokenizer(tokenization, tiered, counts_file: Path, cutoff) -> Tokenizer:
+def get_tokenizer(tokenization, counts_file: Path, cutoff) -> Tokenizer:
     tokenizer: Tokenizer
     vocab = None
     tokenizer_cls, vocab_cls = tokenizer_vocabs[tokenization]
     if counts_file is not None:
         with open(counts_file, encoding="utf8") as f:
             counts = json.load(f)
-        users = list(counts["src_user"].keys()) if tiered else None
+        users = list(counts["src_user"].keys())
         vocab = vocab_cls.counts2vocab(counts, cutoff) if vocab_cls is not None else None
     else:
-        if "word" in tokenization or tiered:
-            raise RuntimeError("No counts file was supplied!")
+        users = None
 
     tokenizer = tokenizer_cls(vocab, users)
     return tokenizer
@@ -91,6 +94,8 @@ def get_task(model: str, bidirectional: bool) -> str:
         return data_utils.MASKED_LM
     if bidirectional and model in (LSTM, TIERED_LSTM):
         return data_utils.BIDIR_LSTM_LM
+    if model == MULTILINE_TRANSFORMER:
+        return data_utils.SENTENCE_LM
 
     return data_utils.AUTOREGRESSIVE_LM
 
@@ -114,6 +119,8 @@ def get_model_config(filename: Path, model_type: str) -> ModelConfig:
         return TransformerConfig.init_from_file(filename)
     if model_type == TIERED_TRANSFORMER:
         return TieredTransformerConfig.init_from_file(filename)
+    if model_type == MULTILINE_TRANSFORMER:
+        return MultilineTransformerConfig.init_from_file(filename)
 
     raise RuntimeError("Invalid model type.")
 
@@ -182,7 +189,7 @@ def init_from_config_classes(
 
     shuffle_train_data = trainer_config.shuffle_train_data
 
-    tokenizer = get_tokenizer(tokenization, ("tiered" in model_type), counts_file, cutoff)
+    tokenizer = get_tokenizer(tokenization, counts_file, cutoff)
 
     task = get_task(model_type, bidirectional)
 
@@ -214,8 +221,20 @@ def init_from_config_classes(
             (trainer_config.train_batch_size, trainer_config.eval_batch_size),
             tokenizer,
             task,
-            trainer_config.train_val_split,
+            trainer_config.validation_portion,
             shuffle_train_data,
+        )
+    elif model_type in (MULTILINE_TRANSFORMER) and isinstance(model_config, MultilineTransformerConfig):
+        train_loader, val_loader, test_loader = data_utils.load_data_multiline(
+            data_folder,
+            train_days,
+            test_days,
+            (trainer_config.train_batch_size, trainer_config.eval_batch_size),
+            tokenizer,
+            task,
+            model_config.shift_window,
+            model_config.memory_type,
+            trainer_config.validation_portion,
         )
     else:
         raise RuntimeError("Invalid model type.")
@@ -250,6 +269,9 @@ def init_model(model_config: ModelConfig, bidirectional) -> LogModel:
     if isinstance(model_config, TieredTransformerConfig):
         # TieredTransformerConfig is a type of TransformerConfig, so check for tiered first
         return TieredTransformer(model_config, bidirectional)
+    if isinstance(model_config, MultilineTransformerConfig):
+        # MultilineTransformerConfig is a type of TransformerConfig, so check for Multiline first
+        return MultilineTransformer(model_config, bidirectional)
     if isinstance(model_config, TransformerConfig):
         return Transformer(model_config, bidirectional)
 
@@ -312,6 +334,12 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
     val_run = 0
     iteration = 0
     for epoch in tqdm(range(epochs), desc="Epoch   "):
+        if (
+            isinstance(train_loader.dataset, (data_utils.IterableLogDataset, data_utils.IterableUserMultilineDataset))
+            and epoch > 0
+        ):
+            # Refresh the iterator so we can run another epoch
+            train_loader.dataset.refresh_iterator()
         # Shuffle train data order for each epoch?
         # Count iteration continuously up through each epoch
         for epoch_iteration, batch in enumerate(tqdm(train_loader, desc="Training")):
