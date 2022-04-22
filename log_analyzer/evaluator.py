@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 import wandb
 from log_analyzer.application import Application
-from log_analyzer.model.lstm import LogModel, LSTMLanguageModel
+from log_analyzer.model.lstm import LogModel, LSTMLanguageModel, MultilineLogModel
 from log_analyzer.tokenizer.tokenizer import CharTokenizer
 
 
@@ -146,14 +146,22 @@ class Evaluator:
 
         # Save the results if desired
         if store_eval_data:
-            preds = torch.argmax(output, dim=-1)
+            if isinstance(self.model, MultilineLogModel) and not self.model.criterion == torch.nn.CrossEntropyLoss:
+                # Multiline logmodels do not necessarily produce predictions over a discrete space that can/should be
+                # argmaxed. If CrossEntropyLoss is not used, this means the predictions are placed in the continuous
+                # sentence-embedding space. Therefore we cannot track token-accuracy and do not pass Y or preds to
+                # add_evaluation_data().
+                Y = None
+                preds = None
+            else:
+                preds = torch.argmax(output, dim=-1)
             self.add_evaluation_data(
-                Y,
-                preds,
                 users,
                 line_losses,
                 seconds,
                 red_flags,
+                log_line=Y,
+                predictions=preds,
             )
             self.test_loss += loss
             self.test_count += 1
@@ -216,23 +224,15 @@ class Evaluator:
                 wandb.run.summary[key] = value
         return evaluator_metrics
 
-    def add_evaluation_data(self, log_line, predictions, users, losses, seconds, red_flags):
+    def add_evaluation_data(self, users, losses, seconds, red_flags, log_line=None, predictions=None):
         """Extend the data stored in self.data with the inputs."""
         # Handle input from tiered models
-        if predictions.ndim > 2:
-            log_line = torch.flatten(log_line, end_dim=1)
-            predictions = torch.flatten(predictions, end_dim=1)
-            users = torch.flatten(users, end_dim=1)
-            losses = torch.flatten(losses, end_dim=1)
-            seconds = torch.flatten(seconds, end_dim=1)
-            red_flags = torch.flatten(red_flags, end_dim=1)
-        log_line = log_line.cpu().detach().flatten()
-        predictions = predictions.cpu().detach().flatten()
-        losses = losses.cpu().detach()
-        seconds = seconds.cpu().detach()
-        red_flags = red_flags.cpu().detach()
+        users = users.cpu().detach().flatten()
+        losses = losses.cpu().detach().flatten()
+        seconds = seconds.cpu().detach().flatten()
+        red_flags = red_flags.cpu().detach().flatten()
         # Check that there's enough space left for all the entries
-        if len(self.data["losses"]) < self.index["losses"] + len(log_line):
+        if len(self.data["losses"]) < self.index["losses"] + len(losses):
             # Adding entries 1'050'000 at a time provides a nice balance of efficiency and memory usage.
             # Most days have just over 7 million log lines, so incrementing with 1'000'000 is inefficient
             self.data["users"] = np.concatenate((self.data["users"], np.zeros(1050000, float)))
@@ -251,13 +251,16 @@ class Evaluator:
         # Update the metatag, i.e. data is prepared and normalised data is ready
         self.data_is_prepared = False
         # Update token accuracy including this batch
-        batch_token_accuracy = metrics.accuracy_score(log_line, predictions)
-        new_token_count = self.token_count + len(log_line)
-        new_token_accuracy = (
-            self.token_accuracy * self.token_count + batch_token_accuracy * len(log_line)
-        ) / new_token_count
-        self.token_count = new_token_count
-        self.token_accuracy = new_token_accuracy
+        if log_line is not None and predictions is not None:
+            log_line = log_line.cpu().detach().flatten()
+            predictions = predictions.cpu().detach().flatten()
+            batch_token_accuracy = metrics.accuracy_score(log_line, predictions)
+            new_token_count = self.token_count + len(log_line)
+            new_token_accuracy = (
+                self.token_accuracy * self.token_count + batch_token_accuracy * len(log_line)
+            ) / new_token_count
+            self.token_count = new_token_count
+            self.token_accuracy = new_token_accuracy
 
     def reset_evaluation_data(self):
         """Delete the stored evaluation data."""
@@ -470,11 +473,15 @@ class Evaluator:
         losses = self.data["normalised_losses"] if normalised else self.data["losses"]
 
         full_fp_rate, full_tp_rate, _ = metrics.roc_curve(self.data["red_flags"], losses, pos_label=1)
-        # Scale fp_rate, tp_rate down to contain <10'000 values
-        # E.g. if original length is 1'000'000, only take every 100th value
-        step_size = (len(full_fp_rate) // 10000) + 1
+        # Scale fp_rate, tp_rate down to contain <2'000 values
+        # E.g. if original length is 1'000'000, only take every 500th value
+        step_size = (len(full_fp_rate) // 2000) + 1
         fp_rate = full_fp_rate[::step_size]
         tp_rate = full_tp_rate[::step_size]
+        # Y value (tp_rate) is monotonically increasing in ROC curves, so ignore any values after we reach 1.0 tp_rate
+        last_index = np.where(np.isclose(tp_rate, 1.0))[0][0]
+        fp_rate = fp_rate[:last_index+1]
+        tp_rate = tp_rate[:last_index+1]
         # Ensure the last value in full_fp_rate and full_tp_rate is included
         if fp_rate[-1] != full_fp_rate[-1]:
             fp_rate = np.append(fp_rate, full_fp_rate[-1])
@@ -540,9 +547,9 @@ class Evaluator:
         # Get average precision score as a summary score for PR
         AP_score = metrics.average_precision_score(self.data["red_flags"], losses)
 
-        # Scale precision, recall down to contain <10'000 values
-        # E.g. if original length is 1'000'000, only take every 100th value
-        step_size = (len(full_precision) // 10000) + 1
+        # Scale precision, recall down to contain <2'000 values
+        # E.g. if original length is 1'000'000, only take every 500th value
+        step_size = (len(full_precision) // 2000) + 1
         precision = full_precision[::step_size]
         recall = full_recall[::step_size]
 
