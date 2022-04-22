@@ -8,22 +8,23 @@ from log_analyzer.config import TrainerConfig
 from log_analyzer.model import early_stopping
 from log_analyzer.model.lstm import LogModel
 
-
 def calculate_gradient_norm(model: torch.nn.Module):
     parameters = [p for p in model.parameters() if p.grad is not None]
     total_norm: torch.Tensor = torch.norm(
-        torch.stack([torch.norm(p.grad.detach(), 2) for p in parameters]),
+        torch.stack(
+            [
+                torch.norm(p.grad.detach(), 2)
+                for p in parameters
+            ]
+        ),
         2,
     )
     return total_norm.item()
-
 
 class Trainer:
     def __init__(self, config: TrainerConfig, model: LogModel, checkpoint_dir: Path):
 
         self.config = config
-        # Ensure gradient_accumulation is at least 1
-        self.config.gradient_accumulation = max(self.config.gradient_accumulation, 1)
 
         self.model = model
 
@@ -62,14 +63,17 @@ class Trainer:
 
         gradient_norm = calculate_gradient_norm(self.model)
 
-        self.accumulated_steps = (self.accumulated_steps + 1) % self.config.gradient_accumulation
-        if self.accumulated_steps == 0:
+        if self.accumulated_steps == self.config.gradient_accumulation:
             if using_mp:
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
             else:
                 self.optimizer.step()
+
             self.optimizer.zero_grad()
+            self.accumulated_steps = 0
+        else:
+            self.accumulated_steps += 1
 
         if self.use_scheduler:
             self.scheduler.step()

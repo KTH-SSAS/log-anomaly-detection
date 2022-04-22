@@ -130,10 +130,7 @@ class Tokenizer(ABC):
 
     def user_idx(self, user):
         if self.num_users == 0:
-            # Can't return user_idx if we don't have a list of users
-            raise RuntimeError(
-                "Cannot return user index since no counts file was provided during tokenizer initialisation"
-            )
+            return 0
         return self.users[user]
 
     @abstractmethod
