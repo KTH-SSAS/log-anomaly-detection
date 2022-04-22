@@ -80,9 +80,10 @@ def test_log_processing(tmp_path, auth_file, redteam_file):
         ("char", (CharTokenizer, None, "U1053,DOM1,U1053,DOM1,C862,C625,Kerberos,Network,LogOn,Success")),
     ],
 )
-def test_tokenizers(tokenization, counts_file, expected):
+@pytest.mark.parametrize("tiered", [True, False])
+def test_tokenizers(tokenization, tiered, counts_file, expected):
 
-    tokenizer = get_tokenizer(tokenization, counts_file, cutoff=2)
+    tokenizer = get_tokenizer(tokenization, tiered, counts_file, cutoff=2)
 
     e_tokenizer, e_vocab, expected_decoded = expected
 

@@ -13,14 +13,12 @@ from log_analyzer.train_loop import eval_model, init_from_args, train_model
 
 def prepare_args():
     parser = ArgumentParser()
-    parser.add_argument(
-        "model_type", choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer", "multiline-transformer"]
-    )
+    parser.add_argument("model_type", choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer"])
     parser.add_argument(
         "tokenization",
         type=str,
         help="Tokenization method",
-        choices=["word-fields", "word-global", "word-merged", "char", "sentence"],
+        choices=["word-fields", "word-global", "word-merged", "char"],
     )
     parser.add_argument("-mc", "--model-config", type=str, help="Model configuration file.", required=True)
     parser.add_argument(
