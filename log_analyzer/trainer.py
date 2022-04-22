@@ -23,6 +23,8 @@ class Trainer:
     def __init__(self, config: TrainerConfig, model: LogModel, checkpoint_dir: Path):
 
         self.config = config
+        # Ensure gradient_accumulation is at least 1
+        self.config.gradient_accumulation = max(self.config.gradient_accumulation, 1)
 
         self.model = model
 
@@ -78,19 +80,16 @@ class Trainer:
             gradient_norm = np.clip(gradient_norm, None, self.gradient_clip)
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.gradient_clip)
 
-        if self.accumulated_steps == self.config.gradient_accumulation:
+        self.accumulated_steps = (self.accumulated_steps + 1) % self.config.gradient_accumulation
+        if self.accumulated_steps == 0:
             if self.config.mixed_precision and isinstance(self.scaler, GradScaler):
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
             else:
                 self.optimizer.step()
-
             self.optimizer.zero_grad()
-            self.accumulated_steps = 0
             if self.config.warmup_period > 0:
                 self.warmup_scheduler.step()
-        else:
-            self.accumulated_steps += 1
 
         if self.use_scheduler:
             self.scheduler.step()
