@@ -231,6 +231,7 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
 
         self.shift_window = shift_window
 
+        self.data = list(parse_multiple_files(self.filepaths))
         self.skipsos = True
         self.skipeos = True
         self.user_loglines: Dict[str, Dict[str, List]] = {}
@@ -247,11 +248,10 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
         parameters."""
 
         def generate_iterator():
-            data = parse_multiple_files(self.filepaths)
             # Actual input to the model (that will produce an output prediction): shift_window
             # Extra history needed to ensure a full shift_window history for every entry: shift_window-1
             # Length of each item: 2*shift_window - 1 long
-            for line in data:
+            for line in self.data:
                 line_data = prepare_datadict(line, self.task, self.tokenizer)
                 line_user = line_data["user"].item()
                 if line_user not in self.user_loglines:
