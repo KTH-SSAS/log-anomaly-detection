@@ -107,7 +107,6 @@ class Trainer:
 
         if not validation:
             self.model.train()
-            self.optimizer.zero_grad()
         else:
             self.model.eval()
 
