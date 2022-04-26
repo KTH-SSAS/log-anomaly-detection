@@ -524,9 +524,14 @@ def load_data(
 ):
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
-    train_loader, val_loader = create_data_loaders(
+    loaders = create_data_loaders(
         filepaths_train, batch_sizes, tokenizer, task, shuffle_train_data, validation_portion
     )
+    train_loader = loaders[0]
+    try:
+        val_loader = loaders[1]
+    except IndexError:
+        val_loader = None
     test_loader = create_data_loaders(
         filepaths_eval,
         (batch_sizes[1], batch_sizes[1]),
@@ -551,7 +556,7 @@ def load_data_multiline(
 ):
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
-    train_loader, val_loader = create_data_loaders_multiline(
+    loaders = create_data_loaders_multiline(
         filepaths_train,
         batch_sizes,
         tokenizer,
@@ -560,6 +565,11 @@ def load_data_multiline(
         memory_type=memory_type,
         validation_portion=validation_portion,
     )
+    train_loader = loaders[0]
+    try:
+        val_loader = loaders[1]
+    except IndexError:
+        val_loader = None
     test_loader = create_data_loaders_multiline(
         filepaths_eval,
         (batch_sizes[1], batch_sizes[1]),
