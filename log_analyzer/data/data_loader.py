@@ -179,11 +179,22 @@ class LogDataLoader(DataLoader):
 
 
 def load_data_tiered(
-    data_folder, train_files, test_files, batch_sizes: Tuple[int, int], tokenizer: Tokenizer, task, num_steps,
+    data_folder,
+    train_files,
+    test_files,
+    batch_sizes: Tuple[int, int],
+    tokenizer: Tokenizer,
+    task,
+    num_steps,
 ):
     def create_tiered_data_loader(filepath, batch_size):
         data_handler = TieredLogDataLoader(
-            filepath, tokenizer, task, batch_size=batch_size, num_steps=num_steps, delimiter=" ",
+            filepath,
+            tokenizer,
+            task,
+            batch_size=batch_size,
+            num_steps=num_steps,
+            delimiter=" ",
         )
         return data_handler
 
@@ -303,7 +314,13 @@ class TieredLogDataLoader:
     """
 
     def __init__(
-        self, filepaths, tokenizer: Tokenizer, task, batch_size=100, num_steps=5, delimiter=" ",
+        self,
+        filepaths,
+        tokenizer: Tokenizer,
+        task,
+        batch_size=100,
+        num_steps=5,
+        delimiter=" ",
     ):
         self.tokenizer: Tokenizer = tokenizer
         self.task = task
