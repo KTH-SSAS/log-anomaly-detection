@@ -17,5 +17,6 @@
 	"mixed_precision": false,
 	"shuffle_train_data": false,
 	"gradient_accumulation": 0,
-	"validations_per_epoch": 10
+	"validations_per_epoch": 10,
+	"gradient_clip": 0
 }

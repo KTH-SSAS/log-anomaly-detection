@@ -21,3 +21,4 @@ class TrainerConfig(Config):
     mixed_precision: bool
     gradient_accumulation: int
     validations_per_epoch: int
+    gradient_clip: float

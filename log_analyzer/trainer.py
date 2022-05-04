@@ -30,6 +30,8 @@ class Trainer:
 
         self.accumulated_steps = 0
 
+        self.gradient_clip = config.gradient_clip
+
         # Check GPU
         self.using_cuda = Application.instance().using_cuda
 
@@ -72,6 +74,10 @@ class Trainer:
             loss.backward()
 
         gradient_norm = calculate_gradient_norm(self.model)
+
+        if self.gradient_clip > 0:
+            gradient_norm = torch.clamp(gradient_norm, max=self.gradient_clip)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.gradient_clip)
 
         if self.accumulated_steps == self.config.gradient_accumulation:
             if self.config.mixed_precision and isinstance(self.scaler, GradScaler):
