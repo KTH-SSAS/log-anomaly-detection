@@ -22,3 +22,4 @@ class TrainerConfig(Config):
     gradient_accumulation: int
     validations_per_epoch: int
     gradient_clip: float
+    warmup_period: int
