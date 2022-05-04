@@ -7,6 +7,7 @@ from log_analyzer.application import Application
 from log_analyzer.config import TrainerConfig
 from log_analyzer.model import early_stopping
 from log_analyzer.model.lstm import LogModel
+import numpy as np
 
 def calculate_gradient_norm(model: torch.nn.Module):
     parameters = [p for p in model.parameters() if p.grad is not None]
@@ -73,7 +74,7 @@ class Trainer:
         gradient_norm = calculate_gradient_norm(self.model)
 
         if self.gradient_clip > 0:
-            gradient_norm = torch.clamp(gradient_norm, max=self.gradient_clip)
+            gradient_norm = np.clip(gradient_norm, None, self.gradient_clip)
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.gradient_clip)
 
         if self.accumulated_steps == self.config.gradient_accumulation:
