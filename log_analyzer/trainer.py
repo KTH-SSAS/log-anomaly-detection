@@ -86,7 +86,8 @@ class Trainer:
 
             self.optimizer.zero_grad()
             self.accumulated_steps = 0
-            self.warmup_scheduler.step()
+            if self.config.warmup_period > 0:
+                self.warmup_scheduler.step()
         else:
             self.accumulated_steps += 1
 
