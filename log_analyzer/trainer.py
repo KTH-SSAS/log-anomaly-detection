@@ -58,6 +58,11 @@ class Trainer:
             self.warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
                 self.optimizer, start_factor=0.1, total_iters=warmup_period
             )
+        
+        if self.config.per_epoch_lr_reduction > 0:
+            self.epoch_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, 1, self.config.per_epoch_lr_reduction)
+        else:
+            self.epoch_scheduler = None
 
     def early_stopping(self, val_loss):
         """Performs early stopping check after validation, if enabled."""

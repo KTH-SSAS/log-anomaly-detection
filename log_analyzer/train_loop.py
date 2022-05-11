@@ -360,6 +360,9 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
             if done:
                 logger.info("Early stopping.")
                 break
+        
+        if lm_trainer.epoch_scheduler is not None:
+            lm_trainer.epoch_scheduler.step()
 
         if run_validation:
             validation_run(iteration, val_run)

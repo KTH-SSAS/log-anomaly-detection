@@ -19,5 +19,6 @@
 	"gradient_accumulation": 0,
 	"validations_per_epoch": 10,
 	"gradient_clip": 0,
-	"warmup_period": 0
+	"warmup_period": 0,
+	"per_epoch_lr_reduction": 0
 }

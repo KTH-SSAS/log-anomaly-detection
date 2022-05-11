@@ -23,3 +23,4 @@ class TrainerConfig(Config):
     validations_per_epoch: int
     gradient_clip: float
     warmup_period: int
+    per_epoch_lr_reduction: float
