@@ -350,7 +350,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                     "train/day": batch["day"][0],
                     "train/lr": lm_trainer.optimizer.param_groups[0]["lr"],
                     "train/epoch": epoch,
-                    "train/gradient_norm": gradient_norm
+                    "train/gradient_norm": gradient_norm,
                 },
             )
             if run_validation and epoch_iteration > 0 and (epoch_iteration % validation_period == 0):
@@ -360,7 +360,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
             if done:
                 logger.info("Early stopping.")
                 break
-        
+
         if lm_trainer.epoch_scheduler is not None:
             lm_trainer.epoch_scheduler.step()
 

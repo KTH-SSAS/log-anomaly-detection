@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import numpy as np
 import torch
 from torch.cuda.amp.grad_scaler import GradScaler
 
@@ -7,20 +8,16 @@ from log_analyzer.application import Application
 from log_analyzer.config import TrainerConfig
 from log_analyzer.model import early_stopping
 from log_analyzer.model.lstm import LogModel
-import numpy as np
+
 
 def calculate_gradient_norm(model: torch.nn.Module):
     parameters = [p for p in model.parameters() if p.grad is not None]
     total_norm: torch.Tensor = torch.norm(
-        torch.stack(
-            [
-                torch.norm(p.grad.detach(), 2)
-                for p in parameters
-            ]
-        ),
+        torch.stack([torch.norm(p.grad.detach(), 2) for p in parameters]),
         2,
     )
     return total_norm.item()
+
 
 class Trainer:
     def __init__(self, config: TrainerConfig, model: LogModel, checkpoint_dir: Path):
@@ -58,11 +55,10 @@ class Trainer:
             self.warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
                 self.optimizer, start_factor=0.1, total_iters=warmup_period
             )
-        
-        if self.config.per_epoch_lr_reduction > 0:
-            self.epoch_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, 1, self.config.per_epoch_lr_reduction)
-        else:
-            self.epoch_scheduler = None
+
+        self.epoch_scheduler = torch.optim.lr_scheduler.StepLR(
+                self.optimizer, 1, self.config.per_epoch_lr_reduction
+            ) if self.config.per_epoch_lr_reduction > 0 else None
 
     def early_stopping(self, val_loss):
         """Performs early stopping check after validation, if enabled."""

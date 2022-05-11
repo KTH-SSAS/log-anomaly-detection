@@ -148,7 +148,9 @@ class LogDataLoader(DataLoader):
 
         num_workers = 7 if isinstance(dataset, MapLogDataset) else 0
 
-        super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_function, num_workers=num_workers)
+        super().__init__(
+            dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_function, num_workers=num_workers
+        )
         self.using_cuda = Application.instance().using_cuda
 
     def split_batch(self, batch: dict):
