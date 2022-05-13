@@ -136,10 +136,10 @@ class LSTMLanguageModel(LogModel):
         """Performs token embedding, context-prepending if model is tiered, and
         runs the LSTM on the input sequences."""
         # batch size, sequence length, embedded dimension
-        if sequences.shape[-1] == self.input_dim:
-            lstm_in = sequences
-        else:
+        if self.tiered: 
             lstm_in = self.embeddings(sequences)
+        else:
+            lstm_in = sequences
 
         if lengths is not None:
             if len(lengths.shape) > 1:
