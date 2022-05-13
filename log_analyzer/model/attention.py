@@ -31,6 +31,34 @@ def generate_softmax_mask(seq_len, use_cuda=False):
     softmax_mask = softmax_mask.cuda() if use_cuda else softmax_mask
     return softmax_mask
 
+FIXED = 0
+SEMANTIC = 1
+SYNTAX = 2
+
+
+attention_names = {
+    "fixed": FIXED,
+    "semantic": SEMANTIC,
+    "syntax": SYNTAX
+}
+
+
+def get_query_dim(attention_type, seq_len, hidden_dim, attention_dim):
+
+    if attention_type == FIXED:
+        # Shared one-dimension vector
+        return (attention_dim,)
+    if attention_type == SYNTAX:
+        if seq_len is None:
+            raise RuntimeError("For syntax attention a sequence length has to bet set.")
+        # One query vector per position in sequence
+        return (seq_len, attention_dim)
+    if attention_type == SEMANTIC:
+        # One query vector per hidden unit
+        return (hidden_dim, attention_dim)
+
+    raise RuntimeError("Unknown attention type")
+
 
 class SelfAttention(nn.Module):
     """Self-attention (mostly as described in Brown paper)"""
@@ -40,22 +68,15 @@ class SelfAttention(nn.Module):
         self.using_cuda = Application.instance().using_cuda
         self.w_a = nn.Parameter(torch.Tensor(hidden_dim, attention_dim))
         torch.nn.init.xavier_normal_(self.w_a)
-        self.attention_type = attention_type
+        self.attention_type = attention_names[attention_type]
         # Depending on the type of attention, the query vector has different
         # dimensions
-        if attention_type == "fixed":
-            # Shared one-dimension vector
-            self.query = nn.Parameter(torch.Tensor(attention_dim))
+
+        query_dim = get_query_dim(self.attention_type, seq_len, hidden_dim, attention_dim)
+        self.query = nn.Parameter(torch.empty(*query_dim))
+        if self.attention_type == FIXED:
             torch.nn.init.normal_(self.query)
-        elif attention_type == "syntax":
-            if seq_len is None:
-                raise RuntimeError("For syntax attention a sequence length has to bet set.")
-            # One query vector per position in sequence
-            self.query = nn.Parameter(torch.Tensor(seq_len, attention_dim))
-            torch.nn.init.xavier_normal_(self.query)
-        elif attention_type == "semantic":
-            # One query vector per hidden unit
-            self.query = nn.Parameter(torch.Tensor(hidden_dim, attention_dim))
+        else:
             torch.nn.init.xavier_normal_(self.query)
 
         if seq_len is not None:  # If the input length is fixed, we can cache the masks
@@ -65,14 +86,14 @@ class SelfAttention(nn.Module):
             self.input_mask = None
             self.softmax_mask = None
 
-    def forward(self, x: torch.Tensor, attention_mask: torch.Tensor = None):
+    def forward(self, x: torch.Tensor, attention_mask: torch.Tensor):
         """Calculate attention weights for input sequence.
 
         For fixed attention, the hidden states are replicated and masked
         in order to get an attention matrix of size LxL
         """
         seq_len = x.shape[1]
-        if self.attention_type == "fixed":
+        if self.attention_type == FIXED:
 
             mask = (
                 generate_mask(seq_len, hidden_dim=x.shape[-1], use_cuda=self.using_cuda)
@@ -82,17 +103,19 @@ class SelfAttention(nn.Module):
             x_repeat = x.unsqueeze(1).repeat(1, seq_len, 1, 1)
             x_masked = torch.mul(mask, x_repeat.transpose(1, -1))
             values = x_masked.transpose(1, -1)
+            key = torch.tanh(torch.einsum("bijd,da->bija", values, self.w_a))
         else:
             values = x
+            # b: batch size, j: seq len, a: attention dim
+            key = torch.tanh(torch.einsum("bjd,da->bja", values, self.w_a))
 
-        key = torch.tanh(torch.matmul(values, self.w_a))
-
-        if self.attention_type in ("fixed", "syntax"):
-            q = self.query
+        # b: batch size, i,j: seq_len, a: attention dim
+        if self.attention_type == SYNTAX:
+            temp = torch.einsum("ia,bja->bij", self.query, key)
+        elif self.attention_type == FIXED:
+            temp = torch.einsum("a,bija->bij", self.query, key)
         else:
-            q = torch.matmul(values, self.query)
-
-        temp = torch.matmul(q, key.transpose(-2, -1))
+            temp = torch.einsum("bid,da,bja->bij", values, self.query, key)
 
         softmax_mask = (
             generate_softmax_mask(seq_len, use_cuda=self.using_cuda) if self.softmax_mask is None else self.softmax_mask
@@ -100,12 +123,15 @@ class SelfAttention(nn.Module):
 
         temp = temp + softmax_mask
         d = F.softmax(temp, dim=-1)
+
+        # Padding mask
         if attention_mask is not None:
             attention_mask = attention_mask[:, :seq_len] != 0
             # Create a 2D matrix
             attention_mask = attention_mask.unsqueeze(-1) * attention_mask.unsqueeze(1)
             d = torch.mul(attention_mask, d)
-        a = torch.matmul(d, x)
+
+        a = torch.einsum("bij,bjd->bjd", d, x)
 
         return a, d
 
