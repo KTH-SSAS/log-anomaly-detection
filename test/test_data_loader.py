@@ -7,9 +7,16 @@ from log_analyzer.data.data_loader import create_data_loaders, create_data_loade
 from log_analyzer.train_loop import calculate_max_input_length, get_tokenizer
 
 
-def batch_equal(v1: torch.Tensor, v2: torch.Tensor):
+def batch_equal(v1: torch.Tensor, v2: torch.Tensor, allow_mask=False):
     assert v1.shape == v2.shape
-    return all(torch.all((v1 == v2), dim=-1))
+    if allow_mask:
+        batch_entry_equals = [
+            torch.all(v1[i] == v2[i]) or torch.all(v1[i] == 0, dim=-1) or torch.all(v2[i] == 0, dim=-1)
+            for i in range(v1.shape[0])
+        ]
+    else:
+        batch_entry_equals = torch.all((v1 == v2), dim=-1)
+    return all(batch_entry_equals)
 
 
 @pytest.mark.parametrize("shuffle", [False, True])
@@ -65,7 +72,6 @@ def test_data_loader_tiered():
 @pytest.mark.parametrize("shuffle", [False, True])
 @pytest.mark.parametrize("memory_type", ["global", "user"])
 def test_data_loader_multiline(shuffle, memory_type):
-
     if shuffle:
         pytest.skip()
 
@@ -77,12 +83,10 @@ def test_data_loader_multiline(shuffle, memory_type):
 
     shift_window = 5
     input_length = calculate_max_input_length(task, tokenizer)
-    data_handler = create_data_loaders_multiline(
-        filepath, batch_sizes, tokenizer, task, shift_window, memory_type, shuffle=shuffle
-    )[0]
+    data_handler = create_data_loaders_multiline(filepath, batch_sizes, tokenizer, task, shift_window, memory_type)[0]
     final_batch = False
     for batch in data_handler:
-        # Final batch doesn't have to be full length
+        # Batch size may vary (final batch probably won't be full size)
         # Roundabout way to check this because dataset might not have a known length (Iterable)
         if final_batch:
             raise AssertionError("Encountered non-full batch that wasn't final batch of dataloader.")
@@ -92,10 +96,13 @@ def test_data_loader_multiline(shuffle, memory_type):
             assert batch["input"].shape[1:] == torch.Size([2 * shift_window - 1, input_length])
             final_batch = True
         for b in range(batch["input"].shape[0]):
-            # Confirm that the targets are equal to the last window-size input.
-            # Note that the first of these shift_window inputs won't be present in targets, and likewise
-            # The last target won't be present in the input
+            # For each entry in each sequence, the target should be equal to the next input
+            # (unless that next input is masked out, i.e. all 0s).
+            # Note: the last target can't be checked since its corresponding input is not included in the same batch
             assert batch_equal(
-                batch["input"][b, -(shift_window - 1) :],
-                batch["target"][b, :-1],
-            ), "forward-shift"
+                batch["input"][b, -(shift_window - 1) :], batch["target"][b, :-1], allow_mask=True
+            ), "Inputs and targets should be shifted by exactly 1 in every sequence."
+            # If the entry is masked out (all 0s), the mask should be True
+            assert torch.all(batch["input"][b, batch["mask"][b]] == 0) and torch.all(
+                batch["input"][b, batch["mask"][b] == 0] != 0
+            )
