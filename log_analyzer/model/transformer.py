@@ -426,11 +426,17 @@ class MultilineTransformer(MultilineLogModel):
         # Add positional encoding to the line embeddings
         line_embeddings = self.pos_encoder(line_embeddings)
 
-        if mask is None:
-            pad_mask = None
-        else:
-            pad_mask = mask == 0
-        tf_hidden = self.transformer_encoder(line_embeddings, self.src_mask, src_key_padding_mask=pad_mask)
+        # src_key_padding_mask: if provided, specified padding elements in the key will
+        # be ignored by the attention. When given a binary mask and a value is True,
+        # the corresponding value on the attention layer will be ignored. When given
+        # a byte mask and a value is non-zero, the corresponding value on the attention
+        # layer will be ignored
+        # src_key_padding_mask: :math:`(N, S)` where N is the batch size, S is the source sequence length.
+        #   If a ByteTensor is provided, the non-zero positions will be ignored while the position
+        #   with the zero positions will be unchanged. If a BoolTensor is provided, the positions with the
+        #   value of ``True`` will be ignored while the position with the value of ``False`` will be unchanged.
+       
+        tf_hidden = self.transformer_encoder(line_embeddings, self.src_mask, src_key_padding_mask=mask)
         # Discard all but the last shift_window entries
         logits = tf_hidden[:, -self.config.shift_window :, :]
 

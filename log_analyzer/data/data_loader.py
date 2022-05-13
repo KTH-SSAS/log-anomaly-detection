@@ -234,7 +234,10 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
         self.data = list(parse_multiple_files(self.filepaths))
         self.skipsos = True
         self.skipeos = True
-        self.user_loglines: Dict[str, Dict[str, List]] = {}
+        # Stores the newest lines from each user that have not yet been batched
+        self.user_loglines: Dict[str, List[Dict[str, torch.Tensor]]] = {}
+        # Stores the last shift_window lines from each user that have been batched (for context)
+        self.user_context: Dict[str, List[Dict[str, torch.Tensor]]] = {}
         self.refresh_iterator()
 
     def __iter__(self):
@@ -250,7 +253,7 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
         def generate_iterator():
             # Actual input to the model (that will produce an output prediction): shift_window
             # Extra history needed to ensure a full shift_window history for every entry: shift_window-1
-            # Length of each item: 2*shift_window - 1 long
+            # Length of each full item: 2*shift_window - 1
             for line in self.data:
                 line_data = prepare_datadict(line, self.task, self.tokenizer)
                 line_user = line_data["user"].item()
@@ -258,44 +261,80 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
                     self.user_loglines[line_user] = []
                 self.user_loglines[line_user].append(line_data)
                 # Check if this user has enough lines to produce a sequence:
-                # shift_window*2 (shift_window-1 history, shift_window inputs, 1 final target)
-                if len(self.user_loglines[line_user]) >= self.shift_window * 2:
+                # (shift_window inputs, 1 final target)
+                if len(self.user_loglines[line_user]) >= self.shift_window + 1:
                     yield self.produce_output_sequence(line_user)
+            # When we've exhausted the data, return the incomplete sequences (padded up to full length)
+            for user in self.user_loglines:
+                # We need at least 1 input line (from loglines or context) and 1 target line.
+                if len(self.user_loglines[user]) > 1 or user in self.user_context:
+                    yield self.produce_output_sequence(user)
 
         self.iterator = generate_iterator()
 
     def produce_output_sequence(self, user):
         """Puts together a sequence of loglines from a single user from the
-        data that's been read in so far."""
-        datadict = {
-            "second": [],
-            "day": [],
-            "user": [],
-            "red": [],
-            "input": [],
-            "target": [],
-            "length": [],
+        data that's been read in so far.
+        
+        If the user does not have enough log lines (self.shift_window + 1) we pad the output by appending padding
+        to shift_window + 1
+        
+        If the user does not have any context lines, we haven't sent any sequence from this user yet.
+        We therefore pad the context with 0s (shift_window-1), then append padding to total length shift_window * 2 - 1
+        """
+        lines = self.user_loglines[user]
+        context_lines = self.user_context[user] if user in self.user_context else []
+        num_inputs = self.shift_window * 2 - 1
+        num_targets = self.shift_window
+
+        datadict: Dict[str, torch.Tensor] = {
+            "second": torch.zeros((num_targets), dtype=torch.long),
+            "day": torch.zeros((num_targets), dtype=torch.long),
+            "user": torch.zeros((num_targets), dtype=torch.long),
+            "red": torch.zeros((num_targets), dtype=torch.long),
+            "input": torch.zeros((num_inputs, lines[0]["input"].shape[0]), dtype=torch.long),
+            "target": torch.zeros((num_targets, lines[0]["target"].shape[0]), dtype=torch.long),
+            "length": torch.zeros((num_targets), dtype=torch.long),
+            "mask": torch.zeros((num_inputs), dtype=torch.bool),
         }
 
-        lines = self.user_loglines[user]
-
-        this_sequence_len = len(lines)
+        # First add the context lines
+        if len(context_lines) == self.shift_window - 1:
+            for idx, line_data in enumerate(context_lines):
+                datadict["input"][idx] = line_data["input"]
+        # If len(context_lines) < shift_window - 1 we need to prepend padding
+        elif len(context_lines) == 0:
+            datadict["mask"][:self.shift_window - 1] = 1
+        else:
+            # Context length should only be 0 or shift_window - 1
+            raise ValueError(
+                f"Unexpected context length. Expected 0 or shift_window-1 ({self.shift_window-1}), got {len(context_lines)}."
+            )
 
         for idx, line_data in enumerate(lines):
             # The last line in the input is only used as the target for the 2nd to last line, not as input
-            if idx < this_sequence_len - 1:
-                datadict["input"].append(line_data["input"])
-            # The first shift_window lines processed are not the target of anything (in this sequence) - only history
-            if idx > self.shift_window - 1:
-                datadict["second"].append(line_data["second"])
-                datadict["day"].append(line_data["day"])
-                datadict["user"].append(line_data["user"])
-                datadict["red"].append(line_data["red"])
-                datadict["target"].append(line_data["target"])
-                datadict["length"].append(line_data["length"])
-        # Remove all lines from this user not needed for history for the next sequence (last shift_window - 1)
-        lines = lines[self.shift_window - 1 :]
-        self.user_loglines[user] = lines
+            if idx < len(lines) - 1:
+                datadict["input"][idx + self.shift_window - 1] = line_data["input"]
+            # The first line processed is not the target of anything (in this sequence) - unless the sequence is only
+            # a single line
+            if len(lines) == 1:
+                idx += 1
+            if idx >= 1:
+                datadict["second"][idx - 1] = line_data["second"]
+                datadict["day"][idx - 1] = line_data["day"]
+                datadict["user"][idx - 1] = line_data["user"]
+                datadict["red"][idx - 1] = line_data["red"]
+                datadict["target"][idx - 1] = line_data["target"]
+                datadict["length"][idx - 1] = line_data["length"]
+        # If len(lines) < shift_window + 1 we need to append padding
+        if len(lines) < self.shift_window + 1:
+            datadict["mask"][len(lines) + self.shift_window - 2:] = 1
+
+        # Save the last self.shift_window - 1 lines as context, skiping the last line (this one was only used as a
+        # target, not input, so it will be the first input of the next batch_entry from this user)
+        self.user_context[user] = lines[-self.shift_window: -1]
+        # Remove all but the last line from the user's line list
+        self.user_loglines[user] = lines[-1:]
         return datadict
 
 
@@ -346,22 +385,11 @@ class LogDataLoader(DataLoader):
 
 
 def load_data_tiered(
-    data_folder,
-    train_files,
-    test_files,
-    batch_sizes: Tuple[int, int],
-    tokenizer: Tokenizer,
-    task,
-    num_steps,
+    data_folder, train_files, test_files, batch_sizes: Tuple[int, int], tokenizer: Tokenizer, task, num_steps,
 ):
     def create_tiered_data_loader(filepath, batch_size):
         data_handler = TieredLogDataLoader(
-            filepath,
-            tokenizer,
-            task,
-            batch_size=batch_size,
-            num_steps=num_steps,
-            delimiter=" ",
+            filepath, tokenizer, task, batch_size=batch_size, num_steps=num_steps, delimiter=" ",
         )
         return data_handler
 
@@ -446,7 +474,6 @@ def create_data_loaders_multiline(
     task: str,
     shift_window: int,
     memory_type: str,
-    shuffle: bool = False,
     validation_portion: float = 0,
 ) -> List[LogDataLoader]:
     """Creates and returns 2 data loaders.
@@ -506,7 +533,7 @@ def create_data_loaders_multiline(
     collate = partial(multiline_collate_fn, jagged=tokenizer.jagged)
 
     data_handlers = [
-        LogDataLoader(dataset, batch_size=bs, shuffle=shuffle, collate_function=collate)
+        LogDataLoader(dataset, batch_size=bs, shuffle=False, collate_function=collate)
         for bs, dataset in zip(batch_sizes, datasets)
     ]
     return data_handlers
@@ -524,20 +551,14 @@ def load_data(
 ):
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
-    loaders = create_data_loaders(
-        filepaths_train, batch_sizes, tokenizer, task, shuffle_train_data, validation_portion
-    )
+    loaders = create_data_loaders(filepaths_train, batch_sizes, tokenizer, task, shuffle_train_data, validation_portion)
     train_loader = loaders[0]
     try:
         val_loader = loaders[1]
     except IndexError:
         val_loader = None
     test_loader = create_data_loaders(
-        filepaths_eval,
-        (batch_sizes[1], batch_sizes[1]),
-        tokenizer,
-        task,
-        shuffle=False,
+        filepaths_eval, (batch_sizes[1], batch_sizes[1]), tokenizer, task, shuffle=False,
     )[0]
 
     return train_loader, val_loader, test_loader
@@ -589,13 +610,7 @@ class TieredLogDataLoader:
     """
 
     def __init__(
-        self,
-        filepaths,
-        tokenizer: Tokenizer,
-        task,
-        batch_size=100,
-        num_steps=5,
-        delimiter=" ",
+        self, filepaths, tokenizer: Tokenizer, task, batch_size=100, num_steps=5, delimiter=" ",
     ):
         self.dataset = None  # This dataloader handles the data directly
         self.tokenizer: Tokenizer = tokenizer
@@ -665,7 +680,6 @@ class TieredLogDataLoader:
                         for user, logs in self.user_logs.items():
                             if len(logs) >= self.num_steps:
                                 self.batch_ready_users_list.append(user)
-
 
                 if not batch_data:
                     break

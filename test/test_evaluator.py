@@ -3,8 +3,8 @@ from pathlib import Path
 
 import torch
 
-from log_analyzer.application import Application
 import pytest
+from log_analyzer.application import Application
 
 from log_analyzer.train_loop import eval_model, init_from_config_classes, train_model
 
@@ -43,4 +43,3 @@ def test_evaluator(tmpdir, model_type, cuda):
     assert metrics["eval/token_accuracy"] >= 0 and metrics["eval/token_accuracy"] <= 1
     assert metrics["eval/token_perplexity"] >= 1
     assert metrics["eval/AUC"] >= 0 and metrics["eval/AUC"] <= 1
-
