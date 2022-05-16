@@ -60,14 +60,12 @@ WORD_GLOBAL = "word-global"
 WORD_FIELDS = "word-fields"
 WORD_MERGED = "word-merged"
 CHAR = "char"
-SENTENCE = "sentence"
 
 tokenizer_vocabs = {
     CHAR: (CharTokenizer, None),
     WORD_FIELDS: (LANLTokenizer, LANLVocab),
     WORD_GLOBAL: (GlobalTokenizer, GlobalVocab),
     WORD_MERGED: (LANLTokenizer, MergedLANLVocab),
-    SENTENCE: (LANLTokenizer, MergedLANLVocab),
 }
 
 
