@@ -386,7 +386,7 @@ class MultilineTransformer(MultilineLogModel):
         # Prepare the sentence embedding
         if self.config.sentence_embedding == "mean":
             self._sentence_embedding = partial(torch.mean, dim=2)
-            self._sentence_deembedding = lambda x: None  # Cannot reverse mean() so return None
+            self._sentence_deembedding = None  # Cannot reverse mean()
             embedding_dim = self.model_dim
         elif self.config.sentence_embedding == "stack":
             # In this case words will be embedded to self.model_dim/sentence_length dims, then stackd to form
@@ -487,11 +487,10 @@ class MultilineTransformer(MultilineLogModel):
         tf_hidden = self.transformer_encoder(src_line_embeddings, line_embeddings, line_embeddings, self.src_mask, src_key_padding_mask=mask)
 
         # Try to reverse sentence embedding to produce logits
-        deembedded_sentence = self.sentence_deembedding(tf_hidden)
-        if deembedded_sentence is not None:
-            logits = deembedded_sentence @ self._word_embedding.weight.t()
-        else:
+        if self._sentence_deembedding is None:
             logits = tf_hidden
+        else:
+            logits = self.sentence_deembedding(tf_hidden) @ self._word_embedding.weight.t()
 
         loss = None
         if targets is not None:
