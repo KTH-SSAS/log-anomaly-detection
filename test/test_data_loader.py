@@ -78,7 +78,7 @@ def test_data_loader_multiline(shuffle, memory_type):
     filepath = "data/test_data/6.csv"
     counts_file = Path("data/counts678.json")
     batch_sizes = (10, 10)
-    tokenizer = get_tokenizer("sentence", counts_file, cutoff=49)
+    tokenizer = get_tokenizer("word-merged", counts_file, cutoff=49)
     task = "sentence-lm"
 
     shift_window = 5
