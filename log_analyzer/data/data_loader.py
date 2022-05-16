@@ -265,9 +265,9 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
                 if len(self.user_loglines[line_user]) >= self.shift_window + 1:
                     yield self.produce_output_sequence(line_user)
             # When we've exhausted the data, return the incomplete sequences (padded up to full length)
-            for user in self.user_loglines:
-                # We need at least 1 input line (from loglines or context) and 1 target line.
-                if len(self.user_loglines[user]) > 1 or user in self.user_context:
+            for user, user_lines in self.user_loglines.items():
+                # We need at least 1 input line and 1 target line.
+                if len(user_lines) > 1:
                     yield self.produce_output_sequence(user)
 
         self.iterator = generate_iterator()
@@ -781,17 +781,3 @@ class TieredLogDataLoader:
             if len(self.user_logs[user]) < self.num_steps:
                 self.batch_ready_users_list.remove(user)
         return batch_data
-
-
-# def char_tokens_to_text(tokens):
-#     characters = [chr(t + 30) for t in tokens]
-#     string = "".join(characters)
-#     return characters, string
-
-# def translate_line(string, pad_len):
-#     """
-#     :param string:
-#     :param pad_len:
-#     :return:
-#     """
-#     return "0 " + " ".join([str(ord(c) - 30) for c in string]) + " 1 " + " ".join(["0"] * pad_len) + "\n"
