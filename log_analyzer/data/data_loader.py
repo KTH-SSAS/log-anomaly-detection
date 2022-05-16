@@ -270,6 +270,9 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
                 if len(user_lines) > 1:
                     yield self.produce_output_sequence(user)
 
+        # Clear the leftover lines currently stored
+        self.user_loglines = {}
+        self.user_context = {}
         self.iterator = generate_iterator()
 
     def produce_output_sequence(self, user):
@@ -324,15 +327,18 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
                 datadict["day"][idx - 1] = line_data["day"]
                 datadict["user"][idx - 1] = line_data["user"]
                 datadict["red"][idx - 1] = line_data["red"]
-                datadict["target"][idx - 1] = line_data["target"]
+                datadict["target"][idx - 1] = line_data["input"] # A line's target is the same as the next line's input
                 datadict["length"][idx - 1] = line_data["length"]
         # If len(lines) < shift_window + 1 we need to append padding
         if len(lines) < self.shift_window + 1:
             datadict["mask"][len(lines) + self.shift_window - 2:] = 1
 
-        # Save the last self.shift_window - 1 lines as context, skiping the last line (this one was only used as a
-        # target, not input, so it will be the first input of the next batch_entry from this user)
-        self.user_context[user] = lines[-self.shift_window: -1]
+        # Update this user's context - the last self.shift_window-1 lines, except the very last line (this has yet to be
+        # processed as input)
+        if user not in self.user_context:
+            self.user_context[user] = []
+        self.user_context[user].extend(lines[:-1])
+        self.user_context[user] = self.user_context[user][-(self.shift_window-1):]
         # Remove all but the last line from the user's line list
         self.user_loglines[user] = lines[-1:]
         return datadict
