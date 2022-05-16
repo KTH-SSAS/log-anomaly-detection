@@ -2,6 +2,7 @@
 import math
 from abc import abstractmethod
 from functools import partial
+from typing import Optional
 
 import torch
 from torch import Tensor, nn
@@ -20,18 +21,26 @@ def _generate_square_subsequent_mask(seq_len):
     return mask
 
 
-def _generate_subsquare_subsequent_mask(seq_len, window_len):
-    """Generates a sub-square subsequent mask for self-attention where sequence
-    length is larger than the attention window length."""
-    # Initialise mask of ones
-    mask = torch.ones(seq_len, seq_len)
-    start_row = seq_len - window_len
-    # In all rows except the last window_len, we mask in one token (the diagonal) to avoid NaNs during backprop
-    for row in range(0, start_row):
-        mask[row, row] = 0
-    # In the last window_len rows, we want to fill in a window_len wide diagonal with 0
-    for row in range(start_row, seq_len):
-        for col in range(row - window_len + 1, row + 1):
+def _generate_multiline_asymmetric_mask(source_length, key_value_length):
+    """Generates an asymmetric mask for self-attention where source length is
+    larger than the key/value (aka context) length.
+    
+    For example, a multiline transformer with window_size 5 will have:
+    source length = 5
+    key_value_length = 9
+    Mask:
+    0 0 0 0 0 i i i i
+    i 0 0 0 0 0 i i i
+    i i 0 0 0 0 0 i i
+    i i i 0 0 0 0 0 i
+    i i i i 0 0 0 0 0
+    where i=-inf
+    """
+    # Initialise mask of ones - key_value_length wide, source_length tall
+    mask = torch.ones(key_value_length, source_length)
+    # We want to fill in a source_length wide diagonal with 0
+    for row in range(key_value_length):
+        for col in range(row, row + key_value_length):
             mask[row, col] = 0
     # Replace the ones with -inf
     mask = mask.float().masked_fill(mask == 1, float("-inf"))
@@ -298,6 +307,50 @@ class TieredTransformer(TieredLogModel):
             self.ctx_histories[u] = ctx_history.detach().cpu()
 
 
+class SKVTransformerEncoderLayer(nn.TransformerEncoderLayer):
+    r"""Wrapper for PyTorch's nn.TransformerEncoderLayer to redefine forward function.
+
+    Purpose: allow separate query/key/value tensors as input.
+    
+    """
+    def forward(self, src: Tensor, key: Tensor, value: Tensor, src_mask: Optional[Tensor] = None, src_key_padding_mask: Optional[Tensor] = None) -> Tensor:
+        r"""Redefined forward function to allow separate query/key/value tensors.
+
+        see the nn.TransformerEncoderLayer docs for more information.
+        """
+        src2 = self.self_attn(src, key, value, attn_mask=src_mask,
+                              key_padding_mask=src_key_padding_mask)[0]
+        src = src + self.dropout1(src2)
+        src = self.norm1(src)
+        src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
+        src = src + self.dropout2(src2)
+        src = self.norm2(src)
+        return src
+
+
+class SKVTransformerEncoder(nn.TransformerEncoder):
+    r"""Wrapper for PyTorch's nn.TransformerEncoder to allow passing separate source(aka query)/key/value tensors as input.
+    
+    """
+    def forward(self, src: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor] = None, src_key_padding_mask: Optional[Tensor] = None) -> Tensor:
+        r"""Redefined forward function to allow separate query/key/value tensors.
+
+        see the nn.TransformerEncoder docs for more information.
+        """
+        output = src
+
+        for mod in self.layers:
+            if isinstance(mod, SKVTransformerEncoderLayer):
+                output = mod(output, key, value, src_mask=mask, src_key_padding_mask=src_key_padding_mask)
+            else:
+                output = mod(output, src_mask=mask, src_key_padding_mask=src_key_padding_mask)
+
+        if self.norm is not None:
+            output = self.norm(output)
+
+        return output
+
+
 class MultilineTransformer(MultilineLogModel):
     """Transformer that works across multiple log lines - each "token" input is a single log line.
 
@@ -363,10 +416,10 @@ class MultilineTransformer(MultilineLogModel):
             self._word_embedding = nn.Embedding(self.vocab_size, embedding_dim)
 
         self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout, max_len=self.virtual_shift_window)
-        encoder_layers = nn.TransformerEncoderLayer(
+        encoder_layers = SKVTransformerEncoderLayer(
             self.model_dim, self.attention_heads, self.feedforward_dim, dropout=self.dropout, batch_first=True
         )
-        self.transformer_encoder: nn.TransformerEncoder = nn.TransformerEncoder(encoder_layers, self.layers)
+        self.transformer_encoder: nn.TransformerEncoder = SKVTransformerEncoder(encoder_layers, self.layers)
 
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
@@ -378,16 +431,16 @@ class MultilineTransformer(MultilineLogModel):
         if self.src_mask is None or self.src_mask.shape[0] != seq_len:
             if seq_len == self.config.shift_window:
                 mask = _generate_square_subsequent_mask(seq_len).to(device)
-            # Sequences contain extra history so that each step can have the full shift_window history length.
-            # We must generate an appropriate mask so each step has exactly shift_window long history
-            # E.g. , with shift_window of 3, this might look like:
-            # 0 0 0 0 0
-            # 0 0 0 0 0
-            # i i i 0 0
-            # 0 i i i 0
-            # 0 0 i i i
             else:
-                mask = _generate_subsquare_subsequent_mask(seq_len, self.config.shift_window).to(device)
+                # We have extra history so that each step can have the full shift_window history length.
+                # We must generate an appropriate mask so each step has exactly shift_window long history
+                # This mask will **not** be square (as the length of source (i.e. the length of the output)
+                # is not the same as the length of the context).
+                # E.g. , with shift_window of 3, this will be a 3x5 matrix like (i=-inf):
+                # 0 0 0 i i
+                # i 0 0 0 i
+                # i i 0 0 0
+                mask = _generate_multiline_asymmetric_mask(seq_len, self.config.shift_window).to(device)
             self.src_mask = mask
 
         return self.src_mask
@@ -407,7 +460,7 @@ class MultilineTransformer(MultilineLogModel):
         and yielding a sequence of embedded word tokens."""
         return self._sentence_deembedding(src)
 
-    def forward(self, sequences: Tensor, lengths=None, context_vectors=None, mask=None, targets=None):
+    def forward(self, sequences: Tensor, lengths=None, context_vectors=None, mask=None, targets: Tensor = None):
         # sequences: (batch, sequence, log_line)
         # Step 1: Use sentence embedding to summarise each logline as a single token
         # Step 2: Apply transformer across this sequence of logline tokens
@@ -426,24 +479,19 @@ class MultilineTransformer(MultilineLogModel):
         # Add positional encoding to the line embeddings
         line_embeddings = self.pos_encoder(line_embeddings)
 
-        # src_key_padding_mask: if provided, specified padding elements in the key will
-        # be ignored by the attention. When given a binary mask and a value is True,
-        # the corresponding value on the attention layer will be ignored. When given
-        # a byte mask and a value is non-zero, the corresponding value on the attention
-        # layer will be ignored
-        # src_key_padding_mask: :math:`(N, S)` where N is the batch size, S is the source sequence length.
-        #   If a ByteTensor is provided, the non-zero positions will be ignored while the position
-        #   with the zero positions will be unchanged. If a BoolTensor is provided, the positions with the
-        #   value of ``True`` will be ignored while the position with the value of ``False`` will be unchanged.
-       
-        tf_hidden = self.transformer_encoder(line_embeddings, self.src_mask, src_key_padding_mask=mask)
-        # Discard all but the last shift_window entries
-        logits = tf_hidden[:, -self.config.shift_window :, :]
+        # Extract the src (lines producing output) from the line embeddings, to be input as source (aka query) to
+        # self attention (the full sequence will be used for the key+value pairs, i.e. what is attended over)
+        src_line_embeddings = line_embeddings[:, self.config.shift_window-1:, :]
+
+        # src_key_padding_mask: if provided, specified padding elements in the key will be ignored by the attention.
+        tf_hidden = self.transformer_encoder(src_line_embeddings, line_embeddings, line_embeddings, self.src_mask, src_key_padding_mask=mask)
 
         # Try to reverse sentence embedding to produce logits
-        deembedded_sentence = self.sentence_deembedding(logits)
+        deembedded_sentence = self.sentence_deembedding(tf_hidden)
         if deembedded_sentence is not None:
             logits = deembedded_sentence @ self._word_embedding.weight.t()
+        else:
+            logits = tf_hidden
 
         loss = None
         if targets is not None:
