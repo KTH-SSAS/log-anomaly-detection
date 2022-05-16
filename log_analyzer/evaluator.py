@@ -227,10 +227,10 @@ class Evaluator:
     def add_evaluation_data(self, users, losses, seconds, red_flags, log_line=None, predictions=None):
         """Extend the data stored in self.data with the inputs."""
         # Handle input from tiered models
-        users = users.cpu().detach().flatten()
+        users = users.numpy().flatten()
         losses = losses.cpu().detach().flatten()
-        seconds = seconds.cpu().detach().flatten()
-        red_flags = red_flags.cpu().detach().flatten()
+        seconds = seconds.numpy().flatten()
+        red_flags = red_flags.numpy().flatten()
         # Check that there's enough space left for all the entries
         if len(self.data["losses"]) < self.index["losses"] + len(losses):
             # Adding entries 1'050'000 at a time provides a nice balance of efficiency and memory usage.
@@ -252,12 +252,13 @@ class Evaluator:
         self.data_is_prepared = False
         # Update token accuracy including this batch
         if log_line is not None and predictions is not None:
-            log_line = log_line.cpu().detach().flatten()
-            predictions = predictions.cpu().detach().flatten()
-            batch_token_accuracy = metrics.accuracy_score(log_line, predictions)
-            new_token_count = self.token_count + len(log_line)
+            log_line = log_line.detach().flatten()
+            log_line_length = log_line.shape[0]
+            predictions = predictions.detach().flatten()
+            batch_token_accuracy = torch.sum(log_line == predictions) / log_line_length
+            new_token_count = self.token_count + log_line_length
             new_token_accuracy = (
-                self.token_accuracy * self.token_count + batch_token_accuracy * len(log_line)
+                self.token_accuracy * self.token_count + batch_token_accuracy * log_line_length
             ) / new_token_count
             self.token_count = new_token_count
             self.token_accuracy = new_token_accuracy
@@ -276,10 +277,16 @@ class Evaluator:
             "seconds": 0,
             "red_flags": 0,
         }
-        self.token_accuracy = 0
-        self.token_count = 0
-        self.test_loss = 0
-        self.test_count = 0
+        self.token_accuracy = torch.tensor(0, dtype=torch.float)
+        self.token_count = torch.tensor(0, dtype=torch.long)
+        self.test_loss = torch.tensor(0, dtype=torch.float)
+        self.test_count = torch.tensor(0, dtype=torch.long)
+        if Application.instance().using_cuda:
+            self.token_accuracy = self.token_accuracy.cuda()
+            self.token_count = self.token_count.cuda()
+            self.test_loss = self.test_loss.cuda()
+            self.test_count = self.test_count.cuda()
+
         self.data_is_prepared = False
 
     def prepare_evaluation_data(self):
