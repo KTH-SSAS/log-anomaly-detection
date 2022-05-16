@@ -66,7 +66,6 @@ def set_seeds(seed):
 def main():
     # Initialize seeds
     set_seeds(22)
-
     args = prepare_args()
 
     if ("tiered" in args.model_type or "word" in args.tokenization) and args.counts_file is None:
