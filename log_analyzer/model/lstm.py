@@ -123,15 +123,14 @@ class MultilineLogModel(LogModel):
         elif isinstance(self.criterion, nn.CrossEntropyLoss):
             # Flatten dims 1 and 2 (line sequence, word) then transpose to: (batch, vocab_dim, sequence+word position)
             output = output.flatten(start_dim=1, end_dim=2).transpose(1, 2)
-            Y = Y.flatten(start_dim=1, end_dim=2)
-            embedding_losses = self.criterion(output, Y)
+            criterion_Y = Y.flatten(start_dim=1, end_dim=2)
+            embedding_losses = self.criterion(output, criterion_Y)
             # Reshape the loss tensor to (batch, line sequence, word)
             embedding_losses = embedding_losses.view(original_shape)
         else:
             embedding_losses = self.criterion(output, Y)
         line_losses = torch.mean(embedding_losses, dim=2) if len(embedding_losses.shape) > 2 else embedding_losses
-        sequence_losses = torch.mean(line_losses, dim=1)
-        loss = torch.mean(sequence_losses, dim=0)
+        loss = torch.mean(line_losses[torch.all(Y,dim=2)]) # do not include loss from masked lines in the mean
 
         # Return the loss, as well as extra details like loss per line
         return loss, line_losses
