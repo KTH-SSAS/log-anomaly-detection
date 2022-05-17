@@ -20,3 +20,7 @@ class TrainerConfig(Config):
     scheduler_step_size: int
     mixed_precision: bool
     gradient_accumulation: int
+    validations_per_epoch: int
+    gradient_clip: float
+    warmup_period: int
+    per_epoch_lr_reduction: float

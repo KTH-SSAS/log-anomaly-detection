@@ -6,6 +6,7 @@ import socket
 from argparse import Namespace
 from datetime import datetime
 from pathlib import Path
+from time import time
 from typing import Optional, Tuple
 
 import numpy as np
@@ -50,9 +51,9 @@ TIERED_LSTM: str = "tiered-lstm"
 TIERED_TRANSFORMER: str = "tiered-transformer"
 
 LOGGING_FREQUENCY: int = 10  # How often to log results. Set to 1 to log everything.
-VALIDATION_FREQUENCY: int = (
-    10  # Number of times to do validation per epoch. Set to 1 to only validate after each epoch.
-)
+
+# Autosave every 10 minutes
+AUTOSAVE_TIME = 10 * 60
 
 WORD_GLOBAL = "word-global"
 WORD_FIELDS = "word-fields"
@@ -266,15 +267,16 @@ def wandb_log(iteration, frequency, data: dict):
 def train_model(lm_trainer: Trainer, train_loader, val_loader):
     """Perform training on lm_trainer."""
     logger = logging.getLogger(application.TRAINER_LOGGER)
+    last_save = time()
 
+    @torch.inference_mode()
     def validation_run(train_iteration=0, val_run=0):
         """Performs one phase of validation on lm_trainer."""
         val_losses = []
         for val_iteration, val_batch in enumerate(tqdm(val_loader, desc=f"Valid:{val_run:2d}")):
             split_batch = val_loader.split_batch(val_batch)
-            with torch.no_grad():
-                loss, *_ = lm_trainer.train_step(split_batch, validation=True)
-                val_losses.append(loss.item())
+            loss, *_ = lm_trainer.train_step(split_batch, validation=True)
+            val_losses.append(loss.item())
             # Log the current validation loss and val_iteration to enable detailed view of
             # validation loss.
             # Also log the current train iteration and validation run_number to enable
@@ -303,7 +305,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
     run_validation = val_loader is not None
     if run_validation:
         # Number of iterations between each validation run
-        validation_period = (len(train_loader) // VALIDATION_FREQUENCY) + 1
+        validation_period = (len(train_loader) // lm_trainer.config.validations_per_epoch) + 1
     else:
         validation_period = 0
 
@@ -330,6 +332,13 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                     continue
             else:
                 loss, gradient_norm, done = lm_trainer.train_step(split_batch)
+
+            if (time() - last_save) > AUTOSAVE_TIME:
+                tqdm.write("Autosaving...")
+                last_save = time()
+                with open(log_dir / "autosave.pt", "wb") as f:
+                    torch.save(lm_trainer.model.state_dict(), f)
+
             iteration += 1  # Total iterations in training (cumulative)
             train_losses.append(loss.item())
             wandb_log(
@@ -339,7 +348,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                     "train/loss": loss,
                     "train/iteration": iteration,
                     "train/day": batch["day"][0],
-                    "train/lr": lm_trainer.scheduler.get_last_lr()[0],
+                    "train/lr": lm_trainer.optimizer.param_groups[0]["lr"],
                     "train/epoch": epoch,
                     "train/gradient_norm": gradient_norm,
                 },
@@ -351,6 +360,9 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
             if done:
                 logger.info("Early stopping.")
                 break
+
+        if lm_trainer.epoch_scheduler is not None:
+            lm_trainer.epoch_scheduler.step()
 
         if run_validation:
             validation_run(iteration, val_run)
@@ -372,7 +384,8 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
     return train_losses
 
 
-def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, model_file_name="model.pt"):
+@torch.inference_mode()
+def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, model_file_name=None):
     """Perform testing on lm_trainer.
 
     Note: model_file_name is only used for uploading model parameters to wandb.
@@ -398,17 +411,16 @@ def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, mode
     test_losses = []
     for iteration, batch in enumerate(tqdm(test_loader, desc="Test")):
         split_batch = test_loader.split_batch(batch)
-        with torch.no_grad():
-            loss, *_ = lm_evaluator.eval_step(split_batch, store_eval_data=store_eval_data)
-            test_losses.append(loss.item())
-            wandb_log(
-                iteration,
-                LOGGING_FREQUENCY,
-                {
-                    "eval/loss": loss,
-                    "eval/iteration": iteration,
-                    "eval/day": batch["day"][0],
-                },
-            )
+        loss, *_ = lm_evaluator.eval_step(split_batch, store_eval_data=store_eval_data)
+        test_losses.append(loss.item())
+        wandb_log(
+            iteration,
+            LOGGING_FREQUENCY,
+            {
+                "eval/loss": loss,
+                "eval/iteration": iteration,
+                "eval/day": batch["day"][0],
+            },
+        )
 
     return test_losses

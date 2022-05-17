@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import numpy as np
 import torch
 from torch.cuda.amp.grad_scaler import GradScaler
 
@@ -27,6 +28,8 @@ class Trainer:
 
         self.accumulated_steps = 0
 
+        self.gradient_clip = config.gradient_clip
+
         # Check GPU
         self.using_cuda = Application.instance().using_cuda
 
@@ -47,6 +50,16 @@ class Trainer:
         if self.config.mixed_precision:
             self.scaler: GradScaler = torch.cuda.amp.GradScaler()
 
+        warmup_period = self.config.warmup_period
+        if warmup_period > 0:
+            self.warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+                self.optimizer, start_factor=0.1, total_iters=warmup_period
+            )
+
+        self.epoch_scheduler = torch.optim.lr_scheduler.StepLR(
+                self.optimizer, 1, self.config.per_epoch_lr_reduction
+            ) if self.config.per_epoch_lr_reduction > 0 else None
+
     def early_stopping(self, val_loss):
         """Performs early stopping check after validation, if enabled."""
         if self.config.early_stopping:
@@ -54,16 +67,19 @@ class Trainer:
 
     def optimizer_step(self, loss: torch.Tensor):
         """Performs one step of optimization on the given loss."""
-        using_mp = self.config.mixed_precision
-        if using_mp:
+        if self.config.mixed_precision and isinstance(self.scaler, GradScaler):
             self.scaler.scale(loss).backward()
         else:
             loss.backward()
 
         gradient_norm = calculate_gradient_norm(self.model)
 
+        if self.gradient_clip > 0:
+            gradient_norm = np.clip(gradient_norm, None, self.gradient_clip)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.gradient_clip)
+
         if self.accumulated_steps == self.config.gradient_accumulation:
-            if using_mp:
+            if self.config.mixed_precision and isinstance(self.scaler, GradScaler):
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
             else:
@@ -71,6 +87,8 @@ class Trainer:
 
             self.optimizer.zero_grad()
             self.accumulated_steps = 0
+            if self.config.warmup_period > 0:
+                self.warmup_scheduler.step()
         else:
             self.accumulated_steps += 1
 
