@@ -357,6 +357,9 @@ class Evaluator:
             "eval/token_perplexity": self.get_token_perplexity(),
             "eval/AUC": self.get_auc_score(),
             "eval/AP": self.get_ap_score(),
+            "eval/total_lines": len(self.data["losses"]),
+            "eval/skipped_lines": self.masked_line_count,
+            "eval/skipped_reds": np.sum(self.data["red_flags"][self.data["losses"] == 0]),
         }
 
     def get_test_loss(self):
