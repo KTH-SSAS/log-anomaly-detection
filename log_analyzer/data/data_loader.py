@@ -260,15 +260,19 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
                 if line_user not in self.user_loglines:
                     self.user_loglines[line_user] = []
                 self.user_loglines[line_user].append(line_data)
+                # The first shift_window-1 lines are added directly to context, and not processed
+                # if line_user not in self.user_context and len(self.user_loglines[line_user]) >= self.shift_window - 1:
+                #     self.user_context[line_user] = self.user_loglines[line_user][-(self.shift_window-1):]
+                #     self.user_loglines[line_user] = []
                 # Check if this user has enough lines to produce a sequence:
                 # (shift_window inputs, 1 final target)
                 if len(self.user_loglines[line_user]) >= self.shift_window + 1:
                     yield self.produce_output_sequence(line_user)
             # When we've exhausted the data, return the incomplete sequences (padded up to full length)
-            for user, user_lines in self.user_loglines.items():
+            for line_user, user_lines in self.user_loglines.items():
                 # We need at least 1 input line and 1 target line.
                 if len(user_lines) > 1:
-                    yield self.produce_output_sequence(user)
+                    yield self.produce_output_sequence(line_user)
 
         # Clear the leftover lines currently stored
         self.user_loglines = {}
@@ -372,10 +376,35 @@ class LogDataLoader(DataLoader):
             "second": batch["second"],
             "red_flag": batch["red"],
         }
+        return split_batch
 
-        # Grab evaluation data
+
+class MultilineDataLoader(LogDataLoader):
+    """Dataloader for multiline datasets and models.
+
+    Provides a function to split the batch provided by the data loader (including filtering out entries that are too
+    masked to be properly processed - i.e. don't contain full context for in line sequence).
+    """
+    def split_batch(self, batch: dict):
+        """Splits a batch into variables containing relevant data."""
+        split_batch = super().split_batch(batch)
+        
+        # Ignore any batch entries that have masked out context
+        mask = split_batch["M"]
+        # Check for any masked-out context lines - it's enough to check the first line of each sequence
+        masked_lines = mask.shape[0] - torch.sum(mask[:,0])
+        if masked_lines:
+            # Create a batch of the lines that are removed from split_batch - for adding to the evaluator
+            masked_batch = {}
+            for key, value in split_batch.items():
+                # Remove any sequences that have masked-out context from the batch
+                masked_batch[key] = value[mask[:,0] == 0,:]
+                split_batch[key] = value[mask[:,0],:]
+            split_batch["masked_batch"] = masked_batch
 
         return split_batch
+
+
 
 
 def load_data_tiered(
@@ -525,7 +554,7 @@ def create_data_loaders_multiline(
     collate = partial(multiline_collate_fn, jagged=tokenizer.jagged)
 
     data_handlers = [
-        LogDataLoader(dataset, batch_size=bs, shuffle=False, collate_function=collate)
+        MultilineDataLoader(dataset, batch_size=bs, shuffle=False, collate_function=collate)
         for bs, dataset in zip(batch_sizes, datasets)
     ]
     return data_handlers
