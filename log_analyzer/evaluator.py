@@ -494,7 +494,7 @@ class Evaluator:
         """
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
-        auc_score = self.get_auc_score()
+        auc_score = self.get_auc_score(normalised=normalised)
 
         # Get the relevant data - normalised or not
         losses = self.data["normalised_losses"] if normalised else self.data["losses"]
