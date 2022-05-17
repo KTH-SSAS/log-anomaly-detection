@@ -113,8 +113,9 @@ class Evaluator:
         self.checkpoint_dir = checkpoint_dir
         self.token_count = 0
         self.token_accuracy = 0
-        self.test_count = 0
-        self.test_loss = 0
+        self.eval_lines_count = 0
+        self.eval_loss = 0
+        self.masked_line_count = 0
 
     @torch.no_grad()
     def eval_step(self, split_batch, store_eval_data=False):
@@ -147,7 +148,7 @@ class Evaluator:
 
         # Save the results if desired
         if store_eval_data:
-            # Remove masked lines from eval data
+            # Remove padding from eval data
             # Note that this handling flattens every list (since some entries are removed), but add_evaluation_data
             # flattens them anyway so this is not an issue
             if M is not None:
@@ -171,14 +172,14 @@ class Evaluator:
 
             self.add_evaluation_data(
                 users,
-                line_losses,
                 seconds,
                 red_flags,
+                line_losses,
                 log_line=Y,
                 predictions=preds,
             )
-            self.test_loss += loss
-            self.test_count += 1
+            self.eval_loss += loss
+            self.eval_lines_count += 1
 
         # Return both the loss and the output token probabilities
         return loss, output
@@ -238,11 +239,17 @@ class Evaluator:
                 wandb.run.summary[key] = value
         return evaluator_metrics
 
-    def add_evaluation_data(self, users, losses, seconds, red_flags, log_line=None, predictions=None):
+    def add_evaluation_data(self, users: torch.Tensor, seconds: torch.Tensor, red_flags: torch.Tensor, losses: torch.Tensor = None, log_line: torch.Tensor =None, predictions: torch.Tensor =None):
         """Extend the data stored in self.data with the inputs."""
         # Handle input from tiered models
         users = users.numpy().flatten()
-        losses = losses.cpu().flatten()
+        if losses is not None:
+            losses = losses.cpu().flatten()
+        else:
+            # No losses provided so this is data that could not be evaluated by the model. Set loss to 0
+            losses = np.zeros_like(users)
+            self.masked_line_count += len(losses)
+            
         seconds = seconds.numpy().flatten()
         red_flags = red_flags.numpy().flatten()
         # Check that there's enough space left for all the entries
@@ -293,13 +300,13 @@ class Evaluator:
         }
         self.token_accuracy = torch.tensor(0, dtype=torch.float)
         self.token_count = torch.tensor(0, dtype=torch.long)
-        self.test_loss = torch.tensor(0, dtype=torch.float)
-        self.test_count = torch.tensor(0, dtype=torch.long)
+        self.eval_loss = torch.tensor(0, dtype=torch.float)
+        self.eval_lines_count = torch.tensor(0, dtype=torch.long)
         if Application.instance().using_cuda:
             self.token_accuracy = self.token_accuracy.cuda()
             self.token_count = self.token_count.cuda()
-            self.test_loss = self.test_loss.cuda()
-            self.test_count = self.test_count.cuda()
+            self.eval_loss = self.eval_loss.cuda()
+            self.eval_lines_count = self.eval_lines_count.cuda()
 
         self.data_is_prepared = False
 
@@ -321,8 +328,8 @@ class Evaluator:
             for key in ["users", "losses", "seconds", "red_flags"]:
                 self.data[key] = self.data[key][sorted_indices]
         # Compute final test loss
-        self.test_loss = self.test_loss / max(self.test_count, 1)
-        self.test_count = 1
+        self.eval_loss = self.eval_loss / max(self.eval_lines_count, 1)
+        self.eval_lines_count = 1
         # Prepared the normalised losses
         self._normalise_losses()
 
@@ -358,7 +365,7 @@ class Evaluator:
         """Returns the accuracy of the model token prediction."""
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
-        return float(self.test_loss)
+        return float(self.eval_loss)
 
     def get_token_accuracy(self):
         """Returns the accuracy of the model token prediction."""
