@@ -397,15 +397,16 @@ class MultilineDataLoader(LogDataLoader):
         # Ignore any batch entries that have masked out context
         mask = split_batch["M"]
         # Check for any masked-out context lines - it's enough to check the first line of each sequence
-        masked_lines = mask.shape[0] - torch.sum(mask[:,0])
-        if masked_lines:
-            # Create a batch of the lines that are removed from split_batch - for adding to the evaluator
-            masked_batch = {}
-            for key, value in split_batch.items():
-                # Remove any sequences that have masked-out context from the batch
-                masked_batch[key] = value[mask[:,0] == 0,:]
-                split_batch[key] = value[mask[:,0],:]
-            split_batch["masked_batch"] = masked_batch
+        if mask is not None:
+            masked_lines = mask.shape[0] - torch.sum(mask[:,0])
+            if masked_lines:
+                # Create a batch of the lines that are removed from split_batch - for adding to the evaluator
+                masked_batch = {}
+                for key, value in split_batch.items():
+                    # Remove any sequences that have masked-out context from the batch
+                    masked_batch[key] = value[mask[:,0] == 0,:]
+                    split_batch[key] = value[mask[:,0],:]
+                split_batch["masked_batch"] = masked_batch
 
         return split_batch
 
@@ -510,7 +511,7 @@ def create_data_loaders_multiline(
     set to None.
     """
 
-    def multiline_collate_fn(data, jagged=False, pad_idx=0):
+    def multiline_collate_fn(data, pad_idx=0):
         """Pads the input fields to the length of the longest sequence in the
         batch."""
         batch = {}
@@ -532,7 +533,7 @@ def create_data_loaders_multiline(
 
         # Add the mask if needed - pad_idx is 0
         if not torch.all(batch["input"]):
-            batch["mask"] = torch.all(batch["input"] != 0, dim=2)
+            batch["mask"] = torch.all(batch["input"] != pad_idx, dim=2)
 
         return batch
 
@@ -556,7 +557,7 @@ def create_data_loaders_multiline(
         # Return just a single dataset
         datasets = [dataset]
 
-    collate = partial(multiline_collate_fn, jagged=tokenizer.jagged)
+    collate = partial(multiline_collate_fn, pad_idx=0)
 
     data_handlers = [
         MultilineDataLoader(dataset, batch_size=bs, shuffle=False, collate_function=collate)
