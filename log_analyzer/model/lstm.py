@@ -46,7 +46,7 @@ class LogModel(nn.Module):
         return loss, line_losses.unsqueeze(-1)
 
     @abstractmethod
-    def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None, targets=None):
+    def forward(self, sequences, lengths: Tensor = None, mask=None, targets=None):
         ...
 
 
@@ -78,7 +78,7 @@ class TieredLogModel(LogModel):
         return loss, line_losses_list
 
     @abstractmethod
-    def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None, targets=None):
+    def forward(self, sequences, lengths: Tensor = None, mask=None, targets=None):
         ...
 
 
@@ -89,6 +89,7 @@ class LSTMLanguageModel(LogModel):
         super().__init__(config)
 
         self.config = config
+        self.input_dim = config.input_dim
 
         # Layers
         self.embeddings = nn.Embedding(config.vocab_size, config.embedding_dim)
@@ -131,27 +132,14 @@ class LSTMLanguageModel(LogModel):
     def bidirectional(self):
         raise NotImplementedError("Bidirectional property has to be set in child class.")
 
-    def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None, targets=None):
+    def forward(self, sequences, lengths: Tensor = None, mask=None, targets=None):
         """Performs token embedding, context-prepending if model is tiered, and
         runs the LSTM on the input sequences."""
         # batch size, sequence length, embedded dimension
-        x_lookups = self.embeddings(sequences)
-        if self.tiered:
-            cat_x_lookups = torch.Tensor([])
-            if Application.instance().using_cuda:
-                cat_x_lookups = cat_x_lookups.cuda()
-            # x_lookups (seq len x batch x embedding)
-            x_lookups = x_lookups.transpose(0, 1)
-            for x_lookup in x_lookups:  # x_lookup (batch x embedding).
-                # x_lookup (1 x batch x embedding)
-                x_lookup = torch.unsqueeze(torch.cat((x_lookup, context_vectors), dim=1), dim=0)
-                # cat_x_lookups (n x batch x embedding) n = number of iteration
-                # where 1 =< n =< seq_len
-                cat_x_lookups = torch.cat((cat_x_lookups, x_lookup), dim=0)
-            # x_lookups (batch x seq len x embedding + context)
-            x_lookups = cat_x_lookups.transpose(0, 1)
-
-        lstm_in = x_lookups
+        if self.tiered: 
+            lstm_in = self.embeddings(sequences)
+        else:
+            lstm_in = sequences
 
         if lengths is not None:
             if len(lengths.shape) > 1:
@@ -173,14 +161,14 @@ class FwdLSTM(LSTMLanguageModel):
         self.name = "LSTM"
         super().__init__(config)
 
-    def forward(self, sequences, lengths=None, context_vectors=None, mask=None, targets=None):
+    def forward(self, sequences, lengths=None, mask=None, targets=None):
         """Handles attention (if relevant) and grabs the final token output
         guesses.
 
         Returns: predicted_tokens, (lstm_output_features, final_hidden_state), loss
         If targets is None then loss is returned as None
         """
-        lstm_out, hx = super().forward(sequences, lengths, context_vectors)
+        lstm_out, hx = super().forward(sequences, lengths)
 
         if self.has_attention:
             attention, _ = self.attention(lstm_out, mask)
@@ -211,14 +199,14 @@ class BidLSTM(LSTMLanguageModel):
         self.name = "LSTM-Bid"
         super().__init__(config)
 
-    def forward(self, sequences: torch.Tensor, lengths=None, context_vectors=None, mask=None, targets=None):
+    def forward(self, sequences: torch.Tensor, lengths=None, mask=None, targets=None):
         """Handles bidir-state-alignment, attention (if relevant) and grabs the
         final token output guesses.
 
         Returns: predicted_tokens, (lstm_output_features, final_hidden_state), loss
         If targets is None then loss is returned as None
         """
-        lstm_out, hx = super().forward(sequences, lengths, context_vectors)
+        lstm_out, hx = super().forward(sequences, lengths)
         # Reshape lstm_out to make forward/backward into separate dims
 
         if lengths is not None:
@@ -324,7 +312,7 @@ class TieredLSTM(TieredLogModel):
         # Weight initialization
         initialize_weights(self)
 
-    def forward(self, sequences, lengths: Tensor = None, context_vectors=None, mask=None, targets=None):
+    def forward(self, sequences, lengths: Tensor = None, mask=None, targets=None):
         """Forward pass of tiered LSTM model.
 
         1. Applies context LSTM to the saved context information to generate context input for event LSTM.
@@ -373,12 +361,14 @@ class TieredLSTM(TieredLogModel):
                 context_lstm_input,
                 (context_hidden_state, context_cell_state),
             )
-            context_vector = torch.squeeze(context_vector, dim=1)
+
+            x_lookups = self.event_level_lstm.embeddings(sequence)
+            seq_length = sequence.shape[1]
+            context = context_vector.tile([1, seq_length, 1])
+            sequence = torch.cat([x_lookups, context], dim=-1)
 
             # Apply the event model to get token predictions
-            event_model_output, (all_hidden, final_hidden), _ = self.event_level_lstm(
-                sequence, lengths=length, context_vectors=context_vector
-            )
+            event_model_output, (all_hidden, final_hidden), _ = self.event_level_lstm(sequence, lengths=length)
             if self.event_level_lstm.bidirectional:
                 final_hidden = final_hidden.view(1, final_hidden.shape[1], -1)
             token_output[idx][

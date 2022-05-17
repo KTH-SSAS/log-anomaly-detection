@@ -8,18 +8,15 @@ from log_analyzer.config import TrainerConfig
 from log_analyzer.model import early_stopping
 from log_analyzer.model.lstm import LogModel
 
+
 def calculate_gradient_norm(model: torch.nn.Module):
     parameters = [p for p in model.parameters() if p.grad is not None]
     total_norm: torch.Tensor = torch.norm(
-        torch.stack(
-            [
-                torch.norm(p.grad.detach(), 2)
-                for p in parameters
-            ]
-        ),
+        torch.stack([torch.norm(p.grad.detach(), 2) for p in parameters]),
         2,
     )
     return total_norm.item()
+
 
 class Trainer:
     def __init__(self, config: TrainerConfig, model: LogModel, checkpoint_dir: Path):
