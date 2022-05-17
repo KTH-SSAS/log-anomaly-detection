@@ -146,7 +146,16 @@ class Evaluator:
 
         # Save the results if desired
         if store_eval_data:
-            if isinstance(self.model, MultilineLogModel) and not self.model.criterion == torch.nn.CrossEntropyLoss:
+            # Remove masked lines from eval data
+            # Note that this handling flattens every list (since some entries are removed), but add_evaluation_data
+            # flattens them anyway so this is not an issue
+            if M is not None:
+                targets_mask = M[:,-Y.shape[1]:] # For multiline transformer mask may be larger than Y
+                users = users[targets_mask]
+                line_losses = line_losses[targets_mask]
+                seconds = seconds[targets_mask]
+                red_flags = red_flags[targets_mask]
+            if isinstance(self.model, MultilineLogModel) and not isinstance(self.model.criterion, torch.nn.CrossEntropyLoss):
                 # Multiline logmodels do not necessarily produce predictions over a discrete space that can/should be
                 # argmaxed. If CrossEntropyLoss is not used, this means the predictions are placed in the continuous
                 # sentence-embedding space. Therefore we cannot track token-accuracy and do not pass Y or preds to
@@ -155,6 +164,10 @@ class Evaluator:
                 preds = None
             else:
                 preds = torch.argmax(output, dim=-1)
+                if M is not None:
+                    Y = Y[targets_mask]
+                    preds = preds[targets_mask]
+
             self.add_evaluation_data(
                 users,
                 line_losses,
@@ -228,7 +241,7 @@ class Evaluator:
         """Extend the data stored in self.data with the inputs."""
         # Handle input from tiered models
         users = users.numpy().flatten()
-        losses = losses.cpu().detach().flatten()
+        losses = losses.cpu().flatten()
         seconds = seconds.numpy().flatten()
         red_flags = red_flags.numpy().flatten()
         # Check that there's enough space left for all the entries
