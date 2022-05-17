@@ -7,7 +7,7 @@ from argparse import Namespace
 from datetime import datetime
 from pathlib import Path
 from time import time
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import numpy as np
 from torch.utils.data import DataLoader
@@ -27,7 +27,7 @@ from log_analyzer.config.model_config import (
     TransformerConfig,
 )
 from log_analyzer.evaluator import Evaluator
-from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel, TieredLSTM
+from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel, MultilineLogModel, TieredLSTM
 from log_analyzer.model.transformer import MultilineTransformer, TieredTransformer, Transformer
 from log_analyzer.tokenizer.tokenizer_neo import (
     CharTokenizer,
@@ -346,6 +346,9 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
             # epoch_iteration = iterations in this epoch (used to determine when to run validation)
             # Split the batch
             split_batch = train_loader.split_batch(batch)
+            # Check that the split batch contains entries (see MultilineDataloader's mask filtering)
+            if len(split_batch["X"]) == 0:
+                continue
             if lm_trainer.model.tiered:
                 if train_loader.flush is False:
                     loss, gradient_norm, done = lm_trainer.train_step(split_batch)
@@ -411,7 +414,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
 
 
 @torch.inference_mode()
-def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, model_file_name=None):
+def eval_model(lm_evaluator: Evaluator, test_loader: Union[data_utils.LogDataLoader,data_utils.TieredLogDataLoader], store_eval_data=False, model_file_name=None):
     """Perform testing on lm_trainer.
 
     Note: model_file_name is only used for uploading model parameters to wandb.
@@ -437,6 +440,18 @@ def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, mode
     test_losses = []
     for iteration, batch in enumerate(tqdm(test_loader, desc="Test")):
         split_batch = test_loader.split_batch(batch)
+        # Add any masked-out lines to the evaluator
+        if "masked_batch" in split_batch:
+            masked_batch = split_batch["masked_batch"]
+            lm_evaluator.add_evaluation_data(
+                masked_batch["user"],
+                masked_batch["second"],
+                masked_batch["red_flag"],
+                
+            )
+        # Check that the split batch contains entries (see MultilineDataloader's mask filtering)
+        if len(split_batch["X"]) == 0:
+            continue
         loss, *_ = lm_evaluator.eval_step(split_batch, store_eval_data=store_eval_data)
         test_losses.append(loss.item())
         wandb_log(
@@ -448,5 +463,4 @@ def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, mode
                 "eval/day": batch["day"][0],
             },
         )
-
     return test_losses
