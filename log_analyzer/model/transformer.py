@@ -484,7 +484,9 @@ class MultilineTransformer(MultilineLogModel):
         src_line_embeddings = line_embeddings[:, self.config.shift_window-1:, :]
 
         # src_key_padding_mask: if provided, specified padding elements in the key will be ignored by the attention.
-        tf_hidden = self.transformer_encoder(src_line_embeddings, line_embeddings, line_embeddings, self.src_mask, src_key_padding_mask=mask)
+        pad_mask = mask == 0 if mask is not None else None
+
+        tf_hidden = self.transformer_encoder(src_line_embeddings, line_embeddings, line_embeddings, self.src_mask, src_key_padding_mask=pad_mask)
 
         # Try to reverse sentence embedding to produce logits
         if self._sentence_deembedding is None:

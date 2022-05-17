@@ -298,17 +298,13 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
             "input": torch.zeros((num_inputs, lines[0]["input"].shape[0]), dtype=torch.long),
             "target": torch.zeros((num_targets, lines[0]["target"].shape[0]), dtype=torch.long),
             "length": torch.zeros((num_targets), dtype=torch.long),
-            "mask": torch.zeros((num_inputs), dtype=torch.bool),
         }
 
         # First add the context lines
         if len(context_lines) == self.shift_window - 1:
             for idx, line_data in enumerate(context_lines):
                 datadict["input"][idx] = line_data["input"]
-        # If len(context_lines) < shift_window - 1 we need to prepend padding
-        elif len(context_lines) == 0:
-            datadict["mask"][:self.shift_window - 1] = 1
-        else:
+        elif len(context_lines) != 0:
             # Context length should only be 0 or shift_window - 1
             raise ValueError(
                 f"Unexpected context length. Expected 0 or shift_window-1 ({self.shift_window-1}), got {len(context_lines)}."
@@ -329,9 +325,6 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
                 datadict["red"][idx - 1] = line_data["red"]
                 datadict["target"][idx - 1] = line_data["input"] # A line's target is the same as the next line's input
                 datadict["length"][idx - 1] = line_data["length"]
-        # If len(lines) < shift_window + 1 we need to append padding
-        if len(lines) < self.shift_window + 1:
-            datadict["mask"][len(lines) + self.shift_window - 2:] = 1
 
         # Update this user's context - the last self.shift_window-1 lines, except the very last line (this has yet to be
         # processed as input)
@@ -500,12 +493,6 @@ def create_data_loaders_multiline(
             for key in sample:
                 batch[key].append(sample[key])
 
-        if jagged:
-            fields_to_pad = ["input", "target"]
-            for key in fields_to_pad:
-                batch[key] = pad_sequence(batch[key], batch_first=True, padding_value=pad_idx)
-
-            batch["mask"] = batch["input"] != pad_idx
 
         for key, value in batch.items():
             for index, sequence in enumerate(value):
@@ -513,6 +500,10 @@ def create_data_loaders_multiline(
                     value[index] = torch.stack(sequence)
             if isinstance(value, list):
                 batch[key] = torch.stack(value)
+
+        # Add the mask if needed - pad_idx is 0
+        if not torch.all(batch["input"]):
+            batch["mask"] = torch.all(batch["input"] != 0, dim=2)
 
         return batch
 

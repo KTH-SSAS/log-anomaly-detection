@@ -103,7 +103,7 @@ def test_data_loader_multiline(shuffle, memory_type):
                 batch["input"][b, -(shift_window - 1) :], batch["target"][b, :-1], allow_mask=True
             ), "Inputs and targets should be shifted by exactly 1 in every sequence."
             if "mask" in batch:
-                # If the entry is masked out (all 0s), the mask should be True
-                assert torch.all(batch["input"][b, batch["mask"][b]] == 0) and torch.all(
-                    batch["input"][b, batch["mask"][b] == 0] != 0
+                # If the entry is masked out (all 0s), the mask should be False
+                assert torch.all(batch["input"][b, batch["mask"][b]]) and torch.all(
+                    batch["input"][b, batch["mask"][b] == 0] == 0
                 )
