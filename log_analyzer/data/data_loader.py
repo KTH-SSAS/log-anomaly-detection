@@ -238,6 +238,8 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
         self.user_loglines: Dict[str, List[Dict[str, torch.Tensor]]] = {}
         # Stores the last shift_window lines from each user that have been batched (for context)
         self.user_context: Dict[str, List[Dict[str, torch.Tensor]]] = {}
+        # Stores any lines that are skipped due to incomplete context (i.e. first shift_window-1 lines per user)
+        self.user_skipped_lines: Dict[str, List[Dict[str, torch.Tensor]]] = {}
         self.refresh_iterator()
 
     def __iter__(self):
@@ -251,28 +253,34 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
         parameters."""
 
         def generate_iterator():
-            # Actual input to the model (that will produce an output prediction): shift_window
-            # Extra history needed to ensure a full shift_window history for every entry: shift_window-1
-            # Length of each full item: 2*shift_window - 1
+            # For each user, we split its sequence of log lines into buckets that are shift_window long.
+            # For each batch entry we need 2 buckets: 1 that will be predicted ("classified") and the bucket before it
+            # to provide full context (i.e. shift_window lines of input) for each log line.
             for line in self.data:
                 line_data = prepare_datadict(line, self.task, self.tokenizer)
                 line_user = line_data["user"].item()
                 if line_user not in self.user_loglines:
                     self.user_loglines[line_user] = []
                 self.user_loglines[line_user].append(line_data)
-                # The first shift_window-1 lines are added directly to context, and not processed
-                # if line_user not in self.user_context and len(self.user_loglines[line_user]) >= self.shift_window - 1:
-                #     self.user_context[line_user] = self.user_loglines[line_user][-(self.shift_window-1):]
-                #     self.user_loglines[line_user] = []
-                # Check if this user has enough lines to produce a sequence:
-                # (shift_window inputs, 1 final target)
-                if len(self.user_loglines[line_user]) >= self.shift_window + 1:
-                    yield self.produce_output_sequence(line_user)
+                # Check if this user has a full bucket of log lines.
+                if len(self.user_loglines[line_user]) == self.shift_window:
+                    if line_user not in self.user_context:
+                        # The first bucket per user cannot be predicted, as it has no context information
+                        self.user_skipped_lines[line_user] = self.user_loglines[line_user]
+                        self.update_user_context(line_user)
+                    else:
+                        yield self.produce_output_sequence(line_user)
             # When we've exhausted the data, return the incomplete sequences (padded up to full length)
             for line_user, user_lines in self.user_loglines.items():
-                # We need at least 1 input line and 1 target line.
-                if len(user_lines) > 1:
+                # We can only process lines if we have context
+                if line_user not in self.user_context:
+                    self.user_skipped_lines[line_user] = user_lines
+                elif len(user_lines):
                     yield self.produce_output_sequence(line_user)
+            # After we've returned incomplete sequences, return the skipped sequences
+            # so these can be added to the evaluator
+            for line_user, user_lines in self.user_skipped_lines.items():
+                yield self.produce_output_sequence(line_user)
 
         # Clear the leftover lines currently stored
         self.user_loglines = {}
@@ -280,16 +288,14 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
         self.iterator = generate_iterator()
 
     def produce_output_sequence(self, user):
-        """Puts together a sequence of loglines from a single user from the
-        data that's been read in so far.
+        """Puts together a sequence of loglines from a single user from the data that's been read in so far.
         
-        If the user does not have enough log lines (self.shift_window + 1) we pad the output by appending padding
-        to shift_window + 1
+        If the user does not have enough log lines (self.shift_window) we pad by appending padding (0).
         
         If the user does not have any context lines, we haven't sent any sequence from this user yet.
-        We therefore pad the context with 0s (shift_window-1), then append padding to total length shift_window * 2 - 1
+        We therefore pad the context with 0s (shift_window), then append padding to total length shift_window * 2 - 1
         """
-        lines = self.user_loglines[user]
+        lines = self.user_loglines[user] if len(self.user_loglines[user]) else self.user_skipped_lines[user]
         context_lines = self.user_context[user] if user in self.user_context else []
         num_inputs = self.shift_window * 2 - 1
         num_targets = self.shift_window
@@ -300,45 +306,42 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
             "user": torch.zeros((num_targets), dtype=torch.long),
             "red": torch.zeros((num_targets), dtype=torch.long),
             "input": torch.zeros((num_inputs, lines[0]["input"].shape[0]), dtype=torch.long),
-            "target": torch.zeros((num_targets, lines[0]["target"].shape[0]), dtype=torch.long),
+            "target": torch.zeros((num_targets, lines[0]["input"].shape[0]), dtype=torch.long),
             "length": torch.zeros((num_targets), dtype=torch.long),
         }
 
         # First add the context lines
-        if len(context_lines) == self.shift_window - 1:
+        if len(context_lines) == self.shift_window:
             for idx, line_data in enumerate(context_lines):
                 datadict["input"][idx] = line_data["input"]
         elif len(context_lines) != 0:
-            # Context length should only be 0 or shift_window - 1
+            # Context length should only be 0 or shift_window
             raise ValueError(
-                f"Unexpected context length. Expected 0 or shift_window-1 ({self.shift_window-1}), got {len(context_lines)}."
+                f"Unexpected context length. Expected 0 or shift_window ({self.shift_window}), got {len(context_lines)}."
             )
 
         for idx, line_data in enumerate(lines):
             # The last line in the input is only used as the target for the 2nd to last line, not as input
             if idx < len(lines) - 1:
                 datadict["input"][idx + self.shift_window - 1] = line_data["input"]
-            # The first line processed is not the target of anything (in this sequence) - unless the sequence is only
-            # a single line
-            if len(lines) == 1:
-                idx += 1
-            if idx >= 1:
-                datadict["second"][idx - 1] = line_data["second"]
-                datadict["day"][idx - 1] = line_data["day"]
-                datadict["user"][idx - 1] = line_data["user"]
-                datadict["red"][idx - 1] = line_data["red"]
-                datadict["target"][idx - 1] = line_data["input"] # A line's target is the same as the next line's input
-                datadict["length"][idx - 1] = line_data["length"]
+            datadict["second"][idx - 1] = line_data["second"]
+            datadict["day"][idx - 1] = line_data["day"]
+            datadict["user"][idx - 1] = line_data["user"]
+            datadict["red"][idx - 1] = line_data["red"]
+            datadict["target"][idx - 1] = line_data["input"] # A line's target is the same as the next line's input
+            datadict["length"][idx - 1] = line_data["length"]
 
-        # Update this user's context - the last self.shift_window-1 lines, except the very last line (this has yet to be
-        # processed as input)
+        self.update_user_context(user)
+        return datadict
+
+    def update_user_context(self, user):
+        # Update this user's context - take the last self.shift_window lines from its saved lines
         if user not in self.user_context:
             self.user_context[user] = []
-        self.user_context[user].extend(lines[:-1])
-        self.user_context[user] = self.user_context[user][-(self.shift_window-1):]
-        # Remove all but the last line from the user's line list
-        self.user_loglines[user] = lines[-1:]
-        return datadict
+        self.user_context[user].extend(self.user_loglines[user])
+        self.user_context[user] = self.user_context[user][-self.shift_window:]
+        # Remove all lines from the user's line list
+        self.user_loglines[user] = []
 
 
 class LogDataLoader(DataLoader):
@@ -407,7 +410,6 @@ class MultilineDataLoader(LogDataLoader):
                     masked_batch[key] = value[mask[:,0] == 0,:]
                     split_batch[key] = value[mask[:,0],:]
                 split_batch["masked_batch"] = masked_batch
-
         return split_batch
 
 
