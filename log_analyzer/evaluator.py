@@ -115,7 +115,7 @@ class Evaluator:
         self.token_accuracy = 0
         self.eval_lines_count = 0
         self.eval_loss = 0
-        self.masked_line_count = 0
+        self.skipped_line_count = 0
 
     @torch.no_grad()
     def eval_step(self, split_batch, store_eval_data=False):
@@ -248,7 +248,7 @@ class Evaluator:
         else:
             # No losses provided so this is data that could not be evaluated by the model. Set loss to 0
             losses = np.zeros_like(users)
-            self.masked_line_count += len(losses)
+            self.skipped_line_count += len(losses)
             
         seconds = seconds.numpy().flatten()
         red_flags = red_flags.numpy().flatten()
@@ -329,7 +329,7 @@ class Evaluator:
                 self.data[key] = self.data[key][sorted_indices]
         # Compute final test loss
         self.eval_loss = self.eval_loss / max(self.eval_lines_count, 1)
-        self.eval_lines_count = 1
+        self.eval_lines_count += 1 - self.eval_lines_count # Reset to 1, keep the same torch.Tensor, type and device
         # Prepared the normalised losses
         self._normalise_losses()
 
@@ -360,7 +360,7 @@ class Evaluator:
             "eval/AUC": self.get_auc_score(),
             "eval/AP": self.get_ap_score(),
             "eval/total_lines": len(self.data["losses"]),
-            "eval/skipped_lines": self.masked_line_count,
+            "eval/skipped_lines": self.skipped_line_count,
             "eval/skipped_reds": np.sum(self.data["red_flags"][self.data["losses"] == 0]),
         }
 
@@ -368,13 +368,13 @@ class Evaluator:
         """Returns the accuracy of the model token prediction."""
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
-        return float(self.eval_loss)
+        return self.eval_loss.item()
 
     def get_token_accuracy(self):
         """Returns the accuracy of the model token prediction."""
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
-        return self.token_accuracy
+        return self.token_accuracy.item()
 
     def get_token_perplexity(self):
         """Computes and returns the perplexity of the model token
@@ -505,14 +505,14 @@ class Evaluator:
         step_size = (len(full_fp_rate) // 2000) + 1
         fp_rate = full_fp_rate[::step_size]
         tp_rate = full_tp_rate[::step_size]
-        # Y value (tp_rate) is monotonically increasing in ROC curves, so ignore any values after we reach 1.0 tp_rate
-        last_index = np.where(np.isclose(tp_rate, 1.0))[0][0]
-        fp_rate = fp_rate[:last_index+1]
-        tp_rate = tp_rate[:last_index+1]
         # Ensure the last value in full_fp_rate and full_tp_rate is included
         if fp_rate[-1] != full_fp_rate[-1]:
             fp_rate = np.append(fp_rate, full_fp_rate[-1])
             tp_rate = np.append(tp_rate, full_tp_rate[-1])
+        # Y value (tp_rate) is monotonically increasing in ROC curves, so ignore any values after we reach 1.0 tp_rate
+        last_index = np.where(np.isclose(tp_rate, 1.0))[0][0]
+        fp_rate = fp_rate[:last_index+1]
+        tp_rate = tp_rate[:last_index+1]
         # Erase the full fp and tp lists
         full_fp_rate = full_tp_rate = []
         if self.use_wandb:
