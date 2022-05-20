@@ -323,13 +323,13 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
         for idx, line_data in enumerate(lines):
             # The last line in the input is only used as the target for the 2nd to last line, not as input
             if idx < len(lines) - 1:
-                datadict["input"][idx + self.shift_window - 1] = line_data["input"]
-            datadict["second"][idx - 1] = line_data["second"]
-            datadict["day"][idx - 1] = line_data["day"]
-            datadict["user"][idx - 1] = line_data["user"]
-            datadict["red"][idx - 1] = line_data["red"]
-            datadict["target"][idx - 1] = line_data["input"] # A line's target is the same as the next line's input
-            datadict["length"][idx - 1] = line_data["length"]
+                datadict["input"][idx + self.shift_window] = line_data["input"]
+            datadict["second"][idx] = line_data["second"]
+            datadict["day"][idx] = line_data["day"]
+            datadict["user"][idx] = line_data["user"]
+            datadict["red"][idx] = line_data["red"]
+            datadict["target"][idx] = line_data["input"] # A line's target is the same as the next line's input
+            datadict["length"][idx] = line_data["length"]
 
         self.update_user_context(user)
         return datadict
@@ -395,20 +395,40 @@ class MultilineDataLoader(LogDataLoader):
     """
     def split_batch(self, batch: dict):
         """Splits a batch into variables containing relevant data."""
-        split_batch = super().split_batch(batch)
-        
-        # Ignore any batch entries that have masked out context
-        mask = split_batch["M"]
+        X = batch["input"]
+        Y = batch["target"]
+
+        # Optional fields
+        L = batch.get("length")
+        M = batch.get("input_mask")
+
+        if self.using_cuda:
+            X = X.cuda()
+            Y = Y.cuda()
+            if M is not None:
+                M = M.cuda()
+
+        split_batch = {
+            "X": X,
+            "Y": Y,
+            "L": L,
+            "M": M,
+            "user": batch["user"],
+            "second": batch["second"],
+            "red_flag": batch["red"],
+        }
+        if "target_mask" in batch:
+            split_batch["target_mask"] = batch["target_mask"]
         # Check for any masked-out context lines - it's enough to check the first line of each sequence
-        if mask is not None:
-            masked_lines = mask.shape[0] - torch.sum(mask[:,0])
+        if M is not None:
+            masked_lines = M.shape[0] - torch.sum(M[:,0])
             if masked_lines:
                 # Create a batch of the lines that are removed from split_batch - for adding to the evaluator
                 masked_batch = {}
                 for key, value in split_batch.items():
                     # Remove any sequences that have masked-out context from the batch
-                    masked_batch[key] = value[mask[:,0] == 0,:]
-                    split_batch[key] = value[mask[:,0],:]
+                    masked_batch[key] = value[M[:,0] == 0,:]
+                    split_batch[key] = value[M[:,0],:]
                 split_batch["masked_batch"] = masked_batch
         return split_batch
 
@@ -533,9 +553,13 @@ def create_data_loaders_multiline(
             if isinstance(value, list):
                 batch[key] = torch.stack(value)
 
-        # Add the mask if needed - pad_idx is 0
+        # Add the input padding mask if needed - pad_idx is 0
         if not torch.all(batch["input"]):
-            batch["mask"] = torch.all(batch["input"] != pad_idx, dim=2)
+            batch["input_mask"] = torch.all(batch["input"] != pad_idx, dim=2)
+        # Add the target padding mask if needed - pad_idx is 0
+        if not torch.all(batch["target"]):
+            batch["target_mask"] = torch.all(batch["target"] != pad_idx, dim=2)
+
 
         return batch
 

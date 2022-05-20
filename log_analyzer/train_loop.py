@@ -447,7 +447,7 @@ def eval_model(lm_evaluator: Evaluator, test_loader: Union[data_utils.LogDataLoa
                 masked_batch["user"],
                 masked_batch["second"],
                 masked_batch["red_flag"],
-                
+                mask = masked_batch["target_mask"],
             )
         # Check that the split batch contains entries (see MultilineDataloader's mask filtering)
         if len(split_batch["X"]) == 0:
