@@ -126,11 +126,19 @@ class Evaluator:
             Y: target
             L: sequence lengths
             M: sequence masks
+            target_mask[optional]: target mask
         """
         X = split_batch["X"]
         Y = split_batch["Y"]
         L = split_batch["L"]
         M = split_batch["M"]
+        # Grab the mask for the targets if one is provided
+        if "target_mask" in split_batch:
+            mask = split_batch["target_mask"]
+        elif M is not None:
+            mask = M
+        else:
+            mask = None
 
         users = split_batch["user"]
         seconds = split_batch["second"]
@@ -146,15 +154,6 @@ class Evaluator:
 
         # Save the results if desired
         if store_eval_data:
-            # Remove padding from eval data
-            # Note that this handling flattens every list (since some entries are removed), but add_evaluation_data
-            # flattens them anyway so this is not an issue
-            if M is not None:
-                targets_mask = M[:,-Y.shape[1]:] # For multiline transformer mask may be larger than Y
-                users = users[targets_mask]
-                line_losses = line_losses[targets_mask]
-                seconds = seconds[targets_mask]
-                red_flags = red_flags[targets_mask]
             if isinstance(self.model, MultilineLogModel) and not isinstance(self.model.criterion, torch.nn.CrossEntropyLoss):
                 # Multiline logmodels do not necessarily produce predictions over a discrete space that can/should be
                 # argmaxed. If CrossEntropyLoss is not used, this means the predictions are placed in the continuous
@@ -164,9 +163,6 @@ class Evaluator:
                 preds = None
             else:
                 preds = torch.argmax(output, dim=-1)
-                if M is not None:
-                    Y = Y[targets_mask]
-                    preds = preds[targets_mask]
 
             self.add_evaluation_data(
                 users,
@@ -175,6 +171,7 @@ class Evaluator:
                 line_losses,
                 log_line=Y,
                 predictions=preds,
+                mask=mask
             )
             self.eval_loss += loss
             self.eval_lines_count += 1
@@ -182,74 +179,29 @@ class Evaluator:
         # Return both the loss and the output token probabilities
         return loss, output
 
-    def run_all(self):
-        r"""Performs standard evaluation on the model. Assumes the model has been trained
-        and the evaluator has been populated with evaluation data (see eval_step)"""
-        if not self.data_is_prepared:
-            self.prepare_evaluation_data()
-        # Get generic metrics
-        evaluator_metrics = self.get_metrics()
-
-        # get line losses plot
-        self.plot_line_loss_percentiles(
-            percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False
-        )
-        if self.use_wandb:
-            wandb.log({"Aggregate line losses": wandb.Image(plt)})
-        plt.clf()
-
-        # get roc curve
-        _, roc_plot = self.plot_roc_curve()
-        if self.use_wandb:
-            wandb.log({"ROC Curve": roc_plot})
-
-        # get pr curve
-        AP_score, pr_plot = self.plot_pr_curve()
-        if self.use_wandb:
-            wandb.log({"PR Curve": pr_plot})
-        evaluator_metrics["eval/AP"] = AP_score
-
-        # get normalised line losses plot
-        self.plot_line_loss_percentiles(
-            percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False, normalised=True
-        )
-        if self.use_wandb:
-            wandb.log({"Aggregate line losses (normalised)": wandb.Image(plt)})
-        plt.clf()
-
-        # get normalised roc curve
-        evaluator_metrics["eval/AUC_(normalised)"], roc_plot = self.plot_roc_curve(
-            title="ROC (normalised)", normalised=True
-        )
-        if self.use_wandb:
-            wandb.log({"ROC Curve (normalised)": roc_plot})
-
-        # get normalised pr curve
-        evaluator_metrics["eval/AP_(normalised)"], pr_plot = self.plot_pr_curve(
-            title="PR Curve (normalised)", normalised=True
-        )
-        if self.use_wandb:
-            wandb.log({"PR Curve": pr_plot})
-
-        # Log the evaluation results
-        if self.use_wandb and wandb.run is not None:
-            for key, value in evaluator_metrics.items():
-                wandb.run.summary[key] = value
-        return evaluator_metrics
-
-    def add_evaluation_data(self, users: torch.Tensor, seconds: torch.Tensor, red_flags: torch.Tensor, losses: torch.Tensor = None, log_line: torch.Tensor =None, predictions: torch.Tensor =None):
+    def add_evaluation_data(self, users: torch.Tensor, seconds: torch.Tensor, red_flags: torch.Tensor, losses: torch.Tensor = None, log_line: torch.Tensor = None, predictions: torch.Tensor = None, mask: torch.Tensor = None):
         """Extend the data stored in self.data with the inputs."""
         # Handle input from tiered models
         users = users.numpy().flatten()
+        seconds = seconds.numpy().flatten()
+        red_flags = red_flags.numpy().flatten()
+
+        # Handle masked (i.e. padding) lines in the input
+        if mask is not None:
+            mask = mask.cpu().numpy().flatten()
+            users = users[mask]
+            seconds = seconds[mask]
+            red_flags = red_flags[mask]
+
         if losses is not None:
             losses = losses.cpu().flatten()
+            if mask is not None:
+                losses = losses[mask]
         else:
             # No losses provided so this is data that could not be evaluated by the model. Set loss to 0
             losses = np.zeros_like(users)
             self.skipped_line_count += len(losses)
             
-        seconds = seconds.numpy().flatten()
-        red_flags = red_flags.numpy().flatten()
         # Check that there's enough space left for all the entries
         if len(self.data["losses"]) < self.index["losses"] + len(losses):
             # Adding entries 1'050'000 at a time provides a nice balance of efficiency and memory usage.
@@ -271,9 +223,14 @@ class Evaluator:
         self.data_is_prepared = False
         # Update token accuracy including this batch
         if log_line is not None and predictions is not None:
-            log_line = log_line.detach().flatten()
+            predictions = predictions.detach()
+            if mask is not None:
+                log_line = log_line.flatten(end_dim=1)[mask].flatten()
+                predictions = predictions.flatten(end_dim=1)[mask].flatten()
+            else:
+                log_line = log_line.flatten()
+                predictions = predictions.flatten()
             log_line_length = log_line.shape[0]
-            predictions = predictions.detach().flatten()
             batch_token_accuracy = torch.sum(log_line == predictions) / log_line_length
             new_token_count = self.token_count + log_line_length
             new_token_accuracy = (
@@ -623,3 +580,58 @@ class Evaluator:
         plt.title(title)
         plt.legend()
         return AP_score, plt
+
+    def run_all(self):
+        r"""Performs standard evaluation on the model. Assumes the model has been trained
+        and the evaluator has been populated with evaluation data (see eval_step)"""
+        if not self.data_is_prepared:
+            self.prepare_evaluation_data()
+        # Get generic metrics
+        evaluator_metrics = self.get_metrics()
+
+        # get line losses plot
+        self.plot_line_loss_percentiles(
+            percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False
+        )
+        if self.use_wandb:
+            wandb.log({"Aggregate line losses": wandb.Image(plt)})
+        plt.clf()
+
+        # get roc curve
+        _, roc_plot = self.plot_roc_curve()
+        if self.use_wandb:
+            wandb.log({"ROC Curve": roc_plot})
+
+        # get pr curve
+        AP_score, pr_plot = self.plot_pr_curve()
+        if self.use_wandb:
+            wandb.log({"PR Curve": pr_plot})
+        evaluator_metrics["eval/AP"] = AP_score
+
+        # get normalised line losses plot
+        self.plot_line_loss_percentiles(
+            percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False, normalised=True
+        )
+        if self.use_wandb:
+            wandb.log({"Aggregate line losses (normalised)": wandb.Image(plt)})
+        plt.clf()
+
+        # get normalised roc curve
+        evaluator_metrics["eval/AUC_(normalised)"], roc_plot = self.plot_roc_curve(
+            title="ROC (normalised)", normalised=True
+        )
+        if self.use_wandb:
+            wandb.log({"ROC Curve (normalised)": roc_plot})
+
+        # get normalised pr curve
+        evaluator_metrics["eval/AP_(normalised)"], pr_plot = self.plot_pr_curve(
+            title="PR Curve (normalised)", normalised=True
+        )
+        if self.use_wandb:
+            wandb.log({"PR Curve": pr_plot})
+
+        # Log the evaluation results
+        if self.use_wandb and wandb.run is not None:
+            for key, value in evaluator_metrics.items():
+                wandb.run.summary[key] = value
+        return evaluator_metrics
