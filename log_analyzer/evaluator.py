@@ -308,6 +308,7 @@ class Evaluator:
 
     def get_metrics(self):
         """Computes and returns all metrics."""
+        nonskipped_fp_rate, nonskipped_tp_rate, _ = metrics.roc_curve(self.data["red_flags"][self.data["losses"] > 0], self.data["losses"][self.data["losses"] > 0], pos_label=1)
         return {
             "eval/loss": self.get_test_loss(),
             "eval/token_accuracy": self.get_token_accuracy(),
@@ -317,6 +318,7 @@ class Evaluator:
             "eval/total_lines": len(self.data["losses"]),
             "eval/skipped_lines": self.skipped_line_count,
             "eval/skipped_reds": np.sum(self.data["red_flags"][self.data["losses"] == 0]),
+            "eval/AUC_nonskipped" : metrics.auc(nonskipped_fp_rate, nonskipped_tp_rate),
         }
 
     def get_test_loss(self):
