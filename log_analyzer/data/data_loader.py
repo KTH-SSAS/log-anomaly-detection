@@ -420,16 +420,15 @@ class MultilineDataLoader(LogDataLoader):
         if "target_mask" in batch:
             split_batch["target_mask"] = batch["target_mask"]
         # Check for any masked-out context lines - it's enough to check the first line of each sequence
-        if M is not None:
-            masked_lines = M.shape[0] - torch.sum(M[:,0])
-            if masked_lines:
-                # Create a batch of the lines that are removed from split_batch - for adding to the evaluator
-                masked_batch = {}
-                for key, value in split_batch.items():
-                    # Remove any sequences that have masked-out context from the batch
-                    masked_batch[key] = value[M[:,0] == 0,:]
-                    split_batch[key] = value[M[:,0],:]
-                split_batch["masked_batch"] = masked_batch
+        masked_lines = M.shape[0] - torch.sum(M[:,0])
+        if masked_lines:
+            # Create a batch of the lines that are removed from split_batch - for adding to the evaluator
+            masked_batch = {}
+            for key, value in split_batch.items():
+                # Remove any sequences that have masked-out context from the batch
+                masked_batch[key] = value[M[:,0] == 0,:]
+                split_batch[key] = value[M[:,0],:]
+            split_batch["masked_batch"] = masked_batch
         return split_batch
 
 
@@ -553,12 +552,10 @@ def create_data_loaders_multiline(
             if isinstance(value, list):
                 batch[key] = torch.stack(value)
 
-        # Add the input padding mask if needed - pad_idx is 0
-        if not torch.all(batch["input"]):
-            batch["input_mask"] = torch.all(batch["input"] != pad_idx, dim=2)
-        # Add the target padding mask if needed - pad_idx is 0
-        if not torch.all(batch["target"]):
-            batch["target_mask"] = torch.all(batch["target"] != pad_idx, dim=2)
+        # Add the input padding mask - pad_idx is 0
+        batch["input_mask"] = torch.all(batch["input"] != pad_idx, dim=2)
+        # Add the target padding mask - pad_idx is 0
+        batch["target_mask"] = torch.all(batch["target"] != pad_idx, dim=2)
 
 
         return batch
