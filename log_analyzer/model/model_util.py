@@ -1,9 +1,10 @@
+import logging
+import signal
+
 import numpy as np
 import torch
 import torch.nn.init
 from torch import nn
-import signal
-import logging
 
 
 def truncated_normal_(tensor, mean=0, std=1):
@@ -39,16 +40,24 @@ def initialize_weights(net, initrange=1.0, dist_func=truncated_normal_):
 
 class DelayedKeyboardInterrupt:
     """Context handler for creating un-interruptable code blocks.
-    Source: Stack overflow ("how-to-prevent-a-block-of-code-from-being-interrupted-by-keyboardinterrupt-in-py")"""
+
+    Source: Stack overflow ("how-to-prevent-a-block-of-code-from-being-interrupted-by-keyboardinterrupt-in-py")
+    """
+
+    def __init__(self):
+        self.signal_received = False
+        self.old_handler = None
+
     def __enter__(self):
         self.signal_received = False
         self.old_handler = signal.signal(signal.SIGINT, self.handler)
 
     def handler(self, sig, frame):
         self.signal_received = (sig, frame)
-        logging.debug('SIGINT received. Delaying KeyboardInterrupt.')
+        logging.debug("SIGINT received. Delaying KeyboardInterrupt.")
 
-    def __exit__(self, t, value, traceback):
+    def __exit__(self, *_):
+        # Ignore input arguments (type, value, traceback)
         signal.signal(signal.SIGINT, self.old_handler)
         if self.signal_received:
             self.old_handler(*self.signal_received)
