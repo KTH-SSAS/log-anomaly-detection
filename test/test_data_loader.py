@@ -15,7 +15,7 @@ def batch_equal(v1: torch.Tensor, v2: torch.Tensor, allow_mask=False):
             for i in range(v1.shape[0])
         ]
     else:
-        batch_entry_equals = torch.all((v1 == v2), dim=-1)
+        batch_entry_equals = [torch.all((v1 == v2), dim=-1)]
     return all(batch_entry_equals)
 
 

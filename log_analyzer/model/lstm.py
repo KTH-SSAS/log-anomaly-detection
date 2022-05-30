@@ -130,7 +130,7 @@ class MultilineLogModel(LogModel):
         else:
             embedding_losses = self.criterion(output, Y)
         line_losses = torch.mean(embedding_losses, dim=2) if len(embedding_losses.shape) > 2 else embedding_losses
-        loss = torch.mean(line_losses[torch.all(Y,dim=2)]) # do not include loss from padding
+        loss = torch.mean(line_losses[torch.all(Y, dim=2)])  # do not include loss from padding
 
         # Return the loss, as well as extra details like loss per line
         return loss, line_losses

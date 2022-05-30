@@ -24,7 +24,7 @@ def _generate_square_subsequent_mask(seq_len):
 def _generate_multiline_asymmetric_mask(source_length, key_value_length):
     """Generates an asymmetric mask for self-attention where source length is
     larger than the key/value (aka context) length.
-    
+
     For example, a multiline transformer with window_size 5 will have:
     source length = 5
     key_value_length = 9
@@ -307,19 +307,61 @@ class TieredTransformer(TieredLogModel):
             self.ctx_histories[u] = ctx_history.detach().cpu()
 
 
-class SKVTransformerEncoderLayer(nn.TransformerEncoderLayer):
-    r"""Wrapper for PyTorch's nn.TransformerEncoderLayer to redefine forward function.
+class SKVTransformerEncoderLayer(nn.Module):
+    r"""Near-duplicate of PyTorch's nn.TransformerEncoderLayer to redefine forward function.
 
     Purpose: allow separate query/key/value tensors as input.
-    
-    """
-    def forward(self, src: Tensor, key: Tensor, value: Tensor, src_mask: Optional[Tensor] = None, src_key_padding_mask: Optional[Tensor] = None) -> Tensor:
+
+    See torch.nn.modules.transformer.TransformerEncoderLayer docs for more information."""
+    __constants__ = ["batch_first"]
+
+    def __init__(
+        self,
+        d_model,
+        nhead,
+        dim_feedforward=2048,
+        dropout=0.1,
+        activation="relu",
+        layer_norm_eps=1e-5,
+        batch_first=False,
+        device=None,
+        dtype=None,
+    ) -> None:
+        factory_kwargs = {"device": device, "dtype": dtype}
+        super().__init__()
+        self.self_attn = nn.MultiheadAttention(
+            d_model, nhead, dropout=dropout, batch_first=batch_first, **factory_kwargs
+        )
+        # Implementation of Feedforward model
+        self.linear1 = nn.Linear(d_model, dim_feedforward, **factory_kwargs)
+        self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(dim_feedforward, d_model, **factory_kwargs)
+
+        self.norm1 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+        self.norm2 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+
+        self.activation = nn.modules.transformer._get_activation_fn(activation)
+
+    def __setstate__(self, state):
+        if "activation" not in state:
+            state["activation"] = torch.functional.F.relu
+        super().__setstate__(state)
+
+    def forward(
+        self,
+        src: Tensor,
+        key: Tensor,
+        value: Tensor,
+        src_mask: Optional[Tensor] = None,
+        src_key_padding_mask: Optional[Tensor] = None,
+    ) -> Tensor:
         r"""Redefined forward function to allow separate query/key/value tensors.
 
         see the nn.TransformerEncoderLayer docs for more information.
         """
-        src2 = self.self_attn(src, key, value, attn_mask=src_mask,
-                              key_padding_mask=src_key_padding_mask)[0]
+        src2 = self.self_attn(src, key, value, attn_mask=src_mask, key_padding_mask=src_key_padding_mask)[0]
         src = src + self.dropout1(src2)
         src = self.norm1(src)
         src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
@@ -328,11 +370,27 @@ class SKVTransformerEncoderLayer(nn.TransformerEncoderLayer):
         return src
 
 
-class SKVTransformerEncoder(nn.TransformerEncoder):
-    r"""Wrapper for PyTorch's nn.TransformerEncoder to allow passing separate source(aka query)/key/value tensors as input.
-    
-    """
-    def forward(self, src: Tensor, key: Tensor, value: Tensor, mask: Optional[Tensor] = None, src_key_padding_mask: Optional[Tensor] = None) -> Tensor:
+class SKVTransformerEncoder(nn.Module):
+    r"""Near-duplicate of PyTorch's nn.TransformerEncoder to allow passing
+    separate source(aka query)/key/value tensors as input.
+
+    See torch.nn.modules.transformer.TransformerEncoder docs for more information."""
+    __constants__ = ["norm"]
+
+    def __init__(self, encoder_layer, num_layers, norm=None):
+        super().__init__()
+        self.layers = nn.modules.transformer._get_clones(encoder_layer, num_layers)
+        self.num_layers = num_layers
+        self.norm = norm
+
+    def forward(
+        self,
+        src: Tensor,
+        key: Tensor,
+        value: Tensor,
+        mask: Optional[Tensor] = None,
+        src_key_padding_mask: Optional[Tensor] = None,
+    ) -> Tensor:
         r"""Redefined forward function to allow separate query/key/value tensors.
 
         see the nn.TransformerEncoder docs for more information.
@@ -419,7 +477,7 @@ class MultilineTransformer(MultilineLogModel):
         encoder_layers = SKVTransformerEncoderLayer(
             self.model_dim, self.attention_heads, self.feedforward_dim, dropout=self.dropout, batch_first=True
         )
-        self.transformer_encoder: nn.TransformerEncoder = SKVTransformerEncoder(encoder_layers, self.layers)
+        self.transformer_encoder = SKVTransformerEncoder(encoder_layers, self.layers)
 
         initialize_weights(self, dist_func=nn.init.xavier_uniform_)
 
@@ -481,12 +539,14 @@ class MultilineTransformer(MultilineLogModel):
 
         # Extract the src (lines producing output) from the line embeddings, to be input as source (aka query) to
         # self attention (the full sequence will be used for the key+value pairs, i.e. what is attended over)
-        src_line_embeddings = line_embeddings[:, self.config.shift_window-1:, :]
+        src_line_embeddings = line_embeddings[:, self.config.shift_window - 1 :, :]
 
         # src_key_padding_mask: if provided, specified padding elements in the key will be ignored by the attention.
         pad_mask = mask == 0 if mask is not None else None
 
-        tf_hidden = self.transformer_encoder(src_line_embeddings, line_embeddings, line_embeddings, self.src_mask, src_key_padding_mask=pad_mask)
+        tf_hidden = self.transformer_encoder(
+            src_line_embeddings, line_embeddings, line_embeddings, self.src_mask, src_key_padding_mask=pad_mask
+        )
 
         # Try to reverse sentence embedding to produce logits
         if self._sentence_deembedding is None:

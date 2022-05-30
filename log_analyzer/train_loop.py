@@ -27,7 +27,7 @@ from log_analyzer.config.model_config import (
     TransformerConfig,
 )
 from log_analyzer.evaluator import Evaluator
-from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel, MultilineLogModel, TieredLSTM
+from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel, TieredLSTM
 from log_analyzer.model.transformer import MultilineTransformer, TieredTransformer, Transformer
 from log_analyzer.tokenizer.tokenizer_neo import (
     CharTokenizer,
@@ -414,7 +414,12 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
 
 
 @torch.inference_mode()
-def eval_model(lm_evaluator: Evaluator, test_loader: Union[data_utils.LogDataLoader,data_utils.TieredLogDataLoader], store_eval_data=False, model_file_name=None):
+def eval_model(
+    lm_evaluator: Evaluator,
+    test_loader: Union[data_utils.LogDataLoader, data_utils.TieredLogDataLoader],
+    store_eval_data=False,
+    model_file_name=None,
+):
     """Perform testing on lm_trainer.
 
     Note: model_file_name is only used for uploading model parameters to wandb.
@@ -447,7 +452,7 @@ def eval_model(lm_evaluator: Evaluator, test_loader: Union[data_utils.LogDataLoa
                 masked_batch["user"],
                 masked_batch["second"],
                 masked_batch["red_flag"],
-                mask = masked_batch["target_mask"],
+                mask=masked_batch["target_mask"],
             )
         # Check that the split batch contains entries (see MultilineDataloader's mask filtering)
         if len(split_batch["X"]) == 0:

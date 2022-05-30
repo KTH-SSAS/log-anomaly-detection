@@ -1,9 +1,11 @@
 from pathlib import Path
+from typing import Dict, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from sklearn import metrics
+from torch import Tensor
 from tqdm import tqdm
 
 import wandb
@@ -111,11 +113,11 @@ class Evaluator:
         self.reset_evaluation_data()
         self.use_wandb = Application.instance().wandb_initialized
         self.checkpoint_dir = checkpoint_dir
-        self.token_count = 0
-        self.token_accuracy = 0
-        self.eval_lines_count = 0
-        self.eval_loss = 0
-        self.skipped_line_count = 0
+        self.token_accuracy = torch.tensor(0, dtype=torch.float)
+        self.token_count = torch.tensor(0, dtype=torch.long)
+        self.eval_loss = torch.tensor(0, dtype=torch.float)
+        self.eval_lines_count = torch.tensor(0, dtype=torch.long)
+        self.skipped_line_count = torch.tensor(0, dtype=torch.long)
 
     @torch.no_grad()
     def eval_step(self, split_batch, store_eval_data=False):
@@ -156,7 +158,9 @@ class Evaluator:
 
         # Save the results if desired
         if store_eval_data:
-            if isinstance(self.model, MultilineLogModel) and not isinstance(self.model.criterion, torch.nn.CrossEntropyLoss):
+            if isinstance(self.model, MultilineLogModel) and not isinstance(
+                self.model.criterion, torch.nn.CrossEntropyLoss
+            ):
                 # Multiline logmodels do not necessarily produce predictions over a discrete space that can/should be
                 # argmaxed. If CrossEntropyLoss is not used, this means the predictions are placed in the continuous
                 # sentence-embedding space. Therefore we cannot track token-accuracy and do not pass Y or preds to
@@ -166,22 +170,23 @@ class Evaluator:
             else:
                 preds = torch.argmax(output, dim=-1)
 
-            self.add_evaluation_data(
-                users,
-                seconds,
-                red_flags,
-                line_losses,
-                log_line=Y,
-                predictions=preds,
-                mask=mask
-            )
+            self.add_evaluation_data(users, seconds, red_flags, line_losses, log_line=Y, predictions=preds, mask=mask)
             self.eval_loss += loss
             self.eval_lines_count += 1
 
         # Return both the loss and the output token probabilities
         return loss, output
 
-    def add_evaluation_data(self, users: torch.Tensor, seconds: torch.Tensor, red_flags: torch.Tensor, losses: torch.Tensor = None, log_line: torch.Tensor = None, predictions: torch.Tensor = None, mask: torch.Tensor = None):
+    def add_evaluation_data(
+        self,
+        users: Tensor,
+        seconds: Tensor,
+        red_flags: Tensor,
+        losses: Optional[Tensor] = None,
+        log_line: Optional[Tensor] = None,
+        predictions: Optional[Tensor] = None,
+        mask: Optional[Tensor] = None,
+    ):
         """Extend the data stored in self.data with the inputs."""
         # Handle input from tiered models
         users = users.numpy().flatten()
@@ -201,11 +206,10 @@ class Evaluator:
                 losses = losses[mask]
         else:
             # No losses provided so this is data that could not be evaluated by the model. Set loss to 0
-            losses = np.zeros_like(users)
-            self.skipped_line_count += len(losses)
-            
+            self.skipped_line_count += len(users)
+
         # Check that there's enough space left for all the entries
-        if len(self.data["losses"]) < self.index["losses"] + len(losses):
+        if len(self.data["losses"]) < self.index["losses"] + len(users):
             # Adding entries 1'050'000 at a time provides a nice balance of efficiency and memory usage.
             # Most days have just over 7 million log lines, so incrementing with 1'000'000 is inefficient
             self.data["users"] = np.concatenate((self.data["users"], np.zeros(1050000, float)))
@@ -214,12 +218,16 @@ class Evaluator:
             self.data["red_flags"] = np.concatenate((self.data["red_flags"], np.zeros(1050000, bool)))
 
         for key, new_data in zip(
-            ["users", "losses", "seconds", "red_flags"],
-            [users, losses, seconds, red_flags],
+            ["users", "seconds", "red_flags"],
+            [users, seconds, red_flags],
         ):
             self.data[key][self.index[key] : self.index[key] + len(new_data)] = new_data.squeeze()
-
             self.index[key] += len(new_data)
+        # Handle losses separately, since it might be None
+        if losses is not None:
+            self.data["losses"][self.index["losses"] : self.index["losses"] + len(losses)] = losses.squeeze()
+        # If losses is None we set them all to 0 (i.e. do not update). Either way, length is the same as of the users
+        self.index["losses"] += len(users)
 
         # Update the metatag, i.e. data is prepared and normalised data is ready
         self.data_is_prepared = False
@@ -243,7 +251,7 @@ class Evaluator:
 
     def reset_evaluation_data(self):
         """Delete the stored evaluation data."""
-        self.data = {
+        self.data: Dict[str, np.ndarray] = {
             "users": np.zeros(0, int),
             "losses": np.zeros(0, float),
             "seconds": np.zeros(0, int),
@@ -259,6 +267,7 @@ class Evaluator:
         self.token_count = torch.tensor(0, dtype=torch.long)
         self.eval_loss = torch.tensor(0, dtype=torch.float)
         self.eval_lines_count = torch.tensor(0, dtype=torch.long)
+        self.skipped_line_count = torch.tensor(0, dtype=torch.long)
         if Application.instance().using_cuda:
             self.token_accuracy = self.token_accuracy.cuda()
             self.token_count = self.token_count.cuda()
@@ -286,7 +295,7 @@ class Evaluator:
                 self.data[key] = self.data[key][sorted_indices]
         # Compute final test loss
         self.eval_loss = self.eval_loss / max(self.eval_lines_count, 1)
-        self.eval_lines_count += 1 - self.eval_lines_count # Reset to 1, keep the same torch.Tensor, type and device
+        self.eval_lines_count += 1 - self.eval_lines_count  # Reset to 1, keep the same Tensor, type and device
         # Prepared the normalised losses
         self._normalise_losses()
 
@@ -310,7 +319,9 @@ class Evaluator:
 
     def get_metrics(self):
         """Computes and returns all metrics."""
-        nonskipped_fp_rate, nonskipped_tp_rate, _ = metrics.roc_curve(self.data["red_flags"][self.data["losses"] > 0], self.data["losses"][self.data["losses"] > 0], pos_label=1)
+        nonskipped_fp_rate, nonskipped_tp_rate, _ = metrics.roc_curve(
+            self.data["red_flags"][self.data["losses"] > 0], self.data["losses"][self.data["losses"] > 0], pos_label=1
+        )
         return {
             "eval/loss": self.get_test_loss(),
             "eval/token_accuracy": self.get_token_accuracy(),
@@ -318,9 +329,9 @@ class Evaluator:
             "eval/AUC": self.get_auc_score(),
             "eval/AP": self.get_ap_score(),
             "eval/total_lines": len(self.data["losses"]),
-            "eval/skipped_lines": self.skipped_line_count,
+            "eval/skipped_lines": self.skipped_line_count.item(),
             "eval/skipped_reds": np.sum(self.data["red_flags"][self.data["losses"] == 0]),
-            "eval/AUC_nonskipped" : metrics.auc(nonskipped_fp_rate, nonskipped_tp_rate),
+            "eval/AUC_nonskipped": metrics.auc(nonskipped_fp_rate, nonskipped_tp_rate),
         }
 
     def get_test_loss(self):
@@ -448,8 +459,9 @@ class Evaluator:
 
     def plot_roc_curve(self, title="ROC", normalised=False):
         """Plots the ROC (Receiver Operating Characteristic) curve, i.e. TP-FP
-        tradeoff. Also returns the corresponding auc score.
+        tradeoff.
 
+        Also returns the corresponding auc score.
         """
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
@@ -470,8 +482,8 @@ class Evaluator:
             tp_rate = np.append(tp_rate, full_tp_rate[-1])
         # Y value (tp_rate) is monotonically increasing in ROC curves, so ignore any values after we reach 1.0 tp_rate
         last_index = np.where(np.isclose(tp_rate, 1.0))[0][0]
-        fp_rate = fp_rate[:last_index+1]
-        tp_rate = tp_rate[:last_index+1]
+        fp_rate = fp_rate[: last_index + 1]
+        tp_rate = tp_rate[: last_index + 1]
         # Erase the full fp and tp lists
         full_fp_rate = full_tp_rate = []
         if self.use_wandb:

@@ -47,10 +47,11 @@ def test_transformer(tmpdir, model_type, bidirectional, tokenization, cuda):
     utils.run_test(args, cuda)
     assert True
 
+
 @pytest.mark.parametrize("tokenization", ["word-fields", "word-global", "word-merged"])
 @pytest.mark.parametrize("cuda", [True, False])
 def test_multiline_transformer(tmpdir, tokenization, cuda):
-    
+
     if cuda and not torch.cuda.is_available():
         pytest.skip()
 

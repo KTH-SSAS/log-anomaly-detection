@@ -1,11 +1,10 @@
 """Functions to test different model configurations."""
 from pathlib import Path
 
+import pytest
 import torch
 
-import pytest
 from log_analyzer.application import Application
-
 from log_analyzer.train_loop import eval_model, init_from_config_classes, train_model
 
 from . import utils

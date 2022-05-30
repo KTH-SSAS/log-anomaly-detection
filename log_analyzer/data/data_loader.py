@@ -288,10 +288,11 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
         self.iterator = generate_iterator()
 
     def produce_output_sequence(self, user):
-        """Puts together a sequence of loglines from a single user from the data that's been read in so far.
-        
+        """Puts together a sequence of loglines from a single user from the
+        data that's been read in so far.
+
         If the user does not have enough log lines (self.shift_window) we pad by appending padding (0).
-        
+
         If the user does not have any context lines, we haven't sent any sequence from this user yet.
         We therefore pad the context with 0s (shift_window), then append padding to total length shift_window * 2 - 1
         """
@@ -317,7 +318,8 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
         elif len(context_lines) != 0:
             # Context length should only be 0 or shift_window
             raise ValueError(
-                f"Unexpected context length. Expected 0 or shift_window ({self.shift_window}), got {len(context_lines)}."
+                f"Unexpected context length. Expected 0 or shift_window ({self.shift_window}), \
+                got {len(context_lines)}."
             )
 
         for idx, line_data in enumerate(lines):
@@ -328,7 +330,7 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
             datadict["day"][idx] = line_data["day"]
             datadict["user"][idx] = line_data["user"]
             datadict["red"][idx] = line_data["red"]
-            datadict["target"][idx] = line_data["input"] # A line's target is the same as the next line's input
+            datadict["target"][idx] = line_data["input"]  # A line's target is the same as the next line's input
             datadict["length"][idx] = line_data["length"]
 
         self.update_user_context(user)
@@ -339,7 +341,7 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
         if user not in self.user_context:
             self.user_context[user] = []
         self.user_context[user].extend(self.user_loglines[user])
-        self.user_context[user] = self.user_context[user][-self.shift_window:]
+        self.user_context[user] = self.user_context[user][-self.shift_window :]
         # Remove all lines from the user's line list
         self.user_loglines[user] = []
 
@@ -393,6 +395,7 @@ class MultilineDataLoader(LogDataLoader):
     Provides a function to split the batch provided by the data loader (including filtering out entries that are too
     masked to be properly processed - i.e. don't contain full context for in line sequence).
     """
+
     def split_batch(self, batch: dict):
         """Splits a batch into variables containing relevant data."""
         X = batch["input"]
@@ -420,26 +423,36 @@ class MultilineDataLoader(LogDataLoader):
         if "target_mask" in batch:
             split_batch["target_mask"] = batch["target_mask"]
         # Check for any masked-out context lines - it's enough to check the first line of each sequence
-        masked_lines = M.shape[0] - torch.sum(M[:,0])
-        if masked_lines:
-            # Create a batch of the lines that are removed from split_batch - for adding to the evaluator
-            masked_batch = {}
-            for key, value in split_batch.items():
-                # Remove any sequences that have masked-out context from the batch
-                masked_batch[key] = value[M[:,0] == 0,:]
-                split_batch[key] = value[M[:,0],:]
-            split_batch["masked_batch"] = masked_batch
+        if M is not None:
+            masked_lines = M.shape[0] - torch.sum(M[:, 0])
+            if masked_lines:
+                # Create a batch of the lines that are removed from split_batch - for adding to the evaluator
+                masked_batch = {}
+                for key, value in split_batch.items():
+                    # Remove any sequences that have masked-out context from the batch
+                    masked_batch[key] = value[M[:, 0] == 0, :]
+                    split_batch[key] = value[M[:, 0], :]
+                split_batch["masked_batch"] = masked_batch
         return split_batch
 
 
-
-
 def load_data_tiered(
-    data_folder, train_files, test_files, batch_sizes: Tuple[int, int], tokenizer: Tokenizer, task, num_steps,
+    data_folder,
+    train_files,
+    test_files,
+    batch_sizes: Tuple[int, int],
+    tokenizer: Tokenizer,
+    task,
+    num_steps,
 ):
     def create_tiered_data_loader(filepath, batch_size):
         data_handler = TieredLogDataLoader(
-            filepath, tokenizer, task, batch_size=batch_size, num_steps=num_steps, delimiter=" ",
+            filepath,
+            tokenizer,
+            task,
+            batch_size=batch_size,
+            num_steps=num_steps,
+            delimiter=" ",
         )
         return data_handler
 
@@ -525,7 +538,7 @@ def create_data_loaders_multiline(
     shift_window: int,
     memory_type: str,
     validation_portion: float = 0,
-) -> List[LogDataLoader]:
+) -> List[MultilineDataLoader]:
     """Creates and returns 2 data loaders.
 
     If dataset_split is not provided the second data loader is instead
@@ -544,7 +557,6 @@ def create_data_loaders_multiline(
             for key in sample:
                 batch[key].append(sample[key])
 
-
         for key, value in batch.items():
             for index, sequence in enumerate(value):
                 if isinstance(sequence, list):
@@ -556,7 +568,6 @@ def create_data_loaders_multiline(
         batch["input_mask"] = torch.all(batch["input"] != pad_idx, dim=2)
         # Add the target padding mask - pad_idx is 0
         batch["target_mask"] = torch.all(batch["target"] != pad_idx, dim=2)
-
 
         return batch
 
@@ -582,7 +593,7 @@ def create_data_loaders_multiline(
 
     collate = partial(multiline_collate_fn, pad_idx=0)
 
-    data_handlers = [
+    data_handlers: List[MultilineDataLoader] = [
         MultilineDataLoader(dataset, batch_size=bs, shuffle=False, collate_function=collate)
         for bs, dataset in zip(batch_sizes, datasets)
     ]
@@ -608,7 +619,11 @@ def load_data(
     except IndexError:
         val_loader = None
     test_loader = create_data_loaders(
-        filepaths_eval, (batch_sizes[1], batch_sizes[1]), tokenizer, task, shuffle=False,
+        filepaths_eval,
+        (batch_sizes[1], batch_sizes[1]),
+        tokenizer,
+        task,
+        shuffle=False,
     )[0]
 
     return train_loader, val_loader, test_loader
@@ -660,7 +675,13 @@ class TieredLogDataLoader:
     """
 
     def __init__(
-        self, filepaths, tokenizer: Tokenizer, task, batch_size=100, num_steps=5, delimiter=" ",
+        self,
+        filepaths,
+        tokenizer: Tokenizer,
+        task,
+        batch_size=100,
+        num_steps=5,
+        delimiter=" ",
     ):
         self.dataset = None  # This dataloader handles the data directly
         self.tokenizer: Tokenizer = tokenizer
