@@ -7,6 +7,7 @@ from argparse import Namespace
 from datetime import datetime
 from pathlib import Path
 from time import time
+import sys
 from typing import Optional, Tuple
 
 import numpy as np
@@ -382,10 +383,11 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
         # Proceed to evaluation
         print("Ctrl+C received, cancelling training and proceeding to evaluation.")
         print("If you wish to stop execution completely, please Ctrl+C again.")
-        if not lm_trainer.config.early_stopping:
-            # Save the current model version if we do not use early_stopping (i.e. saving best performing model version)
-            lm_trainer.earlystopping.store_state_dict(np.Inf, lm_trainer.model)
-            lm_trainer.earlystopping.save_checkpoint()
+        # Save the current model version
+        lm_trainer.earlystopping.store_state_dict(np.Inf, lm_trainer.model)
+        lm_trainer.earlystopping.save_checkpoint()
+        # exit
+        sys.exit(f"Training interrupted, most recent model has been saved to '{lm_trainer.earlystopping.path}'.")
 
     if lm_trainer.config.early_stopping:
         # Save the best performing model version to file
@@ -443,6 +445,8 @@ def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, mode
                 )
     except KeyboardInterrupt:
         # Proceed to evaluation
-        print("Ctrl+C received, cancelling evaluation and exiting.")
+        print("Ctrl+C received, cancelling evaluation and exiting.")# exit
+        sys.exit(1)
+
 
     return test_losses
