@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import socket
+import sys
 from argparse import Namespace
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +29,7 @@ from log_analyzer.config.model_config import (
 )
 from log_analyzer.evaluator import Evaluator
 from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel, TieredLSTM
+from log_analyzer.model.model_util import DelayedKeyboardInterrupt
 from log_analyzer.model.transformer import MultilineTransformer, TieredTransformer, Transformer
 from log_analyzer.tokenizer.tokenizer_neo import (
     CharTokenizer,
@@ -333,72 +335,78 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
 
     val_run = 0
     iteration = 0
-    for epoch in tqdm(range(epochs), desc="Epoch   "):
-        if (
-            isinstance(train_loader.dataset, (data_utils.IterableLogDataset, data_utils.IterableUserMultilineDataset))
-            and epoch > 0
-        ):
-            # Refresh the iterator so we can run another epoch
-            train_loader.dataset.refresh_iterator()
-        # Shuffle train data order for each epoch?
-        # Count iteration continuously up through each epoch
-        for epoch_iteration, batch in enumerate(tqdm(train_loader, desc="Training")):
-            # epoch_iteration = iterations in this epoch (used to determine when to run validation)
-            # Split the batch
-            split_batch = train_loader.split_batch(batch)
-            # Check that the split batch contains entries (see MultilineDataloader's mask filtering)
-            if len(split_batch["X"]) == 0:
-                continue
-            if lm_trainer.model.tiered:
-                if train_loader.flush is False:
-                    loss, gradient_norm, done = lm_trainer.train_step(split_batch)
-                else:
-                    if iteration == 0:
-                        raise Exception("Flush happened before any training could be done.")
+    try:
+        for epoch in tqdm(range(epochs), desc="Epoch   "):
+            if (
+                isinstance(train_loader.dataset, (data_utils.IterableLogDataset, data_utils.IterableUserMultilineDataset))
+                and epoch > 0
+            ):
+                # Refresh the iterator so we can run another epoch
+                train_loader.dataset.refresh_iterator()
+            # Shuffle train data order for each epoch?
+            # Count iteration continuously up through each epoch
+            for epoch_iteration, batch in enumerate(tqdm(train_loader, desc="Training")):
+                # Only allow interrupt between each batch
+                with DelayedKeyboardInterrupt():
+                    # epoch_iteration = iterations in this epoch (used to determine when to run validation)
+                    # Split the batch
+                    split_batch = train_loader.split_batch(batch)
+                    # Check that the split batch contains entries (see MultilineDataloader's mask filtering)
+                    if len(split_batch["X"]) == 0:
+                        continue
+                    if lm_trainer.model.tiered:
+                        if train_loader.flush is False:
+                            loss, gradient_norm, done = lm_trainer.train_step(split_batch)
+                        else:
+                            if iteration == 0:
+                                raise Exception("Flush happened before any training could be done.")
 
-                    logger.info("Due to flush, skipping the rest of the current file.")
-                    train_loader.skip_file = True
-                    continue
-            else:
-                loss, gradient_norm, done = lm_trainer.train_step(split_batch)
+                            logger.info("Due to flush, skipping the rest of the current file.")
+                            train_loader.skip_file = True
+                            continue
+                    else:
+                        loss, gradient_norm, done = lm_trainer.train_step(split_batch)
 
-            if (time() - last_save) > AUTOSAVE_TIME:
-                tqdm.write("Autosaving...")
-                last_save = time()
-                with open(log_dir / "autosave.pt", "wb") as f:
-                    torch.save(lm_trainer.model.state_dict(), f)
+                    if (time() - last_save) > AUTOSAVE_TIME:
+                        tqdm.write("Autosaving...")
+                        last_save = time()
+                        with open(log_dir / "autosave.pt", "wb") as f:
+                            torch.save(lm_trainer.model.state_dict(), f)
 
-            iteration += 1  # Total iterations in training (cumulative)
-            train_losses.append(loss.item())
-            wandb_log(
-                epoch_iteration,
-                LOGGING_FREQUENCY,
-                {
-                    "train/loss": loss,
-                    "train/iteration": iteration,
-                    "train/day": batch["day"][0],
-                    "train/lr": lm_trainer.optimizer.param_groups[0]["lr"],
-                    "train/epoch": epoch,
-                    "train/gradient_norm": gradient_norm,
-                },
-            )
-            if run_validation and epoch_iteration > 0 and (epoch_iteration % validation_period == 0):
+                    iteration += 1  # Total iterations in training (cumulative)
+                    train_losses.append(loss.item())
+                    wandb_log(
+                        epoch_iteration,
+                        LOGGING_FREQUENCY,
+                        {
+                            "train/loss": loss,
+                            "train/iteration": iteration,
+                            "train/day": batch["day"][0],
+                            "train/lr": lm_trainer.optimizer.param_groups[0]["lr"],
+                            "train/epoch": epoch,
+                            "train/gradient_norm": gradient_norm,
+                        },
+                    )
+                    if run_validation and epoch_iteration > 0 and (epoch_iteration % validation_period == 0):
+                        validation_run(iteration, val_run)
+                        val_run += 1
+
+            if lm_trainer.epoch_scheduler is not None:
+                lm_trainer.epoch_scheduler.step()
+
+            if run_validation:
                 validation_run(iteration, val_run)
                 val_run += 1
 
             if done:
-                logger.info("Early stopping.")
                 break
-
-        if lm_trainer.epoch_scheduler is not None:
-            lm_trainer.epoch_scheduler.step()
-
-        if run_validation:
-            validation_run(iteration, val_run)
-            val_run += 1
-
-        if done:
-            break
+    except KeyboardInterrupt:
+        print("Ctrl+C received, cancelling training and exiting.")
+        # Save the current model version
+        lm_trainer.earlystopping.store_state_dict(np.Inf, lm_trainer.model)
+        lm_trainer.earlystopping.save_checkpoint()
+        # exit
+        sys.exit(f"Training interrupted, most recent model has been saved to '{lm_trainer.earlystopping.path}'.")
 
     if lm_trainer.config.early_stopping:
         # Save the best performing model version to file
@@ -443,29 +451,37 @@ def eval_model(
         artifact.save()
 
     test_losses = []
-    for iteration, batch in enumerate(tqdm(test_loader, desc="Test")):
-        split_batch = test_loader.split_batch(batch)
-        # Add any masked-out lines to the evaluator
-        if "masked_batch" in split_batch:
-            masked_batch = split_batch["masked_batch"]
-            lm_evaluator.add_evaluation_data(
-                masked_batch["user"],
-                masked_batch["second"],
-                masked_batch["red_flag"],
-                mask=masked_batch["target_mask"],
-            )
-        # Check that the split batch contains entries (see MultilineDataloader's mask filtering)
-        if len(split_batch["X"]) == 0:
-            continue
-        loss, *_ = lm_evaluator.eval_step(split_batch, store_eval_data=store_eval_data)
-        test_losses.append(loss.item())
-        wandb_log(
-            iteration,
-            LOGGING_FREQUENCY,
-            {
-                "eval/loss": loss,
-                "eval/iteration": iteration,
-                "eval/day": batch["day"][0],
-            },
-        )
+    try:
+        for iteration, batch in enumerate(tqdm(test_loader, desc="Test")):
+            # Only allow interrupt between each batch
+            with DelayedKeyboardInterrupt():
+                split_batch = test_loader.split_batch(batch)
+                # Add any masked-out lines to the evaluator
+                if "masked_batch" in split_batch:
+                    masked_batch = split_batch["masked_batch"]
+                    lm_evaluator.add_evaluation_data(
+                        masked_batch["user"],
+                        masked_batch["second"],
+                        masked_batch["red_flag"],
+                        mask=masked_batch["target_mask"],
+                    )
+                # Check that the split batch contains entries (see MultilineDataloader's mask filtering)
+                if len(split_batch["X"]) == 0:
+                    continue
+                loss, *_ = lm_evaluator.eval_step(split_batch, store_eval_data=store_eval_data)
+                test_losses.append(loss.item())
+                wandb_log(
+                    iteration,
+                    LOGGING_FREQUENCY,
+                    {
+                        "eval/loss": loss,
+                        "eval/iteration": iteration,
+                        "eval/day": batch["day"][0],
+                    },
+                )
+    except KeyboardInterrupt:
+        # Proceed to evaluation
+        print("Ctrl+C received, cancelling evaluation and exiting.")
+        sys.exit(1)
+
     return test_losses
