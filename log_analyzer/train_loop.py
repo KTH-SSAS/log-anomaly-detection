@@ -338,7 +338,9 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
     try:
         for epoch in tqdm(range(epochs), desc="Epoch   "):
             if (
-                isinstance(train_loader.dataset, (data_utils.IterableLogDataset, data_utils.IterableUserMultilineDataset))
+                isinstance(
+                    train_loader.dataset, (data_utils.IterableLogDataset, data_utils.IterableUserMultilineDataset)
+                )
                 and epoch > 0
             ):
                 # Refresh the iterator so we can run another epoch
