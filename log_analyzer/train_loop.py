@@ -8,7 +8,6 @@ from argparse import Namespace
 from datetime import datetime
 from pathlib import Path
 from time import time
-import sys
 from typing import Optional, Tuple
 
 import numpy as np
