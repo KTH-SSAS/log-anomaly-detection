@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import socket
+import sys
 from argparse import Namespace
 from datetime import datetime
 from pathlib import Path
@@ -380,9 +381,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
             if done:
                 break
     except KeyboardInterrupt:
-        # Proceed to evaluation
-        print("Ctrl+C received, cancelling training and proceeding to evaluation.")
-        print("If you wish to stop execution completely, please Ctrl+C again.")
+        print("Ctrl+C received, cancelling training and exiting.")
         # Save the current model version
         lm_trainer.earlystopping.store_state_dict(np.Inf, lm_trainer.model)
         lm_trainer.earlystopping.save_checkpoint()
@@ -445,8 +444,7 @@ def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, mode
                 )
     except KeyboardInterrupt:
         # Proceed to evaluation
-        print("Ctrl+C received, cancelling evaluation and exiting.")# exit
+        print("Ctrl+C received, cancelling evaluation and exiting.")
         sys.exit(1)
-
 
     return test_losses
