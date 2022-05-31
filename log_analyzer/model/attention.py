@@ -31,16 +31,13 @@ def generate_softmax_mask(seq_len, use_cuda=False):
     softmax_mask = softmax_mask.cuda() if use_cuda else softmax_mask
     return softmax_mask
 
+
 FIXED = 0
 SEMANTIC = 1
 SYNTAX = 2
 
 
-attention_names = {
-    "fixed": FIXED,
-    "semantic": SEMANTIC,
-    "syntax": SYNTAX
-}
+attention_names = {"fixed": FIXED, "semantic": SEMANTIC, "syntax": SYNTAX}
 
 
 def get_query_dim(attention_type, seq_len, hidden_dim, attention_dim):

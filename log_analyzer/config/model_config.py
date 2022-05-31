@@ -97,3 +97,13 @@ class TieredTransformerConfig(TransformerConfig):
             data: dict = json.load(f)
 
         return cls.init_from_dict(data)
+
+
+@dataclass
+class MultilineTransformerConfig(TransformerConfig):
+    """Configuration class for Multiline Transformer models."""
+
+    shift_window: int
+    memory_type: str
+    sentence_embedding: str
+    embeddings_path: str
