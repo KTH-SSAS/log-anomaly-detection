@@ -194,8 +194,9 @@ def init_from_config_classes(
 
     task = get_task(model_type, bidirectional)
 
-    train_days = trainer_config.train_files
-    test_days = trainer_config.test_files
+    train_files = trainer_config.train_files
+    validation_files = trainer_config.validation_files
+    test_files = trainer_config.test_files
 
     model_config.vocab_size = tokenizer.vocab_size
     model_config.sequence_length = calculate_max_input_length(task, tokenizer)
@@ -204,11 +205,11 @@ def init_from_config_classes(
         model_config.number_of_users = tokenizer.num_users
 
     if model_type in (TIERED_LSTM, TIERED_TRANSFORMER):
-        val_loader = None
-        train_loader, test_loader = data_utils.load_data_tiered(
+        train_loader, val_loader, test_loader = data_utils.load_data_tiered(
             data_folder,
-            train_days,
-            test_days,
+            train_files,
+            validation_files,
+            test_files,
             (trainer_config.train_batch_size, trainer_config.eval_batch_size),
             tokenizer,
             task,
@@ -217,25 +218,25 @@ def init_from_config_classes(
     elif model_type in (LSTM, TRANSFORMER):
         train_loader, val_loader, test_loader = data_utils.load_data(
             data_folder,
-            train_days,
-            test_days,
+            train_files,
+            validation_files,
+            test_files,
             (trainer_config.train_batch_size, trainer_config.eval_batch_size),
             tokenizer,
             task,
-            trainer_config.validation_portion,
             shuffle_train_data,
         )
     elif model_type in (MULTILINE_TRANSFORMER) and isinstance(model_config, MultilineTransformerConfig):
         train_loader, val_loader, test_loader = data_utils.load_data_multiline(
             data_folder,
-            train_days,
-            test_days,
+            train_files,
+            validation_files,
+            test_files,
             (trainer_config.train_batch_size, trainer_config.eval_batch_size),
             tokenizer,
             task,
             model_config.shift_window,
             model_config.memory_type,
-            trainer_config.validation_portion,
         )
     else:
         raise RuntimeError("Invalid model type.")
@@ -296,23 +297,28 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
         """Performs one phase of validation on lm_trainer."""
         val_losses = []
         for val_iteration, val_batch in enumerate(tqdm(val_loader, desc=f"Valid:{val_run:2d}")):
-            split_batch = val_loader.split_batch(val_batch)
-            loss, *_ = lm_trainer.train_step(split_batch, validation=True)
-            val_losses.append(loss.item())
-            # Log the current validation loss and val_iteration to enable detailed view of
-            # validation loss.
-            # Also log the current train iteration and validation run_number to enable
-            # overview analysis of each validation run
-            wandb_log(
-                val_iteration,
-                LOGGING_FREQUENCY,
-                {
-                    "valid/loss": loss,
-                    "valid/run_number": val_run,
-                    "valid/iteration": val_iteration,
-                    "train/iteration": train_iteration,
-                },
-            )
+            # Only allow interrupt between each batch
+            with DelayedKeyboardInterrupt():
+                split_batch = val_loader.split_batch(val_batch)
+                # Check that the split batch contains entries (see MultilineDataloader's mask filtering)
+                if len(split_batch["X"]) == 0:
+                    continue
+                loss, *_ = lm_trainer.train_step(split_batch, validation=True)
+                val_losses.append(loss.item())
+                # Log the current validation loss and val_iteration to enable detailed view of
+                # validation loss.
+                # Also log the current train iteration and validation run_number to enable
+                # overview analysis of each validation run
+                wandb_log(
+                    val_iteration,
+                    LOGGING_FREQUENCY,
+                    {
+                        "valid/loss": loss,
+                        "valid/run_number": val_run,
+                        "valid/iteration": val_iteration,
+                        "train/iteration": train_iteration,
+                    },
+                )
         mean_val_loss = np.mean(val_losses)
         lm_trainer.early_stopping(mean_val_loss)
 
@@ -325,7 +331,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
 
     # True if val_loader is not None, False if val_loader is None
     run_validation = val_loader is not None
-    if run_validation:
+    if run_validation and lm_trainer.config.validations_per_epoch > 0:
         # Number of iterations between each validation run
         validation_period = (len(train_loader) // lm_trainer.config.validations_per_epoch) + 1
     else:
@@ -389,9 +395,9 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                             "train/gradient_norm": gradient_norm,
                         },
                     )
-                    if run_validation and epoch_iteration > 0 and (epoch_iteration % validation_period == 0):
-                        validation_run(iteration, val_run)
-                        val_run += 1
+                if validation_period > 0 and epoch_iteration > 0 and (epoch_iteration % validation_period == 0):
+                    validation_run(iteration, val_run)
+                    val_run += 1
 
             if lm_trainer.epoch_scheduler is not None:
                 lm_trainer.epoch_scheduler.step()
@@ -444,11 +450,7 @@ def eval_model(
 
     if Application.instance().wandb_initialized:
         # Save the model weights as a versioned artifact
-        artifact = wandb.Artifact(
-            Application.artifact_name,
-            "model",
-            metadata=lm_evaluator.model.config.__dict__,
-        )
+        artifact = wandb.Artifact(Application.artifact_name, "model", metadata=lm_evaluator.model.config.__dict__,)
         artifact.add_file(model_save_path)
         artifact.save()
 
@@ -475,11 +477,7 @@ def eval_model(
                 wandb_log(
                     iteration,
                     LOGGING_FREQUENCY,
-                    {
-                        "eval/loss": loss,
-                        "eval/iteration": iteration,
-                        "eval/day": batch["day"][0],
-                    },
+                    {"eval/loss": loss, "eval/iteration": iteration, "eval/day": batch["day"][0],},
                 )
     except KeyboardInterrupt:
         # Proceed to evaluation
