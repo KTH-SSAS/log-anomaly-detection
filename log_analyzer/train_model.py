@@ -13,7 +13,9 @@ from log_analyzer.train_loop import eval_model, init_from_args, train_model
 
 def prepare_args():
     parser = ArgumentParser()
-    parser.add_argument("model_type", choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer"])
+    parser.add_argument(
+        "model_type", choices=["lstm", "tiered-lstm", "transformer", "tiered-transformer", "multiline-transformer"]
+    )
     parser.add_argument(
         "tokenization",
         type=str,
@@ -64,7 +66,6 @@ def set_seeds(seed):
 def main():
     # Initialize seeds
     set_seeds(22)
-
     args = prepare_args()
 
     if ("tiered" in args.model_type or "word" in args.tokenization) and args.counts_file is None:

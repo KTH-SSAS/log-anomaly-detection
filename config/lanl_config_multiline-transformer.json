@@ -1,0 +1,11 @@
+{
+	"layers": 1,
+	"feedforward_dim": 512,
+	"model_dim": 240,
+	"attention_heads": 16,
+	"dropout": 0.25,
+	"shift_window": 100,
+	"memory_type": "user",
+	"sentence_embedding": "stack",
+	"embeddings_path": ""
+}

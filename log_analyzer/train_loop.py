@@ -3,10 +3,12 @@ import json
 import logging
 import os
 import socket
+import sys
 from argparse import Namespace
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple
+from time import time
+from typing import Optional, Tuple, Union
 
 import numpy as np
 from torch.utils.data import DataLoader
@@ -20,13 +22,15 @@ from log_analyzer.config import TrainerConfig
 from log_analyzer.config.model_config import (
     LSTMConfig,
     ModelConfig,
+    MultilineTransformerConfig,
     TieredLSTMConfig,
     TieredTransformerConfig,
     TransformerConfig,
 )
 from log_analyzer.evaluator import Evaluator
 from log_analyzer.model.lstm import BidLSTM, FwdLSTM, LogModel, TieredLSTM
-from log_analyzer.model.transformer import TieredTransformer, Transformer
+from log_analyzer.model.model_util import DelayedKeyboardInterrupt
+from log_analyzer.model.transformer import MultilineTransformer, TieredTransformer, Transformer
 from log_analyzer.tokenizer.tokenizer_neo import (
     CharTokenizer,
     GlobalTokenizer,
@@ -48,11 +52,12 @@ LSTM: str = "lstm"
 TRANSFORMER: str = "transformer"
 TIERED_LSTM: str = "tiered-lstm"
 TIERED_TRANSFORMER: str = "tiered-transformer"
+MULTILINE_TRANSFORMER: str = "multiline-transformer"
 
 LOGGING_FREQUENCY: int = 10  # How often to log results. Set to 1 to log everything.
-VALIDATION_FREQUENCY: int = (
-    10  # Number of times to do validation per epoch. Set to 1 to only validate after each epoch.
-)
+
+# Autosave every 10 minutes
+AUTOSAVE_TIME = 10 * 60
 
 WORD_GLOBAL = "word-global"
 WORD_FIELDS = "word-fields"
@@ -67,18 +72,17 @@ tokenizer_vocabs = {
 }
 
 
-def get_tokenizer(tokenization, tiered, counts_file: Path, cutoff) -> Tokenizer:
+def get_tokenizer(tokenization, counts_file: Path, cutoff) -> Tokenizer:
     tokenizer: Tokenizer
     vocab = None
     tokenizer_cls, vocab_cls = tokenizer_vocabs[tokenization]
     if counts_file is not None:
         with open(counts_file, encoding="utf8") as f:
             counts = json.load(f)
-        users = list(counts["src_user"].keys()) if tiered else None
+        users = list(counts["src_user"].keys())
         vocab = vocab_cls.counts2vocab(counts, cutoff) if vocab_cls is not None else None
     else:
-        if "word" in tokenization or tiered:
-            raise RuntimeError("No counts file was supplied!")
+        users = None
 
     tokenizer = tokenizer_cls(vocab, users)
     return tokenizer
@@ -91,6 +95,8 @@ def get_task(model: str, bidirectional: bool) -> str:
         return data_utils.MASKED_LM
     if bidirectional and model in (LSTM, TIERED_LSTM):
         return data_utils.BIDIR_LSTM_LM
+    if model == MULTILINE_TRANSFORMER:
+        return data_utils.SENTENCE_LM
 
     return data_utils.AUTOREGRESSIVE_LM
 
@@ -114,6 +120,8 @@ def get_model_config(filename: Path, model_type: str) -> ModelConfig:
         return TransformerConfig.init_from_file(filename)
     if model_type == TIERED_TRANSFORMER:
         return TieredTransformerConfig.init_from_file(filename)
+    if model_type == MULTILINE_TRANSFORMER:
+        return MultilineTransformerConfig.init_from_file(filename)
 
     raise RuntimeError("Invalid model type.")
 
@@ -182,7 +190,7 @@ def init_from_config_classes(
 
     shuffle_train_data = trainer_config.shuffle_train_data
 
-    tokenizer = get_tokenizer(tokenization, ("tiered" in model_type), counts_file, cutoff)
+    tokenizer = get_tokenizer(tokenization, counts_file, cutoff)
 
     task = get_task(model_type, bidirectional)
 
@@ -214,8 +222,20 @@ def init_from_config_classes(
             (trainer_config.train_batch_size, trainer_config.eval_batch_size),
             tokenizer,
             task,
-            trainer_config.train_val_split,
+            trainer_config.validation_portion,
             shuffle_train_data,
+        )
+    elif model_type in (MULTILINE_TRANSFORMER) and isinstance(model_config, MultilineTransformerConfig):
+        train_loader, val_loader, test_loader = data_utils.load_data_multiline(
+            data_folder,
+            train_days,
+            test_days,
+            (trainer_config.train_batch_size, trainer_config.eval_batch_size),
+            tokenizer,
+            task,
+            model_config.shift_window,
+            model_config.memory_type,
+            trainer_config.validation_portion,
         )
     else:
         raise RuntimeError("Invalid model type.")
@@ -250,6 +270,9 @@ def init_model(model_config: ModelConfig, bidirectional) -> LogModel:
     if isinstance(model_config, TieredTransformerConfig):
         # TieredTransformerConfig is a type of TransformerConfig, so check for tiered first
         return TieredTransformer(model_config, bidirectional)
+    if isinstance(model_config, MultilineTransformerConfig):
+        # MultilineTransformerConfig is a type of TransformerConfig, so check for Multiline first
+        return MultilineTransformer(model_config, bidirectional)
     if isinstance(model_config, TransformerConfig):
         return Transformer(model_config, bidirectional)
 
@@ -266,15 +289,16 @@ def wandb_log(iteration, frequency, data: dict):
 def train_model(lm_trainer: Trainer, train_loader, val_loader):
     """Perform training on lm_trainer."""
     logger = logging.getLogger(application.TRAINER_LOGGER)
+    last_save = time()
 
+    @torch.inference_mode()
     def validation_run(train_iteration=0, val_run=0):
         """Performs one phase of validation on lm_trainer."""
         val_losses = []
         for val_iteration, val_batch in enumerate(tqdm(val_loader, desc=f"Valid:{val_run:2d}")):
             split_batch = val_loader.split_batch(val_batch)
-            with torch.no_grad():
-                loss, *_ = lm_trainer.train_step(split_batch, validation=True)
-                val_losses.append(loss.item())
+            loss, *_ = lm_trainer.train_step(split_batch, validation=True)
+            val_losses.append(loss.item())
             # Log the current validation loss and val_iteration to enable detailed view of
             # validation loss.
             # Also log the current train iteration and validation run_number to enable
@@ -303,7 +327,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
     run_validation = val_loader is not None
     if run_validation:
         # Number of iterations between each validation run
-        validation_period = (len(train_loader) // VALIDATION_FREQUENCY) + 1
+        validation_period = (len(train_loader) // lm_trainer.config.validations_per_epoch) + 1
     else:
         validation_period = 0
 
@@ -311,53 +335,80 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
 
     val_run = 0
     iteration = 0
-    for epoch in tqdm(range(epochs), desc="Epoch   "):
-        # Shuffle train data order for each epoch?
-        # Count iteration continuously up through each epoch
-        for epoch_iteration, batch in enumerate(tqdm(train_loader, desc="Training")):
-            # epoch_iteration = iterations in this epoch (used to determine when to run validation)
-            # Split the batch
-            split_batch = train_loader.split_batch(batch)
-            if lm_trainer.model.tiered:
-                if train_loader.flush is False:
-                    loss, gradient_norm, done = lm_trainer.train_step(split_batch)
-                else:
-                    if iteration == 0:
-                        raise Exception("Flush happened before any training could be done.")
+    try:
+        for epoch in tqdm(range(epochs), desc="Epoch   "):
+            if (
+                isinstance(
+                    train_loader.dataset, (data_utils.IterableLogDataset, data_utils.IterableUserMultilineDataset)
+                )
+                and epoch > 0
+            ):
+                # Refresh the iterator so we can run another epoch
+                train_loader.dataset.refresh_iterator()
+            # Shuffle train data order for each epoch?
+            # Count iteration continuously up through each epoch
+            for epoch_iteration, batch in enumerate(tqdm(train_loader, desc="Training")):
+                # Only allow interrupt between each batch
+                with DelayedKeyboardInterrupt():
+                    # epoch_iteration = iterations in this epoch (used to determine when to run validation)
+                    # Split the batch
+                    split_batch = train_loader.split_batch(batch)
+                    # Check that the split batch contains entries (see MultilineDataloader's mask filtering)
+                    if len(split_batch["X"]) == 0:
+                        continue
+                    if lm_trainer.model.tiered:
+                        if train_loader.flush is False:
+                            loss, gradient_norm, done = lm_trainer.train_step(split_batch)
+                        else:
+                            if iteration == 0:
+                                raise Exception("Flush happened before any training could be done.")
 
-                    logger.info("Due to flush, skipping the rest of the current file.")
-                    train_loader.skip_file = True
-                    continue
-            else:
-                loss, gradient_norm, done = lm_trainer.train_step(split_batch)
-            iteration += 1  # Total iterations in training (cumulative)
-            train_losses.append(loss.item())
-            wandb_log(
-                epoch_iteration,
-                LOGGING_FREQUENCY,
-                {
-                    "train/loss": loss,
-                    "train/iteration": iteration,
-                    "train/day": batch["day"][0],
-                    "train/lr": lm_trainer.scheduler.get_last_lr()[0],
-                    "train/epoch": epoch,
-                    "train/gradient_norm": gradient_norm
-                },
-            )
-            if run_validation and epoch_iteration > 0 and (epoch_iteration % validation_period == 0):
+                            logger.info("Due to flush, skipping the rest of the current file.")
+                            train_loader.skip_file = True
+                            continue
+                    else:
+                        loss, gradient_norm, done = lm_trainer.train_step(split_batch)
+
+                    if (time() - last_save) > AUTOSAVE_TIME:
+                        tqdm.write("Autosaving...")
+                        last_save = time()
+                        with open(log_dir / "autosave.pt", "wb") as f:
+                            torch.save(lm_trainer.model.state_dict(), f)
+
+                    iteration += 1  # Total iterations in training (cumulative)
+                    train_losses.append(loss.item())
+                    wandb_log(
+                        epoch_iteration,
+                        LOGGING_FREQUENCY,
+                        {
+                            "train/loss": loss,
+                            "train/iteration": iteration,
+                            "train/day": batch["day"][0],
+                            "train/lr": lm_trainer.optimizer.param_groups[0]["lr"],
+                            "train/epoch": epoch,
+                            "train/gradient_norm": gradient_norm,
+                        },
+                    )
+                    if run_validation and epoch_iteration > 0 and (epoch_iteration % validation_period == 0):
+                        validation_run(iteration, val_run)
+                        val_run += 1
+
+            if lm_trainer.epoch_scheduler is not None:
+                lm_trainer.epoch_scheduler.step()
+
+            if run_validation:
                 validation_run(iteration, val_run)
                 val_run += 1
 
             if done:
-                logger.info("Early stopping.")
                 break
-
-        if run_validation:
-            validation_run(iteration, val_run)
-            val_run += 1
-
-        if done:
-            break
+    except KeyboardInterrupt:
+        print("Ctrl+C received, cancelling training and exiting.")
+        # Save the current model version
+        lm_trainer.earlystopping.store_state_dict(np.Inf, lm_trainer.model)
+        lm_trainer.earlystopping.save_checkpoint()
+        # exit
+        sys.exit(f"Training interrupted, most recent model has been saved to '{lm_trainer.earlystopping.path}'.")
 
     if lm_trainer.config.early_stopping:
         # Save the best performing model version to file
@@ -372,7 +423,13 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
     return train_losses
 
 
-def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, model_file_name="model.pt"):
+@torch.inference_mode()
+def eval_model(
+    lm_evaluator: Evaluator,
+    test_loader: Union[data_utils.LogDataLoader, data_utils.TieredLogDataLoader],
+    store_eval_data=False,
+    model_file_name=None,
+):
     """Perform testing on lm_trainer.
 
     Note: model_file_name is only used for uploading model parameters to wandb.
@@ -396,19 +453,37 @@ def eval_model(lm_evaluator: Evaluator, test_loader, store_eval_data=False, mode
         artifact.save()
 
     test_losses = []
-    for iteration, batch in enumerate(tqdm(test_loader, desc="Test")):
-        split_batch = test_loader.split_batch(batch)
-        with torch.no_grad():
-            loss, *_ = lm_evaluator.eval_step(split_batch, store_eval_data=store_eval_data)
-            test_losses.append(loss.item())
-            wandb_log(
-                iteration,
-                LOGGING_FREQUENCY,
-                {
-                    "eval/loss": loss,
-                    "eval/iteration": iteration,
-                    "eval/day": batch["day"][0],
-                },
-            )
+    try:
+        for iteration, batch in enumerate(tqdm(test_loader, desc="Test")):
+            # Only allow interrupt between each batch
+            with DelayedKeyboardInterrupt():
+                split_batch = test_loader.split_batch(batch)
+                # Add any masked-out lines to the evaluator
+                if "masked_batch" in split_batch:
+                    masked_batch = split_batch["masked_batch"]
+                    lm_evaluator.add_evaluation_data(
+                        masked_batch["user"],
+                        masked_batch["second"],
+                        masked_batch["red_flag"],
+                        mask=masked_batch["target_mask"],
+                    )
+                # Check that the split batch contains entries (see MultilineDataloader's mask filtering)
+                if len(split_batch["X"]) == 0:
+                    continue
+                loss, *_ = lm_evaluator.eval_step(split_batch, store_eval_data=store_eval_data)
+                test_losses.append(loss.item())
+                wandb_log(
+                    iteration,
+                    LOGGING_FREQUENCY,
+                    {
+                        "eval/loss": loss,
+                        "eval/iteration": iteration,
+                        "eval/day": batch["day"][0],
+                    },
+                )
+    except KeyboardInterrupt:
+        # Proceed to evaluation
+        print("Ctrl+C received, cancelling evaluation and exiting.")
+        sys.exit(1)
 
     return test_losses

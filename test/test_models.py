@@ -24,14 +24,18 @@ def test_lstm(tmpdir, model_type, bidir, tokenization, cuda):
         args["trainer_config"].train_batch_size = 10
         args["trainer_config"].eval_batch_size = 10
 
-    utils.run_test(args)
+    utils.run_test(args, cuda)
     assert True
 
 
 @pytest.mark.parametrize("tokenization", ["word-fields", "word-global", "char"])
 @pytest.mark.parametrize("bidirectional", [True, False])
 @pytest.mark.parametrize("model_type", ["transformer", "tiered-transformer"])
-def test_transformer(tmpdir, model_type, bidirectional, tokenization):
+@pytest.mark.parametrize("cuda", [True, False])
+def test_transformer(tmpdir, model_type, bidirectional, tokenization, cuda):
+
+    if cuda and not torch.cuda.is_available():
+        pytest.skip()
 
     args = utils.set_args(bidirectional, model_type, tokenization)
     if model_type == "tiered-transformer":
@@ -40,5 +44,23 @@ def test_transformer(tmpdir, model_type, bidirectional, tokenization):
         args["trainer_config"].eval_batch_size = 10
     args["base_logdir"] = Path(tmpdir) / "runs"
 
-    utils.run_test(args)
+    utils.run_test(args, cuda)
+    assert True
+
+
+@pytest.mark.parametrize("tokenization", ["word-fields", "word-global", "word-merged"])
+@pytest.mark.parametrize("cuda", [True, False])
+def test_multiline_transformer(tmpdir, tokenization, cuda):
+
+    if cuda and not torch.cuda.is_available():
+        pytest.skip()
+
+    args = utils.set_args(False, "multiline-transformer", tokenization)
+    args["trainer_config"].train_batch_size = 10
+    args["trainer_config"].eval_batch_size = 10
+    # Use a reasonable window size (for testing)
+    args["model_config"].shift_window = 3
+    args["base_logdir"] = Path(tmpdir) / "runs"
+
+    utils.run_test(args, cuda)
     assert True

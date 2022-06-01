@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List
 
 from log_analyzer.config.config import Config
 
@@ -12,7 +12,7 @@ class TrainerConfig(Config):
     train_batch_size: int
     eval_batch_size: int
     epochs: int
-    train_val_split: Tuple[int, int]
+    validation_portion: float
     learning_rate: float
     early_stopping: bool
     early_stop_patience: int
@@ -20,3 +20,7 @@ class TrainerConfig(Config):
     scheduler_step_size: int
     mixed_precision: bool
     gradient_accumulation: int
+    validations_per_epoch: int
+    gradient_clip: float
+    warmup_period: int
+    per_epoch_lr_reduction: float
