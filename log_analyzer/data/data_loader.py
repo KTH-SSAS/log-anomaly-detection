@@ -2,11 +2,11 @@
 
 from functools import partial
 from os import path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import DataLoader, Dataset, IterableDataset, Subset, random_split
+from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 from log_analyzer.application import Application
 from log_analyzer.tokenizer.tokenizer_neo import Tokenizer
@@ -448,7 +448,12 @@ def load_data_tiered(
 ):
     def create_tiered_data_loader(filepath, batch_size):
         data_handler = TieredLogDataLoader(
-            filepath, tokenizer, task, batch_size=batch_size, num_steps=num_steps, delimiter=" ",
+            filepath,
+            tokenizer,
+            task,
+            batch_size=batch_size,
+            num_steps=num_steps,
+            delimiter=" ",
         )
         return data_handler
 
@@ -491,8 +496,12 @@ def collate_fn(data, jagged=False, pad_idx=0):
 
 
 def create_data_loader(
-    filepaths: List[str], batch_size: int, tokenizer: Tokenizer, task: str, shuffle: bool = False,
-) -> Sequence[Optional[LogDataLoader]]:
+    filepaths: List[str],
+    batch_size: int,
+    tokenizer: Tokenizer,
+    task: str,
+    shuffle: bool = False,
+) -> LogDataLoader:
     """Creates and returns a data loader."""
 
     dataset: LogDataset
@@ -508,8 +517,13 @@ def create_data_loader(
 
 
 def create_data_loader_multiline(
-    filepaths: List[str], batch_size: int, tokenizer: Tokenizer, task: str, shift_window: int, memory_type: str,
-) -> List[MultilineDataLoader]:
+    filepaths: List[str],
+    batch_size: int,
+    tokenizer: Tokenizer,
+    task: str,
+    shift_window: int,
+    memory_type: str,
+) -> MultilineDataLoader:
     """Creates and returns a data loader."""
 
     def multiline_collate_fn(data, pad_idx=0):
@@ -588,16 +602,31 @@ def load_data_multiline(
     filepaths_valid = [path.join(data_folder, f) for f in validation_files]
     filepaths_eval = [path.join(data_folder, f) for f in test_files]
     train_loader = create_data_loader_multiline(
-        filepaths_train, batch_sizes[0], tokenizer, task, shift_window=shift_window, memory_type=memory_type,
+        filepaths_train,
+        batch_sizes[0],
+        tokenizer,
+        task,
+        shift_window=shift_window,
+        memory_type=memory_type,
     )
     if len(validation_files) > 0:
         val_loader = create_data_loader_multiline(
-            filepaths_valid, batch_sizes[1], tokenizer, task, shift_window=shift_window, memory_type=memory_type,
+            filepaths_valid,
+            batch_sizes[1],
+            tokenizer,
+            task,
+            shift_window=shift_window,
+            memory_type=memory_type,
         )
     else:
         val_loader = None
     test_loader = create_data_loader_multiline(
-        filepaths_eval, batch_sizes[1], tokenizer, task, shift_window=shift_window, memory_type=memory_type,
+        filepaths_eval,
+        batch_sizes[1],
+        tokenizer,
+        task,
+        shift_window=shift_window,
+        memory_type=memory_type,
     )
     return train_loader, val_loader, test_loader
 
@@ -609,7 +638,13 @@ class TieredLogDataLoader:
     """
 
     def __init__(
-        self, filepaths, tokenizer: Tokenizer, task, batch_size=100, num_steps=5, delimiter=" ",
+        self,
+        filepaths,
+        tokenizer: Tokenizer,
+        task,
+        batch_size=100,
+        num_steps=5,
+        delimiter=" ",
     ):
         self.dataset = None  # This dataloader handles the data directly
         self.tokenizer: Tokenizer = tokenizer

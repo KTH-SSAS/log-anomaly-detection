@@ -296,9 +296,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
     def validation_run(train_iteration=0, val_run=0):
         """Performs one phase of validation on lm_trainer."""
         if (
-            isinstance(
-                val_loader.dataset, (data_utils.IterableLogDataset, data_utils.IterableUserMultilineDataset)
-            )
+            isinstance(val_loader.dataset, (data_utils.IterableLogDataset, data_utils.IterableUserMultilineDataset))
             and epoch > 0
         ):
             # Refresh the iterator so we can run another epoch
@@ -458,7 +456,11 @@ def eval_model(
 
     if Application.instance().wandb_initialized:
         # Save the model weights as a versioned artifact
-        artifact = wandb.Artifact(Application.artifact_name, "model", metadata=lm_evaluator.model.config.__dict__,)
+        artifact = wandb.Artifact(
+            Application.artifact_name,
+            "model",
+            metadata=lm_evaluator.model.config.__dict__,
+        )
         artifact.add_file(model_save_path)
         artifact.save()
 
@@ -485,7 +487,11 @@ def eval_model(
                 wandb_log(
                     iteration,
                     LOGGING_FREQUENCY,
-                    {"eval/loss": loss, "eval/iteration": iteration, "eval/day": batch["day"][0],},
+                    {
+                        "eval/loss": loss,
+                        "eval/iteration": iteration,
+                        "eval/day": batch["day"][0],
+                    },
                 )
     except KeyboardInterrupt:
         # Proceed to evaluation
