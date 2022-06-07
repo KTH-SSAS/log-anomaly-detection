@@ -295,6 +295,14 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
     @torch.inference_mode()
     def validation_run(train_iteration=0, val_run=0):
         """Performs one phase of validation on lm_trainer."""
+        if (
+            isinstance(
+                val_loader.dataset, (data_utils.IterableLogDataset, data_utils.IterableUserMultilineDataset)
+            )
+            and epoch > 0
+        ):
+            # Refresh the iterator so we can run another epoch
+            val_loader.dataset.refresh_iterator()
         val_losses = []
         for val_iteration, val_batch in enumerate(tqdm(val_loader, desc=f"Valid:{val_run:2d}")):
             # Only allow interrupt between each batch
