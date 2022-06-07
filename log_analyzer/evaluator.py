@@ -118,6 +118,12 @@ class Evaluator:
         self.eval_loss = torch.tensor(0, dtype=torch.float)
         self.eval_lines_count = torch.tensor(0, dtype=torch.long)
         self.skipped_line_count = torch.tensor(0, dtype=torch.long)
+        if self.use_wandb:
+            self.token_accuracy = self.token_accuracy.cuda()
+            self.token_count = self.token_count.cuda()
+            self.eval_loss = self.eval_loss.cuda()
+            self.eval_lines_count = self.eval_lines_count.cuda()
+            self.skipped_line_count = self.skipped_line_count.cuda()
 
     @torch.no_grad()
     def eval_step(self, split_batch, store_eval_data=False):
