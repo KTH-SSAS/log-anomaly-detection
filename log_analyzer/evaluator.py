@@ -118,7 +118,7 @@ class Evaluator:
         self.eval_loss = torch.tensor(0, dtype=torch.float)
         self.eval_lines_count = torch.tensor(0, dtype=torch.long)
         self.skipped_line_count = torch.tensor(0, dtype=torch.long)
-        if self.use_wandb:
+        if Application.instance().using_cuda:
             self.token_accuracy = self.token_accuracy.cuda()
             self.token_count = self.token_count.cuda()
             self.eval_loss = self.eval_loss.cuda()
