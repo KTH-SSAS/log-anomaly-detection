@@ -3,19 +3,19 @@ from pathlib import Path
 import pytest
 import torch
 
-from log_analyzer.data.data_loader import create_data_loaders, create_data_loaders_multiline
+from log_analyzer.data.data_loader import create_data_loader, create_data_loader_multiline
 from log_analyzer.train_loop import calculate_max_input_length, get_tokenizer
 
 
 def batch_equal(v1: torch.Tensor, v2: torch.Tensor, allow_mask=False):
     assert v1.shape == v2.shape
     if allow_mask:
-        batch_entry_equals = [
+        batch_entry_equals = list(
             torch.all(v1[i] == v2[i]) or torch.all(v1[i] == 0, dim=-1) or torch.all(v2[i] == 0, dim=-1)
             for i in range(v1.shape[0])
-        ]
+        )
     else:
-        batch_entry_equals = [torch.all((v1 == v2), dim=-1)]
+        batch_entry_equals = list(torch.all((v1 == v2), dim=-1))
     return all(batch_entry_equals)
 
 
@@ -24,15 +24,15 @@ def batch_equal(v1: torch.Tensor, v2: torch.Tensor, allow_mask=False):
 def test_data_loader_char(shuffle, task):
 
     filepath = "data/test_data/6.csv"
-    batch_sizes = (10, 10)
+    batch_size = 10
     counts_file = Path("data/counts678.json")
     tokenizer = get_tokenizer("char", counts_file, cutoff=40)
-    data_handler = create_data_loaders([filepath], batch_sizes, tokenizer, task, shuffle=shuffle)[0]
+    data_handler = create_data_loader([filepath], batch_size, tokenizer, task, shuffle=shuffle)
     bidirectional = task == "bidir-lm"
     for batch in data_handler:
         x: torch.Tensor = batch["input"]
         x_length = batch["length"]
-        for i in range(0, batch_sizes[0]):
+        for i in range(0, batch_size):
             # Confirm that the targets are equal to the inputs shifted by 1
             all(
                 x[i, 1 : x_length[i] - int(bidirectional)] == batch["target"][i, : x_length[i] - 1 - int(bidirectional)]
@@ -45,17 +45,17 @@ def test_data_loader_char(shuffle, task):
 def test_data_loader_word(shuffle, task, mode):
 
     filepath = "data/test_data/6.csv"
-    batch_sizes = (10, 10)
+    batch_size = 10
     counts_file = Path("data/counts678.json")
 
     tokenizer = get_tokenizer(mode, counts_file, cutoff=40)
 
-    data_handler = create_data_loaders([filepath], batch_sizes, tokenizer, task, shuffle)[0]
+    data_handler = create_data_loader([filepath], batch_size, tokenizer, task, shuffle)
     bidirectional = task == "bidir-lm"
     expected_input_length = 10 - 1 if task == "lm" else 10 + 2
     for batch in data_handler:
         x: torch.Tensor = batch["input"]
-        assert x.shape == torch.Size([batch_sizes[0], expected_input_length]), (
+        assert x.shape == torch.Size([batch_size, expected_input_length]), (
             "bidirectional" if bidirectional else "forward"
         )
         # Confirm that the targets are equal to the inputs shifted by 1
@@ -77,13 +77,13 @@ def test_data_loader_multiline(shuffle, memory_type):
 
     filepath = "data/test_data/6.csv"
     counts_file = Path("data/counts678.json")
-    batch_sizes = (10, 10)
+    batch_size = 10
     tokenizer = get_tokenizer("word-merged", counts_file, cutoff=49)
     task = "sentence-lm"
 
     shift_window = 5
     input_length = calculate_max_input_length(task, tokenizer)
-    data_handler = create_data_loaders_multiline(filepath, batch_sizes, tokenizer, task, shift_window, memory_type)[0]
+    data_handler = create_data_loader_multiline(filepath, batch_size, tokenizer, task, shift_window, memory_type)
     final_batch = False
     for batch in data_handler:
         # Batch size may vary (final batch probably won't be full size)
@@ -91,7 +91,7 @@ def test_data_loader_multiline(shuffle, memory_type):
         if final_batch:
             raise AssertionError("Encountered non-full batch that wasn't final batch of dataloader.")
         try:
-            assert batch["input"].shape == torch.Size([batch_sizes[0], 2 * shift_window - 1, input_length])
+            assert batch["input"].shape == torch.Size([batch_size, 2 * shift_window - 1, input_length])
         except AssertionError:
             assert batch["input"].shape[1:] == torch.Size([2 * shift_window - 1, input_length])
             final_batch = True
