@@ -28,6 +28,11 @@ class Application:
         self._use_cuda = cuda
         self._wandb_initalized = wandb
 
+    @classmethod
+    def reset(cls):
+        Application.__instance = None
+        
+
     @property
     def using_cuda(self):
         return self._use_cuda

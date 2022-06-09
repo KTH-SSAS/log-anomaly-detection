@@ -63,9 +63,9 @@ def set_seeds(seed):
     return seed
 
 
-def main():
+def main(seed=22, wandb_group=None):
     # Initialize seeds
-    set_seeds(22)
+    set_seeds(seed)
     args = prepare_args()
 
     if ("tiered" in args.model_type or "word" in args.tokenization) and args.counts_file is None:
@@ -75,7 +75,7 @@ def main():
 
     os.environ["WANDB_MODE"] = "online" if args.wandb_sync else "offline"
 
-    wandb.init(project="logml", entity="log-data-ml", config=vars(args))
+    wandb.init(project="logml", entity="log-data-ml", config=vars(args), group=wandb_group)
     wandb_initalized = True
 
     if args.use_cuda and not torch.cuda.is_available():
@@ -83,7 +83,7 @@ def main():
         using_cuda = False
     else:
         using_cuda = args.use_cuda
-
+    
     Application(cuda=using_cuda, wandb=wandb_initalized)
 
     if args.verbose:
@@ -111,6 +111,9 @@ def main():
     # Perform standard evaluation on the model
     if Application.instance().wandb_initialized and not args.no_eval_model:
         evaluator.run_all()
+
+    wandb.finish()
+    Application.reset()
 
 
 if __name__ == "__main__":
