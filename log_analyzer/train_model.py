@@ -34,6 +34,7 @@ def prepare_args():
     parser.add_argument("-tc", "--trainer-config", type=str, help="Trainer configuration file.", required=True)
     parser.add_argument("--load-model", type=str, help="Path to saved model for initialization.", dest="saved_model")
     parser.add_argument("--eval-only", action="store_true", help="Skip training and only run evaluator.")
+    parser.add_argument("--wandb-group", type=str, help="WANDB group to store run in.")
     parser.add_argument(
         "--bidir",
         dest="bidirectional",
@@ -63,7 +64,7 @@ def set_seeds(seed):
     return seed
 
 
-def main(seed=22, wandb_group=None):
+def main(seed=22):
     # Initialize seeds
     set_seeds(seed)
     args = prepare_args()
@@ -74,6 +75,8 @@ def main(seed=22, wandb_group=None):
     #  Start a W&B run
 
     os.environ["WANDB_MODE"] = "online" if args.wandb_sync else "offline"
+
+    wandb_group = args.wandb_group
 
     wandb.init(project="logml", entity="log-data-ml", config=vars(args), group=wandb_group)
     wandb_initalized = True
@@ -117,4 +120,6 @@ def main(seed=22, wandb_group=None):
 
 
 if __name__ == "__main__":
-    main()
+
+    for seed in range(1, 2):
+        main(seed)

@@ -57,5 +57,5 @@ profile-%: config/lanl_config_%.json
 %_sentence: TOKENIZATION=sentence
 
 %_word-fields %_word-global %_word-merged %_char %_sentence: config/lanl_config_%.json
-	$(TRAIN_MODEL) $* $(TOKENIZATION) -cf $(COUNTS_FILE) -mc $^ $(FLAGS)
+	$(TRAIN_MODEL) $* $(TOKENIZATION) -cf $(COUNTS_FILE) -mc $^ $(FLAGS) --wandb-group $@
 
