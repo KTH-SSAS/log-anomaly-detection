@@ -292,8 +292,10 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
     logger = logging.getLogger(application.TRAINER_LOGGER)
     last_save = time()
 
+    best_val_score = 1000000
+
     @torch.inference_mode()
-    def validation_run(train_iteration=0, val_run=0):
+    def validation_run(train_iteration=0, val_run=0, best_score=1E6):
         """Performs one phase of validation on lm_trainer."""
         if (
             isinstance(val_loader.dataset, (data_utils.IterableLogDataset, data_utils.IterableUserMultilineDataset))
@@ -326,7 +328,16 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                     },
                 )
         mean_val_loss = np.mean(val_losses)
+        
+        if (mean_val_loss < best_score):
+            model_save_path = log_dir / "model_best.pt"
+            torch.save(lm_trainer.model.state_dict(), model_save_path)
+            new_best = mean_val_loss
+        else:
+            new_best = best_score
+        
         lm_trainer.early_stopping(mean_val_loss)
+        return new_best
 
     done = False
     log_dir = lm_trainer.checkpoint_dir
@@ -402,14 +413,14 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                         },
                     )
                 if validation_period > 0 and epoch_iteration > 0 and (epoch_iteration % validation_period == 0):
-                    validation_run(iteration, val_run)
+                    best_val_score = validation_run(iteration, val_run, best_val_score)
                     val_run += 1
 
             if lm_trainer.epoch_scheduler is not None:
                 lm_trainer.epoch_scheduler.step()
 
             if run_validation:
-                validation_run(iteration, val_run)
+                best_val_score = validation_run(iteration, val_run, best_val_score)
                 val_run += 1
 
             if done:
