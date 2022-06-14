@@ -460,7 +460,7 @@ def eval_model(
 
     if model_file_name is None:
         log_dir = lm_evaluator.checkpoint_dir
-        model_file_name = "model.pt"
+        model_file_name = "model_best.pt"
         model_save_path = log_dir / model_file_name
     else:
         model_save_path = model_file_name
