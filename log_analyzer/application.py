@@ -31,7 +31,6 @@ class Application:
     @classmethod
     def reset(cls):
         Application.__instance = None
-        
 
     @property
     def using_cuda(self):

@@ -2,6 +2,7 @@ import logging
 import os
 import random
 from argparse import ArgumentParser
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -76,7 +77,10 @@ def main(seed=22):
 
     os.environ["WANDB_MODE"] = "online" if args.wandb_sync else "offline"
 
+    eval_only: bool = args.eval_only
+    saved_model: str = args.saved_model
     wandb_group = args.wandb_group
+    evaluate: bool = not args.no_eval_model
 
     wandb.init(project="logml", entity="log-data-ml", config=vars(args), group=wandb_group)
     wandb_initalized = True
@@ -86,7 +90,7 @@ def main(seed=22):
         using_cuda = False
     else:
         using_cuda = args.use_cuda
-    
+
     Application(cuda=using_cuda, wandb=wandb_initalized)
 
     if args.verbose:
@@ -99,20 +103,49 @@ def main(seed=22):
     # Create the trainer+model
     trainer, evaluator, train_loader, val_loader, test_loader = init_from_args(args)
 
-    # If provided, load weights from file:
-    if args.saved_model is not None:
-        with open(args.saved_model, "rb") as f:
-            logging.info("Loading weights from %s", args.saved_model)
+    def path_to_model(default_model_filename: str) -> Path:
+        log_dir = evaluator.checkpoint_dir
+        # If we only eval and have specified a model, we evaluate it
+        if eval_only and saved_model:
+            return Path(saved_model)
+        # Otherwise we use the model that was trained
+        return log_dir / default_model_filename
+
+    model_to_evaluate = path_to_model("model_best.pt")
+
+    def load_weights(path):
+        with open(path, "rb") as f:
+            logging.info("Loading weights from %s", path)
             trainer.load_model_weights(f)
 
     # Train the model
-    if not args.eval_only:
+    if not eval_only:
+        if saved_model:
+            # Initialize training from saved weights if provided
+            load_weights(saved_model)
+
         train_model(trainer, train_loader, val_loader)
+
+        if Application.instance().wandb_initialized and model_to_evaluate.exists():
+            # Save the model weights as a versioned artifact
+            artifact = wandb.Artifact(
+                Application.artifact_name,
+                "model",
+                metadata=evaluator.model.config.__dict__,
+            )
+            artifact.add_file(model_to_evaluate)
+            artifact.save()
+
+    if model_to_evaluate.exists():
+        # Load the weights of the model to evaluate
+        load_weights(model_to_evaluate)
+        # Otherwise the version of the model updated last will be evaluated
+
     # Test the model
-    eval_model(evaluator, test_loader, store_eval_data=(not args.no_eval_model), model_file_name=args.saved_model)
+    eval_model(evaluator, test_loader, store_eval_data=evaluate)
 
     # Perform standard evaluation on the model
-    if Application.instance().wandb_initialized and not args.no_eval_model:
+    if Application.instance().wandb_initialized and evaluate:
         evaluator.run_all()
 
     wandb.finish()
