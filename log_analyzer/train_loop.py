@@ -127,8 +127,11 @@ def get_model_config(filename: Path, model_type: str) -> ModelConfig:
 
 
 def create_identifier_string(model_name: str, tokenization: str) -> str:
-    current_time = datetime.now().strftime(r"%m-%d_%H:%M:%S")
-    id_string = f"{model_name}_{tokenization}_{current_time}@{socket.gethostname()}"
+    if Application.instance().wandb_initialized:
+        id_string = f"{wandb.run.id}_{model_name}_{tokenization}"
+    else:
+        current_time = datetime.now().strftime(r"%m-%d_%H:%M:%S")
+        id_string = f"{model_name}_{tokenization}_{current_time}@{socket.gethostname()}"
     return id_string
 
 
@@ -412,6 +415,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                             "train/gradient_norm": gradient_norm,
                         },
                     )
+                # Validation within an epoch
                 if validation_period > 0 and epoch_iteration > 0 and (epoch_iteration % validation_period == 0):
                     best_val_score = validation_run(iteration, val_run, best_val_score)
                     val_run += 1
@@ -419,6 +423,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
             if lm_trainer.epoch_scheduler is not None:
                 lm_trainer.epoch_scheduler.step()
 
+            # Validation after epoch
             if run_validation:
                 best_val_score = validation_run(iteration, val_run, best_val_score)
                 val_run += 1
