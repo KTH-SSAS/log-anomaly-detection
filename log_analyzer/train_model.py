@@ -85,6 +85,9 @@ def main(seed=22):
     wandb.init(project="logml", entity="log-data-ml", config=vars(args), group=wandb_group)
     wandb_initalized = True
 
+    # Log the seed
+    wandb.config.update({"seed": seed})
+
     if args.use_cuda and not torch.cuda.is_available():
         print("CUDA not available. Ignoring the --cuda option.")
         using_cuda = False
