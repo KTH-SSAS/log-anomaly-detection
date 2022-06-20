@@ -123,7 +123,6 @@ class Evaluator:
             self.token_count = self.token_count.cuda()
             self.eval_loss = self.eval_loss.cuda()
             self.eval_lines_count = self.eval_lines_count.cuda()
-            self.skipped_line_count = self.skipped_line_count.cuda()
 
     @torch.no_grad()
     def eval_step(self, split_batch, store_eval_data=False):
@@ -211,29 +210,30 @@ class Evaluator:
             if mask is not None:
                 losses = losses[mask]
         else:
-            # No losses provided so this is data that could not be evaluated by the model. Set loss to 0
-            self.skipped_line_count += len(users)
+            # No losses provided so this is data that could not be evaluated by the model.
+            # Set skipped flag to 1 and loss to 0
+            self.data["skipped"][self.index : self.index + len(users)] = 1
 
         # Check that there's enough space left for all the entries
-        if len(self.data["losses"]) < self.index["losses"] + len(users):
+        if len(self.data["losses"]) < self.index + len(users):
             # Adding entries 1'050'000 at a time provides a nice balance of efficiency and memory usage.
             # Most days have just over 7 million log lines, so incrementing with 1'000'000 is inefficient
             self.data["users"] = np.concatenate((self.data["users"], np.zeros(1050000, float)))
             self.data["losses"] = np.concatenate((self.data["losses"], np.zeros(1050000, float)))
             self.data["seconds"] = np.concatenate((self.data["seconds"], np.zeros(1050000, int)))
             self.data["red_flags"] = np.concatenate((self.data["red_flags"], np.zeros(1050000, bool)))
+            self.data["skipped"] = np.concatenate((self.data["red_flags"], np.zeros(1050000, bool)))
 
         for key, new_data in zip(
             ["users", "seconds", "red_flags"],
             [users, seconds, red_flags],
         ):
-            self.data[key][self.index[key] : self.index[key] + len(new_data)] = new_data.squeeze()
-            self.index[key] += len(new_data)
+            self.data[key][self.index : self.index + len(new_data)] = new_data.squeeze()
         # Handle losses separately, since it might be None
         if losses is not None:
-            self.data["losses"][self.index["losses"] : self.index["losses"] + len(losses)] = losses.squeeze()
-        # If losses is None we set them all to 0 (i.e. do not update). Either way, length is the same as of the users
-        self.index["losses"] += len(users)
+            self.data["losses"][self.index : self.index + len(losses)] = losses.squeeze()
+        # Update the index
+        self.index += len(users)
 
         # Update the metatag, i.e. data is prepared and normalised data is ready
         self.data_is_prepared = False
@@ -262,18 +262,13 @@ class Evaluator:
             "losses": np.zeros(0, float),
             "seconds": np.zeros(0, int),
             "red_flags": np.zeros(0, bool),
+            "skipped": np.zeros(0, bool),
         }
-        self.index = {
-            "users": 0,
-            "losses": 0,
-            "seconds": 0,
-            "red_flags": 0,
-        }
+        self.index = 0
         self.token_accuracy = torch.tensor(0, dtype=torch.float)
         self.token_count = torch.tensor(0, dtype=torch.long)
         self.eval_loss = torch.tensor(0, dtype=torch.float)
         self.eval_lines_count = torch.tensor(0, dtype=torch.long)
-        self.skipped_line_count = torch.tensor(0, dtype=torch.long)
         if Application.instance().using_cuda:
             self.token_accuracy = self.token_accuracy.cuda()
             self.token_count = self.token_count.cuda()
@@ -292,7 +287,7 @@ class Evaluator:
             # Ignore normalised_losses
             if key == "normalised_losses":
                 continue
-            self.data[key] = self.data[key][: self.index[key]]
+            self.data[key] = self.data[key][: self.index]
         # Check if the data is sorted
         if not np.all(np.diff(self.data["seconds"]) >= 0):
             # Sort the data by seconds
@@ -314,19 +309,19 @@ class Evaluator:
         Mainly relevant to word tokenization
         """
         # Loop over every user
-        average_losses = np.ones_like(self.data["losses"])
-        for user in tqdm(np.unique(self.data["users"])):
+        average_losses_user = np.ones_like(self.data["losses"])
+        for user in tqdm(np.unique(self.data["users"]), desc="Normalising (user)"):
             user_indices = self.data["users"] == user
             # Compute the average loss for this user
             average_loss = np.average(self.data["losses"][user_indices])
-            average_losses[user_indices] = average_loss
+            average_losses_user[user_indices] = average_loss
         # Apply the normalization
-        self.data["normalised_losses"] = self.data["losses"] - average_losses
+        self.data["normalised_losses"] = self.data["losses"] - average_losses_user
 
     def get_metrics(self):
         """Computes and returns all metrics."""
         nonskipped_fp_rate, nonskipped_tp_rate, _ = metrics.roc_curve(
-            self.data["red_flags"][self.data["losses"] > 0], self.data["losses"][self.data["losses"] > 0], pos_label=1
+            self.data["red_flags"][self.data["skipped"] == 0], self.data["losses"][self.data["skipped"] == 0], pos_label=1
         )
         return {
             "eval/loss": self.get_test_loss(),
@@ -335,8 +330,8 @@ class Evaluator:
             "eval/AUC": self.get_auc_score(),
             "eval/AP": self.get_ap_score(),
             "eval/total_lines": len(self.data["losses"]),
-            "eval/skipped_lines": self.skipped_line_count.item(),
-            "eval/skipped_reds": np.sum(self.data["red_flags"][self.data["losses"] == 0]),
+            "eval/skipped_lines": np.sum(self.data["skipped"]),
+            "eval/skipped_reds": np.sum(self.data["red_flags"][self.data["skipped"]]),
             "eval/AUC_nonskipped": metrics.auc(nonskipped_fp_rate, nonskipped_tp_rate),
         }
 
