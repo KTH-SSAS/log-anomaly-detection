@@ -157,3 +157,6 @@ wandb
 
 # Monkeytype spits out an sqlite3 db file
 *.sqlite3
+
+# Pytest output
+pytest-of-*
