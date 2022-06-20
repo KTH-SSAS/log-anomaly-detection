@@ -24,7 +24,6 @@ class EarlyStopping:
         """
         self.patience = patience
         self.patience_counter = 0
-        self.call_counter = 0
         self.early_stop = False
         self.val_loss_min = np.Inf
         self.saved_val_loss = np.Inf
@@ -47,10 +46,6 @@ class EarlyStopping:
             )
             if self.patience_counter >= self.patience:
                 self.early_stop = True
-        # Save checkpoint if best model isn't already saved, at most every 2nd time early_stopping is called
-        if self.call_counter % 2 == 0 and self.val_loss_min < self.saved_val_loss:
-            self.save_checkpoint()
-        self.call_counter += 1
 
     def store_state_dict(self, val_loss, model):
         """Stores the model dict of the best performing model so far."""
