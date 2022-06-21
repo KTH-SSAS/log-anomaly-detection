@@ -316,21 +316,17 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                     continue
                 loss, *_ = lm_trainer.train_step(split_batch, validation=True)
                 val_losses.append(loss.item())
-                # Log the current validation loss and val_iteration to enable detailed view of
-                # validation loss.
-                # Also log the current train iteration and validation run_number to enable
-                # overview analysis of each validation run
-                wandb_log(
-                    val_iteration,
-                    LOGGING_FREQUENCY,
-                    {
-                        "valid/loss": loss,
-                        "valid/run_number": val_run,
-                        "valid/iteration": val_iteration,
-                        "train/iteration": train_iteration,
-                    },
-                )
         mean_val_loss = np.mean(val_losses)
+        # Log the mean validation loss and the current train iteration and validation run_number
+        wandb_log(
+            val_iteration,
+            1,
+            {
+                "valid/loss": mean_val_loss,
+                "valid/run_number": val_run,
+                "train/iteration": train_iteration,
+            },
+        )
 
         if mean_val_loss < best_score:
             model_save_path = log_dir / "model_best.pt"
