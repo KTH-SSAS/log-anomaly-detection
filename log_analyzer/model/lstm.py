@@ -281,7 +281,7 @@ class BidLSTM(LSTMLanguageModel):
 
         if self.has_attention:
             attention, _ = self.attention(b_f_concat, mask)
-            b_f_concat = torch.cat((b_f_concat, attention.squeeze()), dim=-1)
+            b_f_concat = torch.cat((b_f_concat, attention.squeeze(1)), dim=-1)
 
         token_output = self.get_token_output(b_f_concat)
 
