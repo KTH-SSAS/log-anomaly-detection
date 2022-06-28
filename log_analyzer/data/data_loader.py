@@ -240,6 +240,7 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
         self.user_context: Dict[str, List[Dict[str, torch.Tensor]]] = {}
         # Stores any lines that are skipped due to incomplete context (i.e. first shift_window-1 lines per user)
         self.user_skipped_lines: Dict[str, List[Dict[str, torch.Tensor]]] = {}
+        self.training = False # Assume we're not a training dataset.
         self.refresh_iterator()
 
     def __iter__(self):
@@ -270,17 +271,18 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
                         self.update_user_context(line_user)
                     else:
                         yield self.produce_output_sequence(line_user)
-            # When we've exhausted the data, return the incomplete sequences (padded up to full length)
-            for line_user, user_lines in self.user_loglines.items():
-                # We can only process lines if we have context
-                if line_user not in self.user_context:
-                    self.user_skipped_lines[line_user] = user_lines
-                elif len(user_lines):
+            if not self.training:
+                # When we've exhausted the data, return the incomplete sequences (padded up to full length)
+                for line_user, user_lines in self.user_loglines.items():
+                    # We can only process lines if we have context
+                    if line_user not in self.user_context:
+                        self.user_skipped_lines[line_user] = user_lines
+                    elif len(user_lines):
+                        yield self.produce_output_sequence(line_user)
+                # After we've returned incomplete sequences, return the skipped sequences
+                # so these can be added to the evaluator
+                for line_user, user_lines in self.user_skipped_lines.items():
                     yield self.produce_output_sequence(line_user)
-            # After we've returned incomplete sequences, return the skipped sequences
-            # so these can be added to the evaluator
-            for line_user, user_lines in self.user_skipped_lines.items():
-                yield self.produce_output_sequence(line_user)
 
         # Clear the leftover lines currently stored
         self.user_loglines = {}

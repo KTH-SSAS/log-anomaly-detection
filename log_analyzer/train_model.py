@@ -9,6 +9,7 @@ import torch
 
 import wandb
 from log_analyzer.application import Application
+from log_analyzer.data.data_loader import MultilineDataLoader
 from log_analyzer.train_loop import eval_model, init_from_args, train_model
 
 
@@ -126,6 +127,10 @@ def main(seed=22):
         if saved_model:
             # Initialize training from saved weights if provided
             load_weights(saved_model)
+
+        if isinstance(train_loader, MultilineDataLoader):
+            # Set the training flag to handle incomplete sequences correctly
+            train_loader.dataset.training = True
 
         train_model(trainer, train_loader, val_loader)
 
