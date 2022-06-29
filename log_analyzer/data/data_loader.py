@@ -270,7 +270,7 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
                         self.user_skipped_lines[line_user] = self.user_loglines[line_user]
                         self.update_user_context(line_user)
                     else:
-                        yield self.produce_output_sequence(line_user)
+                        yield self.produce_output_sequence(line_user, self.user_loglines[line_user], self.user_context[line_user])
             if not self.training:
                 # When we've exhausted the data, return the incomplete sequences (padded up to full length)
                 for line_user, user_lines in self.user_loglines.items():
@@ -278,18 +278,18 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
                     if line_user not in self.user_context:
                         self.user_skipped_lines[line_user] = user_lines
                     elif len(user_lines):
-                        yield self.produce_output_sequence(line_user)
+                        yield self.produce_output_sequence(line_user, self.user_loglines[line_user], self.user_context[line_user])
                 # After we've returned incomplete sequences, return the skipped sequences
                 # so these can be added to the evaluator
                 for line_user, user_lines in self.user_skipped_lines.items():
-                    yield self.produce_output_sequence(line_user)
+                    yield self.produce_output_sequence(line_user, self.user_skipped_lines[line_user], [])
 
         # Clear the leftover lines currently stored
         self.user_loglines = {}
         self.user_context = {}
         self.iterator = generate_iterator()
 
-    def produce_output_sequence(self, user):
+    def produce_output_sequence(self, user, log_lines, context_lines):
         """Puts together a sequence of loglines from a single user from the
         data that's been read in so far.
 
@@ -298,8 +298,6 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
         If the user does not have any context lines, we haven't sent any sequence from this user yet.
         We therefore pad the context with 0s (shift_window), then append padding to total length shift_window * 2 - 1
         """
-        lines = self.user_loglines[user] if len(self.user_loglines[user]) else self.user_skipped_lines[user]
-        context_lines = self.user_context[user] if user in self.user_context else []
         num_inputs = self.shift_window * 2 - 1
         num_targets = self.shift_window
 
@@ -308,8 +306,8 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
             "day": torch.zeros((num_targets), dtype=torch.long),
             "user": torch.zeros((num_targets), dtype=torch.long),
             "red": torch.zeros((num_targets), dtype=torch.long),
-            "input": torch.zeros((num_inputs, lines[0]["input"].shape[0]), dtype=torch.long),
-            "target": torch.zeros((num_targets, lines[0]["input"].shape[0]), dtype=torch.long),
+            "input": torch.zeros((num_inputs, log_lines[0]["input"].shape[0]), dtype=torch.long),
+            "target": torch.zeros((num_targets, log_lines[0]["input"].shape[0]), dtype=torch.long),
             "length": torch.zeros((num_targets), dtype=torch.long),
         }
 
@@ -324,9 +322,9 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
                 got {len(context_lines)}."
             )
 
-        for idx, line_data in enumerate(lines):
+        for idx, line_data in enumerate(log_lines):
             # The last line in the input is only used as the target for the 2nd to last line, not as input
-            if idx < len(lines) - 1:
+            if idx < len(log_lines) - 1:
                 datadict["input"][idx + self.shift_window] = line_data["input"]
             datadict["second"][idx] = line_data["second"]
             datadict["day"][idx] = line_data["day"]
