@@ -240,6 +240,7 @@ def init_from_config_classes(
             task,
             model_config.shift_window,
             model_config.memory_type,
+            shuffle_train_data
         )
     else:
         raise RuntimeError("Invalid model type.")

@@ -3,6 +3,8 @@
 from functools import partial
 from os import path
 from typing import Dict, List, Tuple, Union
+import numpy as np
+from collections import OrderedDict
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
@@ -346,6 +348,102 @@ class IterableUserMultilineDataset(LogDataset, IterableDataset):
         self.user_loglines[user] = []
 
 
+class MapUserMultilineDataset(LogDataset, Dataset):
+    """Provides data via __iter__, allowing data to be accessed in order only.
+
+    Provides sequences of loglines of length shift_window * 2 - 1. Each sequence contains loglines from a single user.
+    """
+
+    def __init__(self, filepaths, tokenizer : Tokenizer, task, shift_window=100, batch_entry_size=None) -> None:
+        assert task == SENTENCE_LM, f"Task must be 'sentence-lm' when using this dataset. Got '{task}'."
+        super().__init__(filepaths, tokenizer, task)
+
+        self.shift_window = shift_window
+        # batch_entry_size defines how many lines (in addition to context) we send per batch entry
+        # default is shift_window (with shift_window - 1 context lines)
+        self.batch_entry_size = batch_entry_size if batch_entry_size is not None else shift_window
+
+        def prep_raw_data(filepaths):
+            rawline_iterator = parse_multiple_files(filepaths)
+            rawdata = OrderedDict()
+            for rawline in rawline_iterator:
+                user = tokenizer.user_idx(rawline.split(",", maxsplit=2)[1])
+                if user not in rawdata:
+                    rawdata[user] = []
+                rawdata[user].append(rawline)
+            return rawdata
+        self.data = prep_raw_data(filepaths)
+        self.cumulative_items = OrderedDict() # Dict holding for each user, in their order of appearance, their
+        # starting index
+        self.length = 0
+        for user in self.data:
+            self.cumulative_items[user] = self.length
+            self.length += int(np.ceil(len(self.data[user]) / self.batch_entry_size))
+        self.skipsos = True
+        self.skipeos = True
+    
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, index):
+        user, user_index = self.index2item(index)
+        line_index = user_index * self.batch_entry_size
+        context_lines = []
+        if user_index > 0:
+            context_lines = self.data[user][max(0, line_index - self.shift_window) : line_index]
+        main_lines = self.data[user][line_index : min(len(self.data[user]), line_index + self.batch_entry_size)]
+
+        make_dict = partial(prepare_datadict, task=self.task, tokenizer=self.tokenizer)
+        main_lines = list(map(make_dict, main_lines))
+        context_lines = list(map(make_dict, context_lines))
+        return self.produce_output_sequence(main_lines, context_lines)
+
+    def index2item(self, index: int) -> Tuple[str, int]:
+        # Returns the user and index for that user that this global index corresponds to
+        for user, user_items in reversed(self.cumulative_items.items()):
+            if index >= user_items:
+                return user, index - user_items
+
+    def produce_output_sequence(self, log_lines, context_lines):
+        """Puts together a sequence of loglines from a single user from the
+        data that's been read in so far.
+
+        If the user does not have enough log lines (self.batch_entry_size) we pad by appending padding (0).
+
+        If the user does not have any context lines, we haven't sent any sequence from this user yet.
+        We therefore pad the context with 0s (shift_window), then append padding to total length
+        shift_window + batch_entry-size - 1.
+        """
+        num_inputs = self.shift_window + self.batch_entry_size - 1
+        num_targets = self.batch_entry_size
+
+        datadict: Dict[str, torch.Tensor] = {
+            "second": torch.zeros((num_targets), dtype=torch.long),
+            "day": torch.zeros((num_targets), dtype=torch.long),
+            "user": torch.zeros((num_targets), dtype=torch.long),
+            "red": torch.zeros((num_targets), dtype=torch.long),
+            "input": torch.zeros((num_inputs, log_lines[0]["input"].shape[0]), dtype=torch.long),
+            "target": torch.zeros((num_targets, log_lines[0]["input"].shape[0]), dtype=torch.long),
+            "length": torch.zeros((num_targets), dtype=torch.long),
+        }
+
+        # First add the context lines
+        for idx, line_data in enumerate(context_lines, start=self.shift_window - len(context_lines)):
+            datadict["input"][idx] = line_data["input"]
+
+        for idx, line_data in enumerate(log_lines):
+            # The last line in the input is only used as the target for the 2nd to last line, not as input
+            if idx < len(log_lines) - 1:
+                datadict["input"][idx + self.shift_window] = line_data["input"]
+            datadict["second"][idx] = line_data["second"]
+            datadict["day"][idx] = line_data["day"]
+            datadict["user"][idx] = line_data["user"]
+            datadict["red"][idx] = line_data["red"]
+            datadict["target"][idx] = line_data["input"]  # A line's target is the same as the next line's input
+            datadict["length"][idx] = line_data["length"]
+
+        return datadict
+
 class LogDataLoader(DataLoader):
     """Wrapper class around torch's DataLoader, used for non-tiered data
     loading.
@@ -523,6 +621,7 @@ def create_data_loader_multiline(
     task: str,
     shift_window: int,
     memory_type: str,
+    shuffle: bool = False,
 ) -> MultilineDataLoader:
     """Creates and returns a data loader."""
 
@@ -556,12 +655,15 @@ def create_data_loader_multiline(
     if memory_type.lower() == "global":
         dataset = MapMultilineDataset(filepaths, tokenizer, task, shift_window=shift_window)
     elif memory_type.lower() == "user":
-        dataset = IterableUserMultilineDataset(filepaths, tokenizer, task, shift_window=shift_window)
+        if shuffle:
+            dataset = MapUserMultilineDataset(filepaths, tokenizer, task, shift_window=shift_window)
+        else:
+            dataset = IterableUserMultilineDataset(filepaths, tokenizer, task, shift_window=shift_window)
     else:
         raise ValueError(f"Invalid memory_type. Expected 'global' or 'user', got '{memory_type}'")
 
     collate = partial(multiline_collate_fn, pad_idx=0)
-    data_handler = MultilineDataLoader(dataset, batch_size=batch_size, shuffle=False, collate_function=collate)
+    data_handler = MultilineDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_function=collate)
     return data_handler
 
 
@@ -597,6 +699,7 @@ def load_data_multiline(
     task: str,
     shift_window: int,
     memory_type: str,
+    shuffle_train_data: bool = True,
 ):
     filepaths_train = [path.join(data_folder, f) for f in train_files]
     filepaths_valid = [path.join(data_folder, f) for f in validation_files]
@@ -608,6 +711,7 @@ def load_data_multiline(
         task,
         shift_window=shift_window,
         memory_type=memory_type,
+        shuffle=shuffle_train_data
     )
     if len(validation_files) > 0:
         val_loader = create_data_loader_multiline(
