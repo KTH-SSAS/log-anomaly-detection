@@ -458,7 +458,7 @@ class Evaluator:
             plt.legend()
         plt.title("Aggregate line losses by time")
 
-    def plot_roc_curve(self, title="ROC", normalised=False):
+    def plot_roc_curve(self, title="ROC", normalised=False, nonskipped=False):
         """Plots the ROC (Receiver Operating Characteristic) curve, i.e. TP-FP
         tradeoff.
 
@@ -470,8 +470,12 @@ class Evaluator:
 
         # Get the relevant data - normalised or not
         losses = self.data["normalised_losses"] if normalised else self.data["losses"]
+        red_flags = self.data["red_flags"]
+        if nonskipped:
+            losses = losses[self.data["skipped"] == 0]
+            red_flags = red_flags[self.data["skipped"] == 0]
 
-        full_fp_rate, full_tp_rate, _ = metrics.roc_curve(self.data["red_flags"], losses, pos_label=1)
+        full_fp_rate, full_tp_rate, _ = metrics.roc_curve(red_flags, losses, pos_label=1)
         # Scale fp_rate, tp_rate down to contain <2'000 values
         # E.g. if original length is 1'000'000, only take every 500th value
         step_size = (len(full_fp_rate) // 2000) + 1
@@ -618,6 +622,11 @@ class Evaluator:
         _, roc_plot = self.plot_roc_curve()
         if self.use_wandb:
             wandb.log({"ROC Curve": roc_plot})
+
+        # get nonskipped roc curve
+        _, nonskipped_roc_plot = self.plot_roc_curve(title="ROC (nonskipped)", nonskipped=True)
+        if self.use_wandb:
+            wandb.log({"ROC Curve (nonskipped)": nonskipped_roc_plot})
 
         # get pr curve
         AP_score, pr_plot = self.plot_pr_curve()
