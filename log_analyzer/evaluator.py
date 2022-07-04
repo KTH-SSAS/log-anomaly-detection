@@ -292,7 +292,7 @@ class Evaluator:
         if not np.all(np.diff(self.data["seconds"]) >= 0):
             # Sort the data by seconds
             sorted_indices = np.argsort(self.data["seconds"])
-            for key in ["users", "losses", "seconds", "red_flags"]:
+            for key in self.data:
                 self.data[key] = self.data[key][sorted_indices]
         # Compute final test loss
         self.eval_loss = self.eval_loss / max(self.eval_lines_count, 1)
@@ -330,6 +330,7 @@ class Evaluator:
             "eval/AUC": self.get_auc_score(),
             "eval/AP": self.get_ap_score(),
             "eval/total_lines": len(self.data["losses"]),
+            "eval/total_reds": np.sum(self.data["red_flags"]),
             "eval/skipped_lines": np.sum(self.data["skipped"]),
             "eval/skipped_reds": np.sum(self.data["red_flags"][self.data["skipped"]]),
             "eval/AUC_nonskipped": metrics.auc(nonskipped_fp_rate, nonskipped_tp_rate),
