@@ -104,6 +104,15 @@ def main(seed=22):
 
     logging.basicConfig(level=log_level)
 
+    # Look for a trainer_config.json and model_config.json in the folder of the saved model. Use these if available
+    if args.saved_model:
+        folder_path = Path(args.saved_model)
+        model_conf : Path = folder_path.parent / "model_config.json"
+        trainer_conf : Path = folder_path.parent / "trainer_config.json"
+        if model_conf.exists() and trainer_conf.exists():
+            args.model_config = model_conf
+            args.trainer_config = trainer_conf
+
     # Create the trainer+model
     trainer, evaluator, train_loader, val_loader, test_loader = init_from_args(args)
 
@@ -148,6 +157,9 @@ def main(seed=22):
         # Load the weights of the model to evaluate
         load_weights(model_to_evaluate)
         # Otherwise the version of the model updated last will be evaluated
+
+    # Remove unused memory
+    del trainer, train_loader, val_loader
 
     # Test the model
     eval_model(evaluator, test_loader, store_eval_data=evaluate)

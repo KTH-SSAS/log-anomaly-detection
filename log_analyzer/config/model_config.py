@@ -7,8 +7,8 @@ from log_analyzer.config.config import Config
 
 @dataclass
 class ModelConfig(Config):
-    sequence_length: Optional[int] = field(init=False, default=None)
-    _vocab_size: Optional[int] = field(init=False, default=None)
+    sequence_length: Optional[int] = field(init=False, repr=False, default=None)
+    _vocab_size: Optional[int] = field(init=False, repr=False, default=None)
 
     @property
     def vocab_size(self) -> int:

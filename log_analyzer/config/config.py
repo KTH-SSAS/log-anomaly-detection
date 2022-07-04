@@ -38,4 +38,6 @@ class Config:
 
     @classmethod
     def init_from_dict(cls, config_dict):
+        if "_vocab_size" in config_dict: config_dict.pop("_vocab_size")
+        if "sequence_length" in config_dict: config_dict.pop("sequence_length")
         return cls(**config_dict)
