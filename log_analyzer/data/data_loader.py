@@ -501,7 +501,7 @@ class MultilineDataLoader(LogDataLoader):
 
         # Optional fields
         L = batch.get("length")
-        M = batch.get("input_mask")
+        M = batch.get("mask")
 
         if self.using_cuda:
             X = X.cuda()
@@ -645,9 +645,7 @@ def create_data_loader_multiline(
                 batch[key] = torch.stack(value)
 
         # Add the input padding mask - pad_idx is 0
-        batch["input_mask"] = torch.all(batch["input"] != pad_idx, dim=2)
-        # Add the target padding mask - pad_idx is 0
-        batch["target_mask"] = torch.all(batch["target"] != pad_idx, dim=2)
+        batch["mask"] = torch.all(batch["input"] != pad_idx, dim=2)
 
         return batch
 

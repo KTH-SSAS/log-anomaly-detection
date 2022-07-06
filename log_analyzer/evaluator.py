@@ -141,10 +141,8 @@ class Evaluator:
         Y = split_batch["Y"]
         L = split_batch["L"]
         M = split_batch["M"]
-        # Grab the mask for the targets if one is provided
-        if "target_mask" in split_batch:
-            mask = split_batch["target_mask"]
-        elif M is not None:
+
+        if M is not None:
             mask = M
         else:
             mask = None
@@ -174,6 +172,11 @@ class Evaluator:
                 preds = None
             else:
                 preds = torch.argmax(output, dim=-1)
+            
+            # Ensure the mask is the same shape as the rest of the tensors - for multiline models it might not be
+            # If mask is larger, take the last X entries of mask where X is the shape of the other tensors
+            if mask is not None:
+                mask = mask[:, -users.shape[1]:]
 
             self.add_evaluation_data(users, seconds, red_flags, line_losses, log_line=Y, predictions=preds, mask=mask)
             self.eval_loss += loss
