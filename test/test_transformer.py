@@ -1,11 +1,7 @@
 import torch
 
 from log_analyzer.model.transformer import Transformer
-
-SEQUENCE_LENGTH = 10
-VOCAB_SIZE = 128
-BATCH_SIZE = 64
-
+from .conftest import BATCH_SIZE, SEQUENCE_LENGTH, VOCAB_SIZE
 
 def test_forward(test_config, test_input):
     transformer = Transformer(test_config, bidirectional=False)

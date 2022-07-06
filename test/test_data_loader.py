@@ -72,10 +72,7 @@ def test_data_loader_tiered():
 @pytest.mark.parametrize("shuffle", [False, True])
 @pytest.mark.parametrize("memory_type", ["global", "user"])
 def test_data_loader_multiline(shuffle, memory_type):
-    if shuffle:
-        pytest.skip()
-
-    filepath = "data/test_data/6.csv"
+    filepath = ["data/test_data/6.csv"]
     counts_file = Path("data/counts678.json")
     batch_size = 10
     tokenizer = get_tokenizer("word-merged", counts_file, cutoff=49)
@@ -83,7 +80,7 @@ def test_data_loader_multiline(shuffle, memory_type):
 
     shift_window = 5
     input_length = calculate_max_input_length(task, tokenizer)
-    data_handler = create_data_loader_multiline(filepath, batch_size, tokenizer, task, shift_window, memory_type)
+    data_handler = create_data_loader_multiline(filepath, batch_size, tokenizer, task, shift_window, memory_type, shuffle=shuffle)
     final_batch = False
     for batch in data_handler:
         # Batch size may vary (final batch probably won't be full size)
@@ -107,3 +104,4 @@ def test_data_loader_multiline(shuffle, memory_type):
                 assert torch.all(batch["input"][b, batch["mask"][b]]) and torch.all(
                     batch["input"][b, batch["mask"][b] == 0] == 0
                 )
+    assert batch # data handler isn't empty
