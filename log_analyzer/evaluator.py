@@ -135,7 +135,6 @@ class Evaluator:
             Y: target
             L: sequence lengths
             M: sequence masks
-            target_mask[optional]: target mask
         """
         X = split_batch["X"]
         Y = split_batch["Y"]
@@ -146,6 +145,12 @@ class Evaluator:
             mask = M
         else:
             mask = None
+
+        skipped_lines = None
+        # Find which lines, if any, are "skipped lines" (i.e. ones without full context)
+        # Check for any masked-out context lines - it's enough to check the first line of each sequence
+        if isinstance(self.model, MultilineLogModel):
+            skipped_lines = (mask[:, 0] == 0).unsqueeze(1).repeat(1, Y.shape[1])
 
         users = split_batch["user"]
         seconds = split_batch["second"]
@@ -178,7 +183,16 @@ class Evaluator:
             if mask is not None:
                 mask = mask[:, -users.shape[1]:]
 
-            self.add_evaluation_data(users, seconds, red_flags, line_losses, log_line=Y, predictions=preds, mask=mask)
+            self.add_evaluation_data(
+                users,
+                seconds,
+                red_flags,
+                line_losses,
+                log_line=Y,
+                predictions=preds,
+                mask=mask,
+                skipped_lines=skipped_lines
+            )
             self.eval_loss += loss
             self.eval_lines_count += 1
 
@@ -190,10 +204,11 @@ class Evaluator:
         users: Tensor,
         seconds: Tensor,
         red_flags: Tensor,
-        losses: Optional[Tensor] = None,
+        losses: Tensor,
         log_line: Optional[Tensor] = None,
         predictions: Optional[Tensor] = None,
         mask: Optional[Tensor] = None,
+        skipped_lines: Optional[Tensor] = None,
     ):
         """Extend the data stored in self.data with the inputs."""
         # Handle input from tiered models
@@ -208,14 +223,9 @@ class Evaluator:
             seconds = seconds[mask]
             red_flags = red_flags[mask]
 
-        if losses is not None:
-            losses = losses.cpu().flatten()
-            if mask is not None:
-                losses = losses[mask]
-        else:
-            # No losses provided so this is data that could not be evaluated by the model.
-            # Set skipped flag to 1 and loss to 0
-            self.data["skipped"][self.index : self.index + len(users)] = 1
+        losses = losses.cpu().flatten()
+        if mask is not None:
+            losses = losses[mask]
 
         # Check that there's enough space left for all the entries
         if len(self.data["losses"]) < self.index + len(users):
@@ -225,7 +235,16 @@ class Evaluator:
             self.data["losses"] = np.concatenate((self.data["losses"], np.zeros(1050000, float)))
             self.data["seconds"] = np.concatenate((self.data["seconds"], np.zeros(1050000, int)))
             self.data["red_flags"] = np.concatenate((self.data["red_flags"], np.zeros(1050000, bool)))
-            self.data["skipped"] = np.concatenate((self.data["red_flags"], np.zeros(1050000, bool)))
+            self.data["skipped"] = np.concatenate((self.data["skipped"], np.zeros(1050000, bool)))
+
+        if skipped_lines is not None:
+            skipped_lines = skipped_lines.cpu().numpy().flatten()
+            if mask is not None:
+                skipped_lines = skipped_lines[mask]
+            # This flags lines that could not be evaluated by the model.
+            # (e.g. multiline model, not full context available before this line)
+            # Set skipped flag to 1 and loss to 0
+            self.data["skipped"][self.index : self.index + len(users)] = skipped_lines
 
         for key, new_data in zip(
             ["users", "seconds", "red_flags"],

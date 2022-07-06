@@ -376,9 +376,6 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                     # epoch_iteration = iterations in this epoch (used to determine when to run validation)
                     # Split the batch
                     split_batch = train_loader.split_batch(batch)
-                    # Check that the split batch contains entries (see MultilineDataloader's mask filtering)
-                    if len(split_batch["X"]) == 0:
-                        continue
                     if lm_trainer.model.tiered:
                         if train_loader.flush is False:
                             loss, gradient_norm, done = lm_trainer.train_step(split_batch)
@@ -462,18 +459,6 @@ def eval_model(
             # Only allow interrupt between each batch
             with DelayedKeyboardInterrupt():
                 split_batch = test_loader.split_batch(batch)
-                # Add any masked-out lines to the evaluator
-                if "masked_batch" in split_batch:
-                    masked_batch = split_batch["masked_batch"]
-                    lm_evaluator.add_evaluation_data(
-                        masked_batch["user"],
-                        masked_batch["second"],
-                        masked_batch["red_flag"],
-                        mask=masked_batch["target_mask"],
-                    )
-                # Check that the split batch contains entries (see MultilineDataloader's mask filtering)
-                if len(split_batch["X"]) == 0:
-                    continue
                 loss, *_ = lm_evaluator.eval_step(split_batch, store_eval_data=store_eval_data)
                 test_losses.append(loss.item())
                 wandb_log(

@@ -154,7 +154,7 @@ class IterableLogDataset(LogDataset, IterableDataset):  # pylint: disable=abstra
         self.iterator = generate_iterator()
 
 
-class MapMultilineDataset(LogDataset, Dataset):
+class MapMultilineDataset(MapLogDataset):
     """Provides data via __getitem__, allowing arbitrary data entries to be
     accessed via index.
 
@@ -221,189 +221,8 @@ class MapMultilineDataset(LogDataset, Dataset):
         return datadict
 
 
-class IterableUserMultilineDataset(LogDataset, IterableDataset):
-    """Provides data via __iter__, allowing data to be accessed in order only.
-
-    Provides sequences of loglines of length shift_window * 2 - 1. Each sequence contains loglines from a single user.
-    """
-
-    def __init__(self, filepaths, tokenizer, task, shift_window=100) -> None:
-        assert task == SENTENCE_LM, f"Task must be 'sentence-lm' when using this dataset. Got '{task}'."
-        super().__init__(filepaths, tokenizer, task)
-
-        self.shift_window = shift_window
-
-        self.data = list(parse_multiple_files(self.filepaths))
-        self.skipsos = True
-        self.skipeos = True
-        # Stores the newest lines from each user that have not yet been batched
-        self.user_loglines: Dict[str, List[Dict[str, torch.Tensor]]] = {}
-        # Stores the last shift_window lines from each user that have been batched (for context)
-        self.user_context: Dict[str, List[Dict[str, torch.Tensor]]] = {}
-        # Stores any lines that are skipped due to incomplete context (i.e. first shift_window-1 lines per user)
-        self.user_skipped_lines: Dict[str, List[Dict[str, torch.Tensor]]] = {}
-        self.training = False # Assume we're not a training dataset.
-        self.refresh_iterator()
-
-    def __iter__(self):
-        return self.iterator
-
-    def __getitem__(self, index):
-        raise NotImplementedError("Iterable dataset must be accessed via __iter__.")
-
-    def refresh_iterator(self):
-        """Generates a (new) iterator over the data as specified by class
-        parameters."""
-
-        def generate_iterator():
-            # For each user, we split its sequence of log lines into buckets that are shift_window long.
-            # For each batch entry we need 2 buckets: 1 that will be predicted ("classified") and the bucket before it
-            # to provide full context (i.e. shift_window lines of input) for each log line.
-            for line in self.data:
-                line_data = prepare_datadict(line, self.task, self.tokenizer)
-                line_user = line_data["user"].item()
-                if line_user not in self.user_loglines:
-                    self.user_loglines[line_user] = []
-                self.user_loglines[line_user].append(line_data)
-                # Check if this user has a full bucket of log lines.
-                if len(self.user_loglines[line_user]) == self.shift_window:
-                    if line_user not in self.user_context:
-                        # The first bucket per user cannot be predicted, as it has no context information
-                        self.user_skipped_lines[line_user] = self.user_loglines[line_user]
-                        self.update_user_context(line_user)
-                    else:
-                        yield self.produce_output_sequence(line_user, self.user_loglines[line_user], self.user_context[line_user])
-            if not self.training:
-                # When we've exhausted the data, return the incomplete sequences (padded up to full length)
-                for line_user, user_lines in self.user_loglines.items():
-                    # We can only process lines if we have context
-                    if line_user not in self.user_context:
-                        self.user_skipped_lines[line_user] = user_lines
-                    elif len(user_lines):
-                        yield self.produce_output_sequence(line_user, self.user_loglines[line_user], self.user_context[line_user])
-                # After we've returned incomplete sequences, return the skipped sequences
-                # so these can be added to the evaluator
-                for line_user, user_lines in self.user_skipped_lines.items():
-                    yield self.produce_output_sequence(line_user, self.user_skipped_lines[line_user], [])
-
-        # Clear the leftover lines currently stored
-        self.user_loglines = {}
-        self.user_context = {}
-        self.iterator = generate_iterator()
-
-    def produce_output_sequence(self, user, log_lines, context_lines):
-        """Puts together a sequence of loglines from a single user from the
-        data that's been read in so far.
-
-        If the user does not have enough log lines (self.shift_window) we pad by appending padding (0).
-
-        If the user does not have any context lines, we haven't sent any sequence from this user yet.
-        We therefore pad the context with 0s (shift_window), then append padding to total length shift_window * 2 - 1
-        """
-        num_inputs = self.shift_window * 2 - 1
-        num_targets = self.shift_window
-
-        datadict: Dict[str, torch.Tensor] = {
-            "second": torch.zeros((num_targets), dtype=torch.long),
-            "day": torch.zeros((num_targets), dtype=torch.long),
-            "user": torch.zeros((num_targets), dtype=torch.long),
-            "red": torch.zeros((num_targets), dtype=torch.long),
-            "input": torch.zeros((num_inputs, log_lines[0]["input"].shape[0]), dtype=torch.long),
-            "target": torch.zeros((num_targets, log_lines[0]["input"].shape[0]), dtype=torch.long),
-            "length": torch.zeros((num_targets), dtype=torch.long),
-        }
-
-        # First add the context lines
-        if len(context_lines) == self.shift_window:
-            for idx, line_data in enumerate(context_lines):
-                datadict["input"][idx] = line_data["input"]
-        elif len(context_lines) != 0:
-            # Context length should only be 0 or shift_window
-            raise ValueError(
-                f"Unexpected context length. Expected 0 or shift_window ({self.shift_window}), \
-                got {len(context_lines)}."
-            )
-
-        for idx, line_data in enumerate(log_lines):
-            # The last line in the input is only used as the target for the 2nd to last line, not as input
-            if idx < len(log_lines) - 1:
-                datadict["input"][idx + self.shift_window] = line_data["input"]
-            datadict["second"][idx] = line_data["second"]
-            datadict["day"][idx] = line_data["day"]
-            datadict["user"][idx] = line_data["user"]
-            datadict["red"][idx] = line_data["red"]
-            datadict["target"][idx] = line_data["input"]  # A line's target is the same as the next line's input
-            datadict["length"][idx] = line_data["length"]
-
-        self.update_user_context(user)
-        return datadict
-
-    def update_user_context(self, user):
-        # Update this user's context - take the last self.shift_window lines from its saved lines
-        if user not in self.user_context:
-            self.user_context[user] = []
-        self.user_context[user].extend(self.user_loglines[user])
-        self.user_context[user] = self.user_context[user][-self.shift_window :]
-        # Remove all lines from the user's line list
-        self.user_loglines[user] = []
-
-
-class MapUserMultilineDataset(LogDataset, Dataset):
-    """Provides data via __iter__, allowing data to be accessed in order only.
-
-    Provides sequences of loglines of length shift_window * 2 - 1. Each sequence contains loglines from a single user.
-    """
-
-    def __init__(self, filepaths, tokenizer : Tokenizer, task, shift_window=100, batch_entry_size=None) -> None:
-        assert task == SENTENCE_LM, f"Task must be 'sentence-lm' when using this dataset. Got '{task}'."
-        super().__init__(filepaths, tokenizer, task)
-
-        self.shift_window = shift_window
-        # batch_entry_size defines how many lines (in addition to context) we send per batch entry
-        # default is shift_window (with shift_window - 1 context lines)
-        self.batch_entry_size = batch_entry_size if batch_entry_size is not None else shift_window
-
-        def prep_raw_data(filepaths):
-            rawline_iterator = parse_multiple_files(filepaths)
-            rawdata = OrderedDict()
-            for rawline in rawline_iterator:
-                user = tokenizer.user_idx(rawline.split(",", maxsplit=2)[1])
-                if user not in rawdata:
-                    rawdata[user] = []
-                rawdata[user].append(rawline)
-            return rawdata
-        self.data = prep_raw_data(filepaths)
-        self.cumulative_items = OrderedDict() # Dict holding for each user, in their order of appearance, their
-        # starting index
-        self.length = 0
-        for user in self.data:
-            self.cumulative_items[user] = self.length
-            self.length += int(np.ceil(len(self.data[user]) / self.batch_entry_size))
-        self.skipsos = True
-        self.skipeos = True
-    
-    def __len__(self):
-        return self.length
-
-    def __getitem__(self, index):
-        user, user_index = self.index2item(index)
-        line_index = user_index * self.batch_entry_size
-        context_lines = []
-        if user_index > 0:
-            context_lines = self.data[user][max(0, line_index - self.shift_window) : line_index]
-        main_lines = self.data[user][line_index : min(len(self.data[user]), line_index + self.batch_entry_size)]
-
-        make_dict = partial(prepare_datadict, task=self.task, tokenizer=self.tokenizer)
-        main_lines = list(map(make_dict, main_lines))
-        context_lines = list(map(make_dict, context_lines))
-        return self.produce_output_sequence(main_lines, context_lines)
-
-    def index2item(self, index: int) -> Tuple[str, int]:
-        # Returns the user and index for that user that this global index corresponds to
-        for user, user_items in reversed(self.cumulative_items.items()):
-            if index >= user_items:
-                return user, index - user_items
-
+class MultilineLogDataset():
+    """Virtual superclass for multiline datasets."""
     def produce_output_sequence(self, log_lines, context_lines):
         """Puts together a sequence of loglines from a single user from the
         data that's been read in so far.
@@ -443,6 +262,151 @@ class MapUserMultilineDataset(LogDataset, Dataset):
             datadict["length"][idx] = line_data["length"]
 
         return datadict
+
+class IterableUserMultilineDataset(IterableLogDataset, MultilineLogDataset):
+    """Provides data via __iter__, allowing data to be accessed in order only.
+
+    Provides sequences of loglines of length shift_window * 2 - 1. Each sequence contains loglines from a single user.
+    """
+
+    def __init__(self, filepaths, tokenizer, task, shift_window=100, batch_entry_size=None) -> None:
+        assert task == SENTENCE_LM, f"Task must be 'sentence-lm' when using this dataset. Got '{task}'."
+        super().__init__(filepaths, tokenizer, task)
+
+        self.shift_window = shift_window
+        # batch_entry_size defines how many lines (in addition to context) we send per batch entry
+        # default is shift_window (with shift_window - 1 context lines)
+        # self.batch_entry_size = batch_entry_size if batch_entry_size is not None else shift_window
+        self.batch_entry_size = shift_window
+        self.skipsos = True
+        self.skipeos = True
+        self.training = False # Assume we're not a training dataset.
+
+        self.data = list(parse_multiple_files(self.filepaths))
+        # Stores the newest lines from each user that have not yet been batched
+        self.user_loglines: Dict[str, List[Dict[str, torch.Tensor]]] = {}
+        # Stores the last shift_window lines from each user that have been batched (for context)
+        self.user_context: Dict[str, List[Dict[str, torch.Tensor]]] = {}
+
+        self.refresh_iterator()
+
+    def __iter__(self):
+        return self.iterator
+
+    def __getitem__(self, index):
+        raise NotImplementedError("Iterable dataset must be accessed via __iter__.")
+
+    def refresh_iterator(self):
+        """Generates a (new) iterator over the data as specified by class
+        parameters."""
+
+        def generate_iterator():
+            # For each user, we split its sequence of log lines into buckets that are shift_window long.
+            # For each batch entry we need 2 buckets: 1 that will be predicted ("classified") and the bucket before it
+            # to provide full context (i.e. shift_window lines of input) for each log line.
+            for line in self.data:
+                line_data = prepare_datadict(line, self.task, self.tokenizer)
+                line_user = line_data["user"].item()
+                if line_user not in self.user_loglines:
+                    self.user_loglines[line_user] = []
+                    # For the first bucket of each user, the only context is a border-padded line
+                    # (that user's first line, repeated as padding)
+                    self.user_context[line_user] = [line_data]
+                self.user_loglines[line_user].append(line_data)
+                # Check if this user has a full bucket of log lines.
+                if len(self.user_loglines[line_user]) == self.batch_entry_size:
+                    yield self.produce_output_sequence(line_user, self.user_loglines[line_user], self.user_context[line_user])
+            # When we've exhausted the data, return the incomplete sequences (padded up to full length)
+            for line_user, user_lines in self.user_loglines.items():
+                if len(user_lines):
+                    yield self.produce_output_sequence(line_user, self.user_loglines[line_user], self.user_context[line_user])
+
+        # Clear the leftover lines currently stored
+        self.user_loglines = {}
+        self.user_context = {}
+        self.iterator = generate_iterator()
+
+    def produce_output_sequence(self, user, log_lines, context_lines):
+        sequence =  super().produce_output_sequence(log_lines, context_lines)
+        self.update_user_context(user)
+        return sequence
+
+    def update_user_context(self, user):
+        # Update this user's context - take the last self.shift_window lines from its saved lines
+        self.user_context[user].extend(self.user_loglines[user])
+        self.user_context[user] = self.user_context[user][-self.shift_window :]
+        # Remove all lines from the user's line list
+        self.user_loglines[user] = []
+
+
+class MapUserMultilineDataset(MapLogDataset, MultilineLogDataset):
+    """Provides data via __iter__, allowing data to be accessed in order only.
+
+    Provides sequences of loglines of length shift_window * 2 - 1. Each sequence contains loglines from a single user.
+    """
+
+    def __init__(self, filepaths, tokenizer : Tokenizer, task, shift_window=100, batch_entry_size=None) -> None:
+        assert task == SENTENCE_LM, f"Task must be 'sentence-lm' when using this dataset. Got '{task}'."
+        super().__init__(filepaths, tokenizer, task)
+
+        self.shift_window = shift_window
+        # batch_entry_size defines how many lines (in addition to context) we send per batch entry
+        # default is shift_window (with shift_window - 1 context lines)
+        self.batch_entry_size = batch_entry_size if batch_entry_size is not None else shift_window
+        self.skipsos = True
+        self.skipeos = True
+
+        def prep_raw_data(filepaths: List[str]) -> Dict[int, List[str]]:
+            rawline_iterator = parse_multiple_files(filepaths)
+            rawdata = OrderedDict()
+            for rawline in rawline_iterator:
+                # For non-user based dataset (i.e. global), always set user_idx to 0
+                # user = 0
+                user = tokenizer.user_idx(rawline.split(",", maxsplit=2)[1])
+                if user not in rawdata:
+                    rawdata[user] = []
+                rawdata[user].append(rawline)
+            return rawdata
+        self.data = prep_raw_data(filepaths)
+        self.cumulative_items = OrderedDict() # Holds the starting index for each user in their order of appearance
+        self.length = 0
+        for user in self.data:
+            self.cumulative_items[user] = self.length
+            self.length += int(np.ceil(len(self.data[user]) / self.batch_entry_size))
+            # After counting this user's batch-entries, add the padding line to the start
+            self.data[user].insert(0, self.data[user][0])
+    
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, index):
+        user, batch_entry_index = self.index2item(index)
+        # user: the user for this batch entry
+        # batch_entry_index: the index of this batch entry
+        # line_index: the index of the first main_line (i.e. not context) to appear in this batch entry
+        line_index = batch_entry_index * self.batch_entry_size
+
+        make_dict = partial(prepare_datadict, task=self.task, tokenizer=self.tokenizer)
+
+        context_lines_end_index = line_index + 1
+        context_lines_start_index = max(0, context_lines_end_index - self.shift_window)
+        context_lines = self.data[user][context_lines_start_index : context_lines_end_index]
+        context_lines = list(map(make_dict, context_lines))
+        # The first line in each user's list is a padding line akin to CNN image border padding (repeat the first line)
+        # This is ignored for the main_lines, thus shifted by 1
+        main_lines_start_index = line_index + 1
+        main_lines_end_index = min(len(self.data[user]), main_lines_start_index + self.batch_entry_size)
+        main_lines = self.data[user][main_lines_start_index : main_lines_end_index]
+        main_lines = list(map(make_dict, main_lines))
+
+        return self.produce_output_sequence(main_lines, context_lines)
+
+    def index2item(self, index: int) -> Tuple[str, int]:
+        # Returns the user and index for that user that this global index corresponds to
+        for user, user_items in reversed(self.cumulative_items.items()):
+            if index >= user_items:
+                return user, index - user_items
+
 
 class LogDataLoader(DataLoader):
     """Wrapper class around torch's DataLoader, used for non-tiered data
@@ -520,17 +484,6 @@ class MultilineDataLoader(LogDataLoader):
         }
         if "target_mask" in batch:
             split_batch["target_mask"] = batch["target_mask"]
-        # Check for any masked-out context lines - it's enough to check the first line of each sequence
-        if M is not None:
-            masked_lines = M.shape[0] - torch.sum(M[:, 0])
-            if masked_lines:
-                # Create a batch of the lines that are removed from split_batch - for adding to the evaluator
-                masked_batch = {}
-                for key, value in split_batch.items():
-                    # Remove any sequences that have masked-out context from the batch
-                    masked_batch[key] = value[M[:, 0] == 0, :]
-                    split_batch[key] = value[M[:, 0], :]
-                split_batch["masked_batch"] = masked_batch
         return split_batch
 
 
