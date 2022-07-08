@@ -2,9 +2,7 @@
 
 from functools import partial
 from os import path
-from typing import Dict, List, Tuple, Union
-import numpy as np
-from collections import OrderedDict
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
@@ -154,73 +152,6 @@ class IterableLogDataset(LogDataset, IterableDataset):  # pylint: disable=abstra
         self.iterator = generate_iterator()
 
 
-class MapMultilineDataset(MapLogDataset):
-    """Provides data via __getitem__, allowing arbitrary data entries to be
-    accessed via index.
-
-    Provides sequences of loglines of length shift_window * 2 - 1.
-    """
-
-    def __init__(self, filepaths, tokenizer, task, shift_window=100) -> None:
-        assert task == SENTENCE_LM, "Task must be 'sentence-lm' when using this dataset."
-        super().__init__(filepaths, tokenizer, task)
-
-        self.shift_window = shift_window
-
-        self.loglines = []
-        self.skipsos = True
-        self.skipeos = True
-        iterator = parse_multiple_files(self.filepaths)
-
-        self.loglines.extend(iterator)
-        # Length explanation: Divide by window size and floor since we can't/don't want to pass on incomplete sequences
-        # -1 because we lose the first shift_window lines because they can't have a history of length shift_window
-        self.length = (len(self.loglines) // self.shift_window) - 1
-
-    def __getitem__(self, index):
-        # Actual input to the model (that will produce an output prediction): shift_window
-        # Extra history before needed to ensure a full shift_window history for every entry: shift_window-1
-        # Length of each item: 2*shift_window - 1 long
-        start_index = index * self.shift_window
-        end_index = start_index + 2 * self.shift_window  # Add 1 line that will be the target for the last input
-        sequence = self.loglines[start_index:end_index]
-        parsed_sequence = self.parse_lines(sequence)
-        return parsed_sequence
-
-    def __len__(self):
-        return self.length
-
-    def parse_lines(self, lines):
-        datadict = {
-            "second": [],
-            "day": [],
-            "user": [],
-            "red": [],
-            "input": [],
-            "target": [],
-            "length": [],
-        }
-
-        this_sequence_len = len(lines)
-
-        for idx, line in enumerate(lines):
-            data = prepare_datadict(line, self.task, self.tokenizer)
-
-            # The last line in the input is only used as the target for the 2nd to last line, not as input
-            if idx < this_sequence_len - 1:
-                datadict["input"].append(data["input"])
-            # The first shift_window lines processed are not the target of anything (in this sequence) - only history
-            if idx > self.shift_window - 1:
-                datadict["second"].append(data["second"])
-                datadict["day"].append(data["day"])
-                datadict["user"].append(data["user"])
-                datadict["red"].append(data["red"])
-                datadict["target"].append(data["target"])
-                datadict["length"].append(data["length"])
-
-        return datadict
-
-
 class MultilineLogDataset():
     """Virtual superclass for multiline datasets."""
     def produce_output_sequence(self, log_lines, context_lines):
@@ -262,6 +193,7 @@ class MultilineLogDataset():
             datadict["length"][idx] = line_data["length"]
 
         return datadict
+
 
 class IterableUserMultilineDataset(IterableLogDataset, MultilineLogDataset):
     """Provides data via __iter__, allowing data to be accessed in order only.
@@ -339,13 +271,13 @@ class IterableUserMultilineDataset(IterableLogDataset, MultilineLogDataset):
         self.user_loglines[user] = []
 
 
-class MapUserMultilineDataset(MapLogDataset, MultilineLogDataset):
+class MapMultilineDataset(MapLogDataset, MultilineLogDataset):
     """Provides data via __iter__, allowing data to be accessed in order only.
 
     Provides sequences of loglines of length shift_window * 2 - 1. Each sequence contains loglines from a single user.
     """
 
-    def __init__(self, filepaths, tokenizer : Tokenizer, task, shift_window=100, batch_entry_size=None) -> None:
+    def __init__(self, filepaths, tokenizer : Tokenizer, task, memory_type : str ="user", shift_window : int = 100, batch_entry_size : Optional[int] = None) -> None:
         assert task == SENTENCE_LM, f"Task must be 'sentence-lm' when using this dataset. Got '{task}'."
         super().__init__(filepaths, tokenizer, task)
 
@@ -356,31 +288,35 @@ class MapUserMultilineDataset(MapLogDataset, MultilineLogDataset):
         self.skipsos = True
         self.skipeos = True
 
-        def prep_raw_data(filepaths: List[str]) -> Dict[int, List[str]]:
-            rawline_iterator = parse_multiple_files(filepaths)
-            rawdata = OrderedDict()
-            for rawline in rawline_iterator:
-                # For non-user based dataset (i.e. global), always set user_idx to 0
-                # user = 0
-                user = tokenizer.user_idx(rawline.split(",", maxsplit=2)[1])
-                if user not in rawdata:
-                    rawdata[user] = []
-                rawdata[user].append(rawline)
-            return rawdata
-        self.data = prep_raw_data(filepaths)
-        self.cumulative_items = OrderedDict() # Holds the starting index for each user in their order of appearance
-        self.length = 0
+        memory_type = memory_type.lower()
+        if memory_type == "user":
+            get_user = lambda line : tokenizer.user_idx(line.split(",", maxsplit=2)[1])
+        elif memory_type == "global":
+            # For non-user based dataset (i.e. global), always set user_idx to 0
+            get_user = lambda line : 0
+        else:
+            raise ValueError(f"Memory type must be 'user' or 'global'. Got '{memory_type}'.")
+
+        self.data : Dict[int, List[str]] = {}
+        self.items : List[Tuple[int, int]] = []
+        for rawline in parse_multiple_files(filepaths):
+            user = get_user(rawline)
+            if user not in self.data:
+                self.data[user] = []
+            self.data[user].append(rawline)
+            # If this line is the start of a new batch_entry, add this user (and index) to the list of items
+            if len(self.data[user]) % self.batch_entry_size == 1:
+                self.items.append((user, int(len(self.data[user]) // self.batch_entry_size)))
+
         for user in self.data:
-            self.cumulative_items[user] = self.length
-            self.length += int(np.ceil(len(self.data[user]) / self.batch_entry_size))
-            # After counting this user's batch-entries, add the padding line to the start
+            # Add the padding/sos line to the start of each user's sequence
             self.data[user].insert(0, self.data[user][0])
-    
+
     def __len__(self):
-        return self.length
+        return len(self.items)
 
     def __getitem__(self, index):
-        user, batch_entry_index = self.index2item(index)
+        user, batch_entry_index = self.items[index]
         # user: the user for this batch entry
         # batch_entry_index: the index of this batch entry
         # line_index: the index of the first main_line (i.e. not context) to appear in this batch entry
@@ -400,12 +336,6 @@ class MapUserMultilineDataset(MapLogDataset, MultilineLogDataset):
         main_lines = list(map(make_dict, main_lines))
 
         return self.produce_output_sequence(main_lines, context_lines)
-
-    def index2item(self, index: int) -> Tuple[str, int]:
-        # Returns the user and index for that user that this global index corresponds to
-        for user, user_items in reversed(self.cumulative_items.items()):
-            if index >= user_items:
-                return user, index - user_items
 
 
 class LogDataLoader(DataLoader):
@@ -602,16 +532,11 @@ def create_data_loader_multiline(
 
         return batch
 
-    dataset: LogDataset
-    if memory_type.lower() == "global":
-        dataset = MapMultilineDataset(filepaths, tokenizer, task, shift_window=shift_window)
-    elif memory_type.lower() == "user":
-        if shuffle:
-            dataset = MapUserMultilineDataset(filepaths, tokenizer, task, shift_window=shift_window)
-        else:
-            dataset = IterableUserMultilineDataset(filepaths, tokenizer, task, shift_window=shift_window)
-    else:
-        raise ValueError(f"Invalid memory_type. Expected 'global' or 'user', got '{memory_type}'")
+    # if shuffle:
+    #     dataset = MapMultilineDataset(filepaths, tokenizer, task, shift_window=shift_window)
+    # else:
+    #     dataset = IterableUserMultilineDataset(filepaths, tokenizer, task, shift_window=shift_window)
+    dataset = MapMultilineDataset(filepaths, tokenizer, task, memory_type=memory_type, shift_window=shift_window)
 
     collate = partial(multiline_collate_fn, pad_idx=0)
     data_handler = MultilineDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_function=collate)
