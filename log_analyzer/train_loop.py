@@ -240,7 +240,7 @@ def init_from_config_classes(
             task,
             model_config.shift_window,
             model_config.memory_type,
-            shuffle_train_data
+            shuffle_train_data,
         )
     else:
         raise RuntimeError("Invalid model type.")
@@ -308,6 +308,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
             # Refresh the iterator so we can run another epoch
             val_loader.dataset.refresh_iterator()
         val_losses = []
+        val_iteration = 0
         for val_iteration, val_batch in enumerate(tqdm(val_loader, desc=f"Valid:{val_run:2d}")):
             # Only allow interrupt between each batch
             with DelayedKeyboardInterrupt():

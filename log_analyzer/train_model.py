@@ -107,8 +107,8 @@ def main(seed=22):
     # Look for a trainer_config.json and model_config.json in the folder of the saved model. Use these if available
     if args.saved_model:
         folder_path = Path(args.saved_model)
-        model_conf : Path = folder_path.parent / "model_config.json"
-        trainer_conf : Path = folder_path.parent / "trainer_config.json"
+        model_conf: Path = folder_path.parent / "model_config.json"
+        trainer_conf: Path = folder_path.parent / "trainer_config.json"
         if model_conf.exists() and trainer_conf.exists():
             args.model_config = model_conf
             args.trainer_config = trainer_conf
@@ -174,5 +174,5 @@ def main(seed=22):
 
 if __name__ == "__main__":
 
-    for seed in range(1, 2):
-        main(seed)
+    for seed_val in range(1, 2):
+        main(seed_val)

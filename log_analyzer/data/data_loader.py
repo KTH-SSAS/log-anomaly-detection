@@ -152,8 +152,19 @@ class IterableLogDataset(LogDataset, IterableDataset):  # pylint: disable=abstra
         self.iterator = generate_iterator()
 
 
-class MultilineLogDataset():
+class MultilineLogDataset:
     """Virtual superclass for multiline datasets."""
+
+    def __init__(self, task, shift_window: int = 100, batch_entry_size: Optional[int] = None):
+        assert task == SENTENCE_LM, f"Task must be 'sentence-lm' when using this dataset. Got '{task}'."
+
+        self.shift_window = shift_window
+        # batch_entry_size defines how many lines (in addition to context) we send per batch entry
+        # default is shift_window (with shift_window - 1 context lines)
+        self.batch_entry_size = batch_entry_size if batch_entry_size is not None else shift_window
+        self.skipsos = True
+        self.skipeos = True
+
     def produce_output_sequence(self, log_lines, context_lines):
         """Puts together a sequence of loglines from a single user from the
         data that's been read in so far.
@@ -202,18 +213,10 @@ class IterableUserMultilineDataset(IterableLogDataset, MultilineLogDataset):
     """
 
     def __init__(self, filepaths, tokenizer, task, shift_window=100, batch_entry_size=None) -> None:
-        assert task == SENTENCE_LM, f"Task must be 'sentence-lm' when using this dataset. Got '{task}'."
         super().__init__(filepaths, tokenizer, task)
+        MultilineLogDataset.__init__(self, task, shift_window, batch_entry_size)
 
-        self.shift_window = shift_window
-        # batch_entry_size defines how many lines (in addition to context) we send per batch entry
-        # default is shift_window (with shift_window - 1 context lines)
-        # self.batch_entry_size = batch_entry_size if batch_entry_size is not None else shift_window
-        self.batch_entry_size = shift_window
-        self.skipsos = True
-        self.skipeos = True
-        self.training = False # Assume we're not a training dataset.
-
+        self.training = False  # Assume we're not a training dataset.
         self.data = list(parse_multiple_files(self.filepaths))
         # Stores the newest lines from each user that have not yet been batched
         self.user_loglines: Dict[str, List[Dict[str, torch.Tensor]]] = {}
@@ -247,19 +250,19 @@ class IterableUserMultilineDataset(IterableLogDataset, MultilineLogDataset):
                 self.user_loglines[line_user].append(line_data)
                 # Check if this user has a full bucket of log lines.
                 if len(self.user_loglines[line_user]) == self.batch_entry_size:
-                    yield self.produce_output_sequence(line_user, self.user_loglines[line_user], self.user_context[line_user])
+                    yield self.get_output(line_user, self.user_loglines[line_user], self.user_context[line_user])
             # When we've exhausted the data, return the incomplete sequences (padded up to full length)
             for line_user, user_lines in self.user_loglines.items():
                 if len(user_lines):
-                    yield self.produce_output_sequence(line_user, self.user_loglines[line_user], self.user_context[line_user])
+                    yield self.get_output(line_user, user_lines, self.user_context[line_user])
 
         # Clear the leftover lines currently stored
         self.user_loglines = {}
         self.user_context = {}
         self.iterator = generate_iterator()
 
-    def produce_output_sequence(self, user, log_lines, context_lines):
-        sequence =  super().produce_output_sequence(log_lines, context_lines)
+    def get_output(self, user, log_lines, context_lines):
+        sequence = self.produce_output_sequence(log_lines, context_lines)
         self.update_user_context(user)
         return sequence
 
@@ -277,9 +280,18 @@ class MapMultilineDataset(MapLogDataset, MultilineLogDataset):
     Provides sequences of loglines of length shift_window * 2 - 1. Each sequence contains loglines from a single user.
     """
 
-    def __init__(self, filepaths, tokenizer : Tokenizer, task, memory_type : str ="user", shift_window : int = 100, batch_entry_size : Optional[int] = None) -> None:
+    def __init__(
+        self,
+        filepaths,
+        tokenizer: Tokenizer,
+        task,
+        memory_type: str = "user",
+        shift_window: int = 100,
+        batch_entry_size: Optional[int] = None,
+    ) -> None:
         assert task == SENTENCE_LM, f"Task must be 'sentence-lm' when using this dataset. Got '{task}'."
         super().__init__(filepaths, tokenizer, task)
+        MultilineLogDataset.__init__(self, task, shift_window, batch_entry_size)
 
         self.shift_window = shift_window
         # batch_entry_size defines how many lines (in addition to context) we send per batch entry
@@ -289,18 +301,13 @@ class MapMultilineDataset(MapLogDataset, MultilineLogDataset):
         self.skipeos = True
 
         memory_type = memory_type.lower()
-        if memory_type == "user":
-            get_user = lambda line : tokenizer.user_idx(line.split(",", maxsplit=2)[1])
-        elif memory_type == "global":
-            # For non-user based dataset (i.e. global), always set user_idx to 0
-            get_user = lambda line : 0
-        else:
+        if memory_type not in ("user", "global"):
             raise ValueError(f"Memory type must be 'user' or 'global'. Got '{memory_type}'.")
 
-        self.data : Dict[int, List[str]] = {}
-        self.items : List[Tuple[int, int]] = []
+        self.data: Dict[int, List[str]] = {}
+        self.items: List[Tuple[int, int]] = []
         for rawline in parse_multiple_files(filepaths):
-            user = get_user(rawline)
+            user = tokenizer.user_idx(rawline.split(",", maxsplit=2)[1]) if memory_type == "user" else 0
             if user not in self.data:
                 self.data[user] = []
             self.data[user].append(rawline)
@@ -308,9 +315,9 @@ class MapMultilineDataset(MapLogDataset, MultilineLogDataset):
             if len(self.data[user]) % self.batch_entry_size == 1:
                 self.items.append((user, int(len(self.data[user]) // self.batch_entry_size)))
 
-        for user in self.data:
+        for user, lines in self.data.items():
             # Add the padding/sos line to the start of each user's sequence
-            self.data[user].insert(0, self.data[user][0])
+            self.data[user].insert(0, lines[0])  # pylint: disable=unnecessary-dict-index-lookup
 
     def __len__(self):
         return len(self.items)
@@ -326,13 +333,13 @@ class MapMultilineDataset(MapLogDataset, MultilineLogDataset):
 
         context_lines_end_index = line_index + 1
         context_lines_start_index = max(0, context_lines_end_index - self.shift_window)
-        context_lines = self.data[user][context_lines_start_index : context_lines_end_index]
+        context_lines = self.data[user][context_lines_start_index:context_lines_end_index]
         context_lines = list(map(make_dict, context_lines))
         # The first line in each user's list is a padding line akin to CNN image border padding (repeat the first line)
         # This is ignored for the main_lines, thus shifted by 1
         main_lines_start_index = line_index + 1
         main_lines_end_index = min(len(self.data[user]), main_lines_start_index + self.batch_entry_size)
-        main_lines = self.data[user][main_lines_start_index : main_lines_end_index]
+        main_lines = self.data[user][main_lines_start_index:main_lines_end_index]
         main_lines = list(map(make_dict, main_lines))
 
         return self.produce_output_sequence(main_lines, context_lines)
@@ -350,7 +357,12 @@ class LogDataLoader(DataLoader):
         num_workers = 7 if isinstance(dataset, MapLogDataset) else 0
 
         super().__init__(
-            dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_function, num_workers=num_workers
+            dataset,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            collate_fn=collate_function,
+            num_workers=num_workers,
+            pin_memory=True,
         )
         self.using_cuda = Application.instance().using_cuda
 
@@ -587,7 +599,7 @@ def load_data_multiline(
         task,
         shift_window=shift_window,
         memory_type=memory_type,
-        shuffle=shuffle_train_data
+        shuffle=shuffle_train_data,
     )
     if len(validation_files) > 0:
         val_loader = create_data_loader_multiline(

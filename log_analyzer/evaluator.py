@@ -177,11 +177,11 @@ class Evaluator:
                 preds = None
             else:
                 preds = torch.argmax(output, dim=-1)
-            
+
             # Ensure the mask is the same shape as the rest of the tensors - for multiline models it might not be
             # If mask is larger, take the last X entries of mask where X is the shape of the other tensors
             if mask is not None:
-                mask = mask[:, -users.shape[1]:]
+                mask = mask[:, -users.shape[1] :]
 
             self.add_evaluation_data(
                 users,
@@ -191,7 +191,7 @@ class Evaluator:
                 log_line=Y,
                 predictions=preds,
                 mask=mask,
-                skipped_lines=skipped_lines
+                skipped_lines=skipped_lines,
             )
             self.eval_loss += loss
             self.eval_lines_count += 1
@@ -238,9 +238,12 @@ class Evaluator:
             self.data["skipped"] = np.concatenate((self.data["skipped"], np.zeros(1050000, bool)))
 
         if skipped_lines is not None:
-            skipped_lines = skipped_lines.cpu().numpy().flatten()
+            # trick to make mypy happy
+            skipped_lines_dummy: Tensor = skipped_lines
+            skipped_lines_dummy = skipped_lines_dummy.cpu().numpy().flatten()
             if mask is not None:
-                skipped_lines = skipped_lines[mask]
+                skipped_lines_dummy = skipped_lines_dummy[mask]
+            skipped_lines = skipped_lines_dummy
             # This flags lines that could not be evaluated by the model.
             # (e.g. multiline model, not full context available before this line)
             # Set skipped flag to 1 and loss to 0
@@ -343,7 +346,9 @@ class Evaluator:
     def get_metrics(self):
         """Computes and returns all metrics."""
         nonskipped_fp_rate, nonskipped_tp_rate, _ = metrics.roc_curve(
-            self.data["red_flags"][self.data["skipped"] == 0], self.data["losses"][self.data["skipped"] == 0], pos_label=1
+            self.data["red_flags"][self.data["skipped"] == 0],
+            self.data["losses"][self.data["skipped"] == 0],
+            pos_label=1,
         )
         return {
             "eval/loss": self.get_test_loss(),

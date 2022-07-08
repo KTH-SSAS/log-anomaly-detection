@@ -1,9 +1,9 @@
 """Functions to test different model configurations."""
 from pathlib import Path
 
+import numpy as np
 import pytest
 import torch.cuda
-import numpy as np
 
 from . import utils
 

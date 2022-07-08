@@ -80,9 +80,13 @@ def test_data_loader_multiline(shuffle, memory_type):
 
     shift_window = 5
     input_length = calculate_max_input_length(task, tokenizer)
-    data_handler = create_data_loader_multiline(filepath, batch_size, tokenizer, task, shift_window, memory_type, shuffle=shuffle)
+    data_handler = create_data_loader_multiline(
+        filepath, batch_size, tokenizer, task, shift_window, memory_type, shuffle=shuffle
+    )
     final_batch = False
+    ran = False  # check the data_handler yields at least one batch
     for batch in data_handler:
+        ran = True
         # Batch size may vary (final batch probably won't be full size)
         # Roundabout way to check this because dataset might not have a known length (Iterable)
         if final_batch:
@@ -104,4 +108,4 @@ def test_data_loader_multiline(shuffle, memory_type):
                 assert torch.all(batch["input"][b, batch["mask"][b]]) and torch.all(
                     batch["input"][b, batch["mask"][b] == 0] == 0
                 )
-    assert batch # data handler isn't empty
+    assert ran  # data handler isn't empty

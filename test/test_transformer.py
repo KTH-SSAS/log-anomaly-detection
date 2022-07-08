@@ -1,7 +1,9 @@
 import torch
 
 from log_analyzer.model.transformer import Transformer
+
 from .conftest import BATCH_SIZE, SEQUENCE_LENGTH, VOCAB_SIZE
+
 
 def test_forward(test_config, test_input):
     transformer = Transformer(test_config, bidirectional=False)
