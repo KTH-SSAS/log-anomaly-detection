@@ -41,6 +41,7 @@ from log_analyzer.tokenizer.tokenizer_neo import (
 )
 from log_analyzer.tokenizer.vocab import MergedLANLVocab
 from log_analyzer.trainer import Trainer
+from wandb import wandb_run
 
 try:
     import torch
@@ -127,7 +128,7 @@ def get_model_config(filename: Path, model_type: str) -> ModelConfig:
 
 
 def create_identifier_string(model_name: str, tokenization: str) -> str:
-    if Application.instance().wandb_initialized:
+    if Application.instance().wandb_initialized and isinstance(wandb.run, wandb_run.Run):
         id_string = f"{wandb.run.id}_{model_name}_{tokenization}"
     else:
         current_time = datetime.now().strftime(r"%m-%d_%H:%M:%S")
