@@ -104,7 +104,6 @@ class LogDataset:
     """Base log dataset class."""
 
     def __init__(self, filepaths: Union[str, List[str]], tokenizer: Tokenizer, task: str) -> None:
-        super().__init__()
         self.tokenizer: Tokenizer = tokenizer
         self.task = task
 
@@ -508,6 +507,29 @@ def create_data_loader(
 
     return data_handler
 
+def multiline_collate_fn(data, pad_idx=0):
+    """Pads the input fields to the length of the longest sequence in the
+    batch."""
+    batch = {}
+
+    for key in data[0]:
+        batch[key] = []
+
+    for sample in data:
+        for key in sample:
+            batch[key].append(sample[key])
+
+    for key, value in batch.items():
+        for index, sequence in enumerate(value):
+            if isinstance(sequence, list):
+                value[index] = torch.stack(sequence)
+        if isinstance(value, list):
+            batch[key] = torch.stack(value)
+
+    # Add the input padding mask - pad_idx is 0
+    batch["mask"] = torch.all(batch["input"] != pad_idx, dim=2)
+
+    return batch
 
 def create_data_loader_multiline(
     filepaths: List[str],
@@ -519,37 +541,7 @@ def create_data_loader_multiline(
     shuffle: bool = False,
 ) -> MultilineDataLoader:
     """Creates and returns a data loader."""
-
-    def multiline_collate_fn(data, pad_idx=0):
-        """Pads the input fields to the length of the longest sequence in the
-        batch."""
-        batch = {}
-
-        for key in data[0]:
-            batch[key] = []
-
-        for sample in data:
-            for key in sample:
-                batch[key].append(sample[key])
-
-        for key, value in batch.items():
-            for index, sequence in enumerate(value):
-                if isinstance(sequence, list):
-                    value[index] = torch.stack(sequence)
-            if isinstance(value, list):
-                batch[key] = torch.stack(value)
-
-        # Add the input padding mask - pad_idx is 0
-        batch["mask"] = torch.all(batch["input"] != pad_idx, dim=2)
-
-        return batch
-
-    # if shuffle:
-    #     dataset = MapMultilineDataset(filepaths, tokenizer, task, shift_window=shift_window)
-    # else:
-    #     dataset = IterableUserMultilineDataset(filepaths, tokenizer, task, shift_window=shift_window)
     dataset = MapMultilineDataset(filepaths, tokenizer, task, memory_type=memory_type, shift_window=shift_window)
-
     collate = partial(multiline_collate_fn, pad_idx=0)
     data_handler = MultilineDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_function=collate)
     return data_handler
