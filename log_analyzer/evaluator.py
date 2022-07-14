@@ -344,12 +344,7 @@ class Evaluator:
         self.data["normalised_losses"] = self.data["losses"] - average_losses_user
 
     def get_metrics(self):
-        """Computes and returns all metrics."""
-        nonskipped_fp_rate, nonskipped_tp_rate, _ = metrics.roc_curve(
-            self.data["red_flags"][self.data["skipped"] == 0],
-            self.data["losses"][self.data["skipped"] == 0],
-            pos_label=1,
-        )
+        """Computes and returns all baseline metrics."""
         return {
             "eval/loss": self.get_test_loss(),
             "eval/token_accuracy": self.get_token_accuracy(),
@@ -360,7 +355,6 @@ class Evaluator:
             "eval/total_reds": np.sum(self.data["red_flags"]),
             "eval/skipped_lines": np.sum(self.data["skipped"]),
             "eval/skipped_reds": np.sum(self.data["red_flags"][self.data["skipped"]]),
-            "eval/AUC_nonskipped": metrics.auc(nonskipped_fp_rate, nonskipped_tp_rate),
         }
 
     def get_test_loss(self):
@@ -652,7 +646,7 @@ class Evaluator:
             wandb.log({"ROC Curve": roc_plot})
 
         # get nonskipped roc curve
-        _, nonskipped_roc_plot = self.plot_roc_curve(title="ROC (nonskipped)", nonskipped=True)
+        evaluator_metrics["eval/AUC_nonskipped"], nonskipped_roc_plot = self.plot_roc_curve(title="ROC (nonskipped)", nonskipped=True)
         if self.use_wandb:
             wandb.log({"ROC Curve (nonskipped)": nonskipped_roc_plot})
 
