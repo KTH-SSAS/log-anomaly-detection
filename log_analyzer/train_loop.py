@@ -41,6 +41,7 @@ from log_analyzer.tokenizer.tokenizer_neo import (
 )
 from log_analyzer.tokenizer.vocab import MergedLANLVocab
 from log_analyzer.trainer import Trainer
+from wandb import wandb_run
 
 try:
     import torch
@@ -127,7 +128,7 @@ def get_model_config(filename: Path, model_type: str) -> ModelConfig:
 
 
 def create_identifier_string(model_name: str, tokenization: str) -> str:
-    if Application.instance().wandb_initialized:
+    if Application.instance().wandb_initialized and isinstance(wandb.run, wandb_run.Run):
         id_string = f"{wandb.run.id}_{model_name}_{tokenization}"
     else:
         current_time = datetime.now().strftime(r"%m-%d_%H:%M:%S")
@@ -240,6 +241,7 @@ def init_from_config_classes(
             task,
             model_config.shift_window,
             model_config.memory_type,
+            shuffle_train_data,
         )
     else:
         raise RuntimeError("Invalid model type.")
@@ -307,6 +309,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
             # Refresh the iterator so we can run another epoch
             val_loader.dataset.refresh_iterator()
         val_losses = []
+        val_iteration = 0
         for val_iteration, val_batch in enumerate(tqdm(val_loader, desc=f"Valid:{val_run:2d}")):
             # Only allow interrupt between each batch
             with DelayedKeyboardInterrupt():
@@ -375,9 +378,6 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                     # epoch_iteration = iterations in this epoch (used to determine when to run validation)
                     # Split the batch
                     split_batch = train_loader.split_batch(batch)
-                    # Check that the split batch contains entries (see MultilineDataloader's mask filtering)
-                    if len(split_batch["X"]) == 0:
-                        continue
                     if lm_trainer.model.tiered:
                         if train_loader.flush is False:
                             loss, gradient_norm, done = lm_trainer.train_step(split_batch)
@@ -461,18 +461,6 @@ def eval_model(
             # Only allow interrupt between each batch
             with DelayedKeyboardInterrupt():
                 split_batch = test_loader.split_batch(batch)
-                # Add any masked-out lines to the evaluator
-                if "masked_batch" in split_batch:
-                    masked_batch = split_batch["masked_batch"]
-                    lm_evaluator.add_evaluation_data(
-                        masked_batch["user"],
-                        masked_batch["second"],
-                        masked_batch["red_flag"],
-                        mask=masked_batch["target_mask"],
-                    )
-                # Check that the split batch contains entries (see MultilineDataloader's mask filtering)
-                if len(split_batch["X"]) == 0:
-                    continue
                 loss, *_ = lm_evaluator.eval_step(split_batch, store_eval_data=store_eval_data)
                 test_losses.append(loss.item())
                 wandb_log(

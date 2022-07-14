@@ -1,6 +1,7 @@
 """Functions to test different model configurations."""
 from pathlib import Path
 
+import numpy as np
 import pytest
 import torch.cuda
 
@@ -62,5 +63,9 @@ def test_multiline_transformer(tmpdir, tokenization, cuda):
     args["model_config"].shift_window = 3
     args["base_logdir"] = Path(tmpdir) / "runs"
 
-    utils.run_test(args, cuda)
-    assert True
+    train_losses, test_losses = utils.run_test(args, cuda)
+    train_nans = np.any(np.isnan(train_losses))
+    test_nans = np.any(np.isnan(test_losses))
+    assert not (train_nans and test_nans), "NaNs in both train and test losses"
+    assert not train_nans, "NaNs in train losses"
+    assert not test_nans, "NaNs in test losses"
