@@ -651,10 +651,9 @@ class Evaluator:
             wandb.log({"ROC Curve (nonskipped)": nonskipped_roc_plot})
 
         # get pr curve
-        AP_score, pr_plot = self.plot_pr_curve()
+        evaluator_metrics["eval/AP"], pr_plot = self.plot_pr_curve()
         if self.use_wandb:
             wandb.log({"PR Curve": pr_plot})
-        evaluator_metrics["eval/AP"] = AP_score
 
         # get normalised line losses plot
         self.plot_line_loss_percentiles(
@@ -676,7 +675,7 @@ class Evaluator:
             title="PR Curve (normalised)", normalised=True
         )
         if self.use_wandb:
-            wandb.log({"PR Curve": pr_plot})
+            wandb.log({"PR Curve (normalised)": pr_plot})
 
         # Log the evaluation results
         if self.use_wandb and wandb.run is not None:
