@@ -345,7 +345,8 @@ class Evaluator:
 
     def get_metrics(self):
         """Computes and returns all baseline metrics."""
-        return {
+        metrics_at_chosen_thresholds = self.get_metrics_at_chosen_thresholds()
+        return_dict = {
             "eval/loss": self.get_test_loss(),
             "eval/token_accuracy": self.get_token_accuracy(),
             "eval/token_perplexity": self.get_token_perplexity(),
@@ -356,6 +357,8 @@ class Evaluator:
             "eval/skipped_lines": np.sum(self.data["skipped"]),
             "eval/skipped_reds": np.sum(self.data["red_flags"][self.data["skipped"]]),
         }
+        return_dict.update(metrics_at_chosen_thresholds)
+        return return_dict
 
     def get_test_loss(self):
         """Returns the accuracy of the model token prediction."""
@@ -380,6 +383,47 @@ class Evaluator:
         # exponential of the loss
         perplexity = np.exp(average_loss)
         return perplexity
+
+    def get_metrics_at_chosen_thresholds(self, normalised=False):
+        """Computes TPR/FPR/Precision/Recall at two thresholds:
+        - FPR at above 0.1%
+        - Highest Precision achieved (with Recall >= 0.1)
+        """
+        if not self.data_is_prepared:
+            self.prepare_evaluation_data()
+        # Get the relevant data - normalised or not
+        losses = self.data["normalised_losses"] if normalised else self.data["losses"]
+        fp_rate, tp_rate, roc_thresholds = metrics.roc_curve(self.data["red_flags"], losses, pos_label=1)
+        precisions, recalls, pr_thresholds = metrics.precision_recall_curve(self.data["red_flags"], losses, pos_label=1)
+
+        # FPR at 0.1%
+        acceptable_fpr_index = np.where(fp_rate==np.min(fp_rate[fp_rate>0.001]))
+        acceptable_tpr = tp_rate[acceptable_fpr_index]
+        acceptable_fpr = fp_rate[acceptable_fpr_index]
+        acceptable_threshold = roc_thresholds[acceptable_fpr_index]
+        acceptable_recall = recalls[np.where(pr_thresholds==acceptable_threshold)]
+        acceptable_precision = precisions[np.where(pr_thresholds==acceptable_threshold)]
+
+        recall_low_bound_index = np.where(recalls==np.min(recalls[recalls>=0.1]))
+        peak_precision_index = np.where(precisions==np.max(precisions[:recall_low_bound_index+1]))
+        peak_precision = precisions[peak_precision_index]
+        peak_precision_recall = recalls[peak_precision_index]
+        peak_precision_threshold = pr_thresholds[peak_precision_index]
+        peak_precision_tpr = tp_rate[np.where(roc_thresholds==peak_precision_threshold)]
+        peak_precision_fpr = fp_rate[np.where(roc_thresholds==peak_precision_threshold)]
+        return_dict = {
+            "eval/0.1p_fpr": acceptable_fpr,
+            "eval/0.1p_fpr_tpr": acceptable_tpr,
+            "eval/0.1p_fpr_threshold": acceptable_threshold,
+            "eval/0.1p_fpr_precision": acceptable_precision,
+            "eval/0.1p_fpr_recall": acceptable_recall,
+            "eval/peak_precision": peak_precision,
+            "eval/peak_precision_recall": peak_precision_recall,
+            "eval/peak_precision_threshold": peak_precision_threshold,
+            "eval/peak_precision_fpr": peak_precision_fpr,
+            "eval/peak_precision_tpr": peak_precision_tpr,
+        }
+        return return_dict
 
     def get_auc_score(self, fp_rate=None, tp_rate=None, normalised=False):
         """Computes AUC score (area under the ROC curve)"""
