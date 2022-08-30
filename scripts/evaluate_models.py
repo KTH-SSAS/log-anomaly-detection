@@ -8,10 +8,13 @@ from log_analyzer.application import Application
 import csv
 import pandas as pd
 
-
+# root folder
 model_dir = Path("trained_models")
+
+# subfolders
 names = ["jakob", "simon", "yeongwoo"]
 
+# log data folder
 data_dir = Path("data")
 
 log_data_dir = data_dir / "full_data"
@@ -22,6 +25,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def evaluate_single(run_dir: Path):
+    """
+    Evaluate a single model in a run directory. 
+    The directory is expected to be named as follows: 
+    <run_id>_<model_type>_<tokenization>
+    """
     name_parts = run_dir.name.split("_")
     run_id = name_parts[0]
     model_type = name_parts[1]
