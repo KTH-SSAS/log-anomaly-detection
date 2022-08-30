@@ -397,20 +397,20 @@ class Evaluator:
         precisions, recalls, pr_thresholds = metrics.precision_recall_curve(self.data["red_flags"], losses, pos_label=1)
 
         # FPR at 0.1%
-        acceptable_fpr_index = np.where(fp_rate==np.min(fp_rate[fp_rate>0.001]))
+        acceptable_fpr_index = np.where(fp_rate==np.min(fp_rate[fp_rate>0.001]))[0][0]
         acceptable_tpr = tp_rate[acceptable_fpr_index]
         acceptable_fpr = fp_rate[acceptable_fpr_index]
         acceptable_threshold = roc_thresholds[acceptable_fpr_index]
-        acceptable_recall = recalls[np.where(pr_thresholds==acceptable_threshold)]
-        acceptable_precision = precisions[np.where(pr_thresholds==acceptable_threshold)]
+        acceptable_recall = recalls[np.where(pr_thresholds==acceptable_threshold)[0][0]]
+        acceptable_precision = precisions[np.where(pr_thresholds==acceptable_threshold)[0][0]]
 
-        recall_low_bound_index = np.where(recalls==np.min(recalls[recalls>=0.1]))
+        recall_low_bound_index = np.where(recalls==np.min(recalls[recalls>=0.1]))[0][0]
         peak_precision_index = np.where(precisions==np.max(precisions[:recall_low_bound_index+1]))
         peak_precision = precisions[peak_precision_index]
         peak_precision_recall = recalls[peak_precision_index]
         peak_precision_threshold = pr_thresholds[peak_precision_index]
-        peak_precision_tpr = tp_rate[np.where(roc_thresholds==peak_precision_threshold)]
-        peak_precision_fpr = fp_rate[np.where(roc_thresholds==peak_precision_threshold)]
+        peak_precision_tpr = tp_rate[np.where(roc_thresholds==peak_precision_threshold)[0][0]]
+        peak_precision_fpr = fp_rate[np.where(roc_thresholds==peak_precision_threshold)[0][0]]
         return_dict = {
             "eval/0.1p_fpr": acceptable_fpr,
             "eval/0.1p_fpr_tpr": acceptable_tpr,
