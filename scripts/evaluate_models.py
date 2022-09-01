@@ -1,7 +1,10 @@
+import itertools
 from pathlib import Path
+from typing import List
 import torch
 from log_analyzer.evaluator import Evaluator
 from log_analyzer.train_loop import eval_model, init_from_config_files
+from log_analyzer.application import Application
 import csv
 import pandas as pd
 
@@ -11,7 +14,7 @@ names = ["jakob", "simon", "yeongwoo"]
 
 data_dir = Path("data")
 
-log_data_dir = data_dir / "sample_data"
+log_data_dir = data_dir / "full_data"
 counts_file = data_dir / "counts678.json"
 
 
@@ -52,25 +55,25 @@ def write_to_csv(eval_data: dict):
         writer.writerow(eval_data)
 
 
-def evaluate_set_of_models(folder: Path, first_entry: bool):
-
-    eval_data = [evaluate_single(run_dir) for run_dir in folder.iterdir()]
-
-    df = pd.DataFrame(eval_data)
-    write_mode = "w" if first_entry else "a"
-    df.to_csv("eval_data.csv", mode=write_mode, header=first_entry, index=False)
-    df.groupby(["model_type", "tokenization"]).mean().to_csv(
-        "eval_data_mean.csv", mode=write_mode, header=first_entry, index=True
-    )
-    
-    return False
+def evaluate_set_of_models(dirs: List[Path]):
+    first_entry = True
+    for run_dir in dirs:
+        print(run_dir)
+        eval_data = evaluate_single(run_dir)
+        df = pd.DataFrame(eval_data)
+        write_mode = "w" if first_entry else "a"
+        df.to_csv("eval_data.csv", mode=write_mode, header=first_entry, index=False)
+        first_entry = False
 
 
 def main():
-    first = True
-    for name in names:
-        first = evaluate_set_of_models(model_dir / name, first)
-
+    Application(cuda=True, wandb=False)
+    run_dirs = list(itertools.chain(*((model_dir / name).iterdir() for name in names)))
+    evaluate_set_of_models(run_dirs)
+    
+    #df.groupby(["model_type", "tokenization"]).mean().to_csv(
+    #    "eval_data_mean.csv", mode=write_mode, header=first_entry, index=True
+    #)
 
 if __name__ == "__main__":
     main()
