@@ -304,7 +304,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
         """Performs one phase of validation on lm_trainer."""
         if (
             isinstance(val_loader.dataset, (data_utils.IterableLogDataset, data_utils.IterableUserMultilineDataset))
-            and epoch > 0
+            and val_run > 0
         ):
             # Refresh the iterator so we can run another epoch
             val_loader.dataset.refresh_iterator()
