@@ -425,7 +425,7 @@ class Evaluator:
         }
         return return_dict
 
-    def get_auc_score(self, fp_rate=None, tp_rate=None, normalised=False):
+    def get_auc_score(self, fp_rate=None, tp_rate=None, normalised=False, nonskipped=False):
         """Computes AUC score (area under the ROC curve)"""
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
@@ -433,6 +433,9 @@ class Evaluator:
         if fp_rate is None or tp_rate is None:
             # Get the relevant data - normalised or not
             losses = self.data["normalised_losses"] if normalised else self.data["losses"]
+            if nonskipped:
+                losses = losses[self.data["skipped"] == 0]
+                red_flags = red_flags[self.data["skipped"] == 0]
             fp_rate, tp_rate, _ = metrics.roc_curve(self.data["red_flags"], losses, pos_label=1)
         auc_score = metrics.auc(fp_rate, tp_rate)
         return auc_score
@@ -532,7 +535,7 @@ class Evaluator:
         """
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
-        auc_score = self.get_auc_score(normalised=normalised)
+        auc_score = self.get_auc_score(normalised=normalised, nonskipped=nonskipped)
 
         # Get the relevant data - normalised or not
         losses = self.data["normalised_losses"] if normalised else self.data["losses"]
