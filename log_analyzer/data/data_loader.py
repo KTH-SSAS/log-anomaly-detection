@@ -274,7 +274,7 @@ class IterableUserMultilineDataset(IterableLogDataset, MultilineLogDataset):
 
 
 class MapMultilineDataset(MapLogDataset, MultilineLogDataset):
-    """Provides data via __iter__, allowing data to be accessed in order only.
+    """Provides data via __getitem__, allowing arbitrary data entries to be accessed via index in arbitrary order.
 
     Provides sequences of loglines of length shift_window * 2 - 1. Each sequence contains loglines from a single user.
     """
