@@ -185,6 +185,11 @@ class Transformer(TransformerLanguageModel):
         # word embedding encoder and decoder share weights
         # @ is shorthand for matrix multiplication
         logits = tf_hidden @ self.word_embedding.weight.t()
+        
+        # Don't compute loss for the first token (source_user) when including timestamps
+        if self.config.include_timestamps:
+            logits = logits[:, 1:, :]
+            targets = targets[:, 1:]
 
         loss = None
         if targets is not None:
