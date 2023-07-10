@@ -4,5 +4,6 @@
 	],
 	"attention_type": null,
 	"attention_dim": 0,
-	"embedding_dim": 128
+	"embedding_dim": 128,
+	"include_timestamp": false
 }

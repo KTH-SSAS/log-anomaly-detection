@@ -53,8 +53,12 @@ def prepare_datadict(line: str, task: str, tokenizer: Tokenizer) -> dict:
 
     add_sos, add_eos = tokens_to_add(task)
 
-    # Remove timestamp and red team flag from input
-    to_tokenize = line[len(fields[0]) + 1 : -3]
+    if tokenizer.include_timestamp:
+        # Remove red team flag from input
+        to_tokenize = line[: -3]
+    else:
+        # Remove timestamp and red team flag from input
+        to_tokenize = line[len(fields[0]) + 1 : -3]
     tokenized_line = tokenizer.tokenize(to_tokenize, add_sos, add_eos)
 
     day = int(second) // SECONDS_PER_DAY

@@ -66,6 +66,30 @@ class GlobalVocab(FieldVocab):
         CLS_TOKEN: 3,
         MSK_TOKEN: 4,
         OOV_TOKEN: 5,
+        "T0": 6,
+        "T1": 7,
+        "T2": 8,
+        "T3": 9,
+        "T4": 10,
+        "T5": 11,
+        "T6": 12,
+        "T7": 13,
+        "T8": 14,
+        "T9": 15,
+        "T10": 16,
+        "T11": 17,
+        "T12": 18,
+        "T13": 19,
+        "T14": 20,
+        "T15": 21,
+        "T16": 22,
+        "T17": 23,
+        "T18": 24,
+        "T19": 25,
+        "T20": 26,
+        "T21": 27,
+        "T22": 28,
+        "T23": 29,
     }
 
     def __init__(self, vocab: OrderedDict) -> None:
@@ -224,6 +248,9 @@ class LANLVocab(FieldVocab):
         index = 0
         for t in [PAD_TOKEN, SOS_TOKEN, EOS_TOKEN, CLS_TOKEN]:
             vocab["special_tokens"][t] = index
+            index += 1
+        for t in range(0, 24):
+            vocab["special_tokens"][f"T{t}"] = index
             index += 1
 
         field_counts: Dict[str, Dict[str, int]]

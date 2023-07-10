@@ -6,6 +6,7 @@ from numpy.typing import NDArray
 
 from .vocab import CLS_TOKEN, EOS_TOKEN, MSK_TOKEN, PAD_TOKEN, SOS_TOKEN, FieldVocab, GlobalVocab, LANLVocab
 
+SECONDS_PER_DAY = 86400
 
 def mask_tokens(
     indexes: NDArray[np.int64],
@@ -81,7 +82,7 @@ class Tokenizer(ABC):
     vocab: FieldVocab
 
     @abstractmethod
-    def __init__(self, vocab, users: List[str] = None) -> None:
+    def __init__(self, vocab, users: List[str] = None, include_timestamp: bool = False) -> None:
         super().__init__()
 
     @abstractmethod
@@ -91,6 +92,11 @@ class Tokenizer(ABC):
     @abstractmethod
     def _encode_single_position(self, token: str, field: int):
         ...
+
+    def _encode_timestamp(self, token: str, field: int):
+        # Bucket the timestamp into 1 hour intervals
+        hour_bucket = (int(token) % SECONDS_PER_DAY) // 3600
+        return self.vocab.token2idx("T" + str(hour_bucket), field)
 
     def encode(self, tokens: Union[str, List[str]], add_sos, add_eos) -> NDArray[np.int64]:
 
@@ -104,7 +110,10 @@ class Tokenizer(ABC):
         for i in range(num_pre_tokens):
             indexes[i] = self.sos_idx
 
-        for i in range(num_pre_tokens, total_length - num_post_tokens):
+        for i in range(num_pre_tokens, num_pre_tokens + self.include_timestamp):
+            indexes[i] = self._encode_timestamp(tokens[i - num_pre_tokens], i - num_pre_tokens)
+
+        for i in range(num_pre_tokens + self.include_timestamp, total_length - num_post_tokens):
             indexes[i] = self._encode_single_position(tokens[i - num_pre_tokens], i - num_pre_tokens)
 
         for i in range(num_post_tokens):
@@ -128,6 +137,11 @@ class Tokenizer(ABC):
     @property
     @abstractmethod
     def eos_idx(self):
+        ...
+
+    @property
+    @abstractmethod
+    def include_timestamp(self):
         ...
 
     def user_idx(self, user):
@@ -164,9 +178,13 @@ class CharTokenizer(Tokenizer):
     def detokenize(self, indexes: NDArray[np.int64]) -> str:
         return "".join(self.decode(indexes))
 
-    def __init__(self, vocab, users: List[str] = None) -> None:
+    def __init__(self, vocab, users: List[str] = None, include_timestamp: bool = False) -> None:
         super().__init__(vocab, users)
         special_tokens = [PAD_TOKEN, SOS_TOKEN, EOS_TOKEN, MSK_TOKEN, CLS_TOKEN]
+
+        if include_timestamp:
+            raise UserWarning("Timestamps are not supported for character tokenization")
+        self._include_timestamp = False
 
         self.jagged = True
 
@@ -196,6 +214,10 @@ class CharTokenizer(Tokenizer):
     @property
     def sos_idx(self):
         return self._sos_idx
+
+    @property
+    def include_timestamp(self):
+        return self._include_timestamp
 
     @property
     def vocab_size(self):
@@ -235,12 +257,13 @@ class CharTokenizer(Tokenizer):
 class LANLTokenizer(Tokenizer):
     """Tokenizer for LANL data."""
 
-    def __init__(self, vocab, users: List[str] = None) -> None:
+    def __init__(self, vocab, users: List[str] = None, include_timestamp: bool = False) -> None:
         super().__init__(vocab, users)
         self.vocab: LANLVocab = vocab
         self.delimiter = ","
         self.num_fields = 10  # From LANL log data
         self.jagged = False
+        self._include_timestamp = include_timestamp
 
         if users is not None:
             self.users = {users[i]: i for i in range(len(users))}
@@ -256,6 +279,10 @@ class LANLTokenizer(Tokenizer):
     @property
     def eos_idx(self):
         return self.vocab.eos_idx
+
+    @property
+    def include_timestamp(self):
+        return self._include_timestamp
 
     @property
     def sequence_length(self):
@@ -378,12 +405,17 @@ class GlobalTokenizer(Tokenizer):
     def eos_idx(self):
         return self.vocab.eos_idx
 
-    def __init__(self, vocab: GlobalVocab, users=None) -> None:
+    @property
+    def include_timestamp(self):
+        return self._include_timestamp
+
+    def __init__(self, vocab: GlobalVocab, users=None, include_timestamp: bool = False) -> None:
         super().__init__(vocab, users)
         self.vocab: GlobalVocab = vocab
         self.mask_idx = vocab.mask_idx
         self.offset = vocab.num_special_tokens
         self.jagged = False
+        self._include_timestamp = include_timestamp
 
         if users is not None:
             self.users = {users[i]: i for i in range(len(users))}
