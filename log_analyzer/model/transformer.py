@@ -186,8 +186,8 @@ class Transformer(TransformerLanguageModel):
         # @ is shorthand for matrix multiplication
         logits = tf_hidden @ self.word_embedding.weight.t()
         
-        # Don't compute loss for the first token (source_user) when including timestamps
-        if self.config.include_timestamps:
+        # Don't compute loss for the first token (source_user) when including timestamp
+        if self.config.include_timestamp:
             logits = logits[:, 1:, :]
             targets = targets[:, 1:]
 
