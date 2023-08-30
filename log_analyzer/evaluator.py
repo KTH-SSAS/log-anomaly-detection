@@ -162,7 +162,14 @@ class Evaluator:
         output, _ = self.model(X, lengths=L, mask=M)
 
         # Compute the loss for the output
-        loss, line_losses = self.model.compute_loss(output, Y)
+        loss, line_losses, token_losses = self.model.compute_loss(output, Y)
+
+        if not self.model.bidirectional and not isinstance(self.model, MultilineLogModel):
+            # Prepend a 0 to token_losses since non-bidir models don't predict the first token
+            if isinstance(self.model, TieredLogModel):
+                token_losses = torch.cat((torch.zeros((token_losses.shape[0], token_losses.shape[1], 1), device=token_losses.device), token_losses), dim=2)
+            else:
+                token_losses = torch.cat((torch.zeros((token_losses.shape[0], 1), device=token_losses.device), token_losses), dim=1)
 
         # Save the results if desired
         if store_eval_data:

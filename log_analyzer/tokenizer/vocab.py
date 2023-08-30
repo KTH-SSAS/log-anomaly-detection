@@ -66,30 +66,6 @@ class GlobalVocab(FieldVocab):
         CLS_TOKEN: 3,
         MSK_TOKEN: 4,
         OOV_TOKEN: 5,
-        "T0": 6,
-        "T1": 7,
-        "T2": 8,
-        "T3": 9,
-        "T4": 10,
-        "T5": 11,
-        "T6": 12,
-        "T7": 13,
-        "T8": 14,
-        "T9": 15,
-        "T10": 16,
-        "T11": 17,
-        "T12": 18,
-        "T13": 19,
-        "T14": 20,
-        "T15": 21,
-        "T16": 22,
-        "T17": 23,
-        "T18": 24,
-        "T19": 25,
-        "T20": 26,
-        "T21": 27,
-        "T22": 28,
-        "T23": 29,
     }
 
     def __init__(self, vocab: OrderedDict) -> None:
@@ -117,6 +93,11 @@ class GlobalVocab(FieldVocab):
 
     @classmethod
     def counts2vocab(cls, counts: Union[dict, Path], cutoff: int):
+        """Generates a vocabulary file based on a file of token counts per
+        field.
+
+        Tokens that appear in several fields are assigned just one (global) index.
+        """
 
         vocab: OrderedDict[str, int] = OrderedDict()
         index = 0
@@ -141,6 +122,11 @@ class GlobalVocab(FieldVocab):
                 if count > cutoff and token not in vocab:
                     vocab[token] = index
                     index += 1
+
+        # Add indexes for timestamps
+        for i in range(0, 24):
+            vocab[f"T{i}"] = index
+            index += 1
 
         print(f"Generated vocab with {index} words.")
 
@@ -249,9 +235,6 @@ class LANLVocab(FieldVocab):
         for t in [PAD_TOKEN, SOS_TOKEN, EOS_TOKEN, CLS_TOKEN]:
             vocab["special_tokens"][t] = index
             index += 1
-        for t in range(0, 24):
-            vocab["special_tokens"][f"T{t}"] = index
-            index += 1
 
         field_counts: Dict[str, Dict[str, int]]
         if isinstance(counts, Path):
@@ -272,6 +255,16 @@ class LANLVocab(FieldVocab):
                 vocab[t][field] = index
                 index += 1
 
+        # Add indexes for timestamps
+        vocab[OOV_TOKEN]["time"] = index
+        index += 1
+        vocab[MSK_TOKEN]["time"] = index
+        index += 1
+        vocab["time"] = {}
+        for i in range(0, 24):
+            vocab["time"][f"T{i}"] = index
+            index += 1
+
         for field in field_counts:
             vocab[field] = {}
 
@@ -286,6 +279,7 @@ class LANLVocab(FieldVocab):
         vocab.move_to_end(MSK_TOKEN)
         vocab.move_to_end(OOV_TOKEN)
         vocab.move_to_end("special_tokens")
+
 
         print(f"Generated vocab with {index} words.")
 
@@ -308,6 +302,7 @@ class MergedLANLVocab(LANLVocab):
         # not very pedagogical but it werks
         idxs = self.field_indexes
         self.mappings = [
+            idxs["time"],
             idxs["user"],
             idxs["domain"],
             idxs["user"],

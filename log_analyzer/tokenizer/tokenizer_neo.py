@@ -95,7 +95,7 @@ class Tokenizer(ABC):
 
     def _encode_timestamp(self, token: str, field: int):
         # Bucket the timestamp into 1 hour intervals
-        hour_bucket = (int(token) % SECONDS_PER_DAY) // 3600
+        hour_bucket = (int(token) % SECONDS_PER_DAY) // (1 * SECONDS_PER_HOUR)
         return self.vocab.token2idx("T" + str(hour_bucket), field)
 
     def encode(self, tokens: Union[str, List[str]], add_sos, add_eos) -> NDArray[np.int64]:
@@ -114,7 +114,8 @@ class Tokenizer(ABC):
             indexes[i] = self._encode_timestamp(tokens[i - num_pre_tokens], i - num_pre_tokens)
 
         for i in range(num_pre_tokens + self.include_timestamp, total_length - num_post_tokens):
-            indexes[i] = self._encode_single_position(tokens[i - num_pre_tokens], i - num_pre_tokens)
+            # If we're not including timestamp, we need to shift the field index by 1
+            indexes[i] = self._encode_single_position(tokens[i - num_pre_tokens], i - num_pre_tokens + (1 - self.include_timestamp))
 
         for i in range(num_post_tokens):
             indexes[total_length - num_post_tokens + i] = self.eos_idx
@@ -318,7 +319,7 @@ class LANLTokenizer(Tokenizer):
         return self.vocab.token2idx(token, field)
 
     def decode(self, indexes: Iterable[int]) -> List[str]:
-        return [self.vocab.idx2token(idx, field) for field, idx in enumerate(indexes)]
+        return [self.vocab.idx2token(idx, field + (1 - self.include_timestamp)) for field, idx in enumerate(indexes)]
 
     def detokenize(self, indexes) -> str:
         return ",".join(self.decode(indexes))
@@ -428,7 +429,7 @@ class GlobalTokenizer(Tokenizer):
         return self.vocab.token2idx(token, field)
 
     def decode(self, indexes: Iterable[int]) -> List[str]:
-        return [self.vocab.idx2token(idx, field) for field, idx in enumerate(indexes)]
+        return [self.vocab.idx2token(idx, field + (1 - self.include_timestamp)) for field, idx in enumerate(indexes)]
 
     @property
     def num_users(self) -> int:
