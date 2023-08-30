@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 import wandb
 from log_analyzer.application import Application
-from log_analyzer.model.lstm import LogModel, LSTMLanguageModel, MultilineLogModel
+from log_analyzer.model.lstm import LogModel, LSTMLanguageModel, MultilineLogModel, TieredLogModel
 from log_analyzer.tokenizer.tokenizer import CharTokenizer
 
 
@@ -159,7 +159,17 @@ class Evaluator:
         self.model.eval()
 
         # Apply the model to input to produce the output
-        output, _ = self.model(X, lengths=L, mask=M)
+        if not self.model.bidirectional:
+            output, _ = self.model(X, lengths=L, mask=M)
+        else:
+            # Masked task, so each input sample must be processed n times, where n is its length, and the output
+            # predictions reconstructed.
+            # i.e. in the first pass the first token is predicted, in the second pass the second token is predicted, ...
+            output = torch.empty((X.shape[0], X.shape[1], self.model.word_embedding.num_embeddings), device=X.device)
+            for i in range(X.shape[1]):
+                # Apply the model to input to produce the output
+                logit_i, _ = self.model(X[:, i, :], lengths=L, mask=M)
+                output[:, i, :] = logit_i[:, i, :]
 
         # Compute the loss for the output
         loss, line_losses, token_losses = self.model.compute_loss(output, Y)
@@ -199,6 +209,7 @@ class Evaluator:
                 predictions=preds,
                 mask=mask,
                 skipped_lines=skipped_lines,
+                token_losses=token_losses,
             )
             self.eval_loss += loss
             self.eval_lines_count += 1
@@ -216,12 +227,19 @@ class Evaluator:
         predictions: Optional[Tensor] = None,
         mask: Optional[Tensor] = None,
         skipped_lines: Optional[Tensor] = None,
+        token_losses: Optional[Tensor] = None,
     ):
         """Extend the data stored in self.data with the inputs."""
         # Handle input from tiered models
         users = users.numpy().flatten()
         seconds = seconds.numpy().flatten()
         red_flags = red_flags.numpy().flatten()
+        losses = losses.cpu().flatten()
+    
+        if len(token_losses.shape) > 2:
+            token_losses = token_losses.cpu().flatten(end_dim=1).numpy()
+        else:
+            token_losses = token_losses.cpu().numpy()
 
         # Handle masked (i.e. padding) lines in the input
         if mask is not None:
@@ -229,10 +247,8 @@ class Evaluator:
             users = users[mask]
             seconds = seconds[mask]
             red_flags = red_flags[mask]
-
-        losses = losses.cpu().flatten()
-        if mask is not None:
             losses = losses[mask]
+            token_losses = token_losses[mask]
 
         # Check that there's enough space left for all the entries
         if len(self.data["losses"]) < self.index + len(users):
@@ -243,6 +259,7 @@ class Evaluator:
             self.data["seconds"] = np.concatenate((self.data["seconds"], np.zeros(1050000, int)))
             self.data["red_flags"] = np.concatenate((self.data["red_flags"], np.zeros(1050000, bool)))
             self.data["skipped"] = np.concatenate((self.data["skipped"], np.zeros(1050000, bool)))
+            self.data["token_losses"] = np.concatenate((self.data["token_losses"], np.zeros((1050000, 10), float)))
 
         if skipped_lines is not None:
             # trick to make mypy happy
@@ -264,6 +281,8 @@ class Evaluator:
         # Handle losses separately, since it might be None
         if losses is not None:
             self.data["losses"][self.index : self.index + len(losses)] = losses.squeeze()
+        if token_losses is not None:
+            self.data["token_losses"][self.index : self.index + len(losses)] = token_losses
         # Update the index
         self.index += len(users)
 
@@ -295,6 +314,7 @@ class Evaluator:
             "seconds": np.zeros(0, int),
             "red_flags": np.zeros(0, bool),
             "skipped": np.zeros(0, bool),
+            "token_losses": np.zeros((0, 10), float),
         }
         self.index = 0
         self.token_accuracy = torch.tensor(0, dtype=torch.float)
@@ -404,20 +424,23 @@ class Evaluator:
         precisions, recalls, pr_thresholds = metrics.precision_recall_curve(self.data["red_flags"], losses, pos_label=1)
 
         # FPR at 0.1%
+        # Find the lowest fp_rate above 0.1%
         acceptable_fpr_index = np.where(fp_rate==np.min(fp_rate[fp_rate>0.001]))[0][0]
         acceptable_tpr = tp_rate[acceptable_fpr_index]
         acceptable_fpr = fp_rate[acceptable_fpr_index]
         acceptable_threshold = roc_thresholds[acceptable_fpr_index]
-        acceptable_recall = recalls[np.where(pr_thresholds==acceptable_threshold)[0][0]]
-        acceptable_precision = precisions[np.where(pr_thresholds==acceptable_threshold)[0][0]]
+        acceptable_recall = recalls[np.where(pr_thresholds==acceptable_threshold)[0][-1]]
+        acceptable_precision = precisions[np.where(pr_thresholds==acceptable_threshold)[0][-1]]
 
-        recall_low_bound_index = np.where(recalls==np.min(recalls[recalls>=0.1]))[0][0]
-        peak_precision_index = np.where(precisions==np.max(precisions[:recall_low_bound_index+1]))
+        # Find the lowest recall above 0.1 - this is the lower bound for the precision search
+        # Note that precisions/recalls are ordered in reverse, so we need to find the last index
+        recall_low_bound_index = np.where(recalls==np.min(recalls[recalls>=0.1]))[0][-1]
+        peak_precision_index = np.where(precisions==np.max(precisions[:recall_low_bound_index+1]))[0][-1]
         peak_precision = precisions[peak_precision_index]
         peak_precision_recall = recalls[peak_precision_index]
         peak_precision_threshold = pr_thresholds[peak_precision_index]
-        peak_precision_tpr = tp_rate[np.where(roc_thresholds==peak_precision_threshold)[0][0]]
-        peak_precision_fpr = fp_rate[np.where(roc_thresholds==peak_precision_threshold)[0][0]]
+        peak_precision_tpr = tp_rate[np.where(roc_thresholds==peak_precision_threshold)[0][-1]]
+        peak_precision_fpr = fp_rate[np.where(roc_thresholds==peak_precision_threshold)[0][-1]]
         return_dict = {
             "eval/0.1p_fpr": acceptable_fpr,
             "eval/0.1p_fpr_tpr": acceptable_tpr,
@@ -731,6 +754,21 @@ class Evaluator:
         )
         if self.use_wandb:
             wandb.log({"PR Curve (normalised)": pr_plot})
+        
+        # Find AUC if only using a subset of tokens
+        losses_backup = self.data["losses"]
+        self.data["losses"] = self.data["token_losses"][:, [4, 5, 6]].sum(axis=1)
+        evaluator_metrics["eval/AUC_4-5-6"], roc_plot = self.plot_roc_curve(title="ROC (tokens 4-5-6)", normalised=False, nonskipped=False)
+        if self.use_wandb:
+            wandb.log({"ROC Curve (4-5-6)": roc_plot})
+
+        # Find AUC if only using tokens 1,3,4,5,6,7,8
+        self.data["losses"] = self.data["token_losses"][:, [1, 3, 4, 5, 6, 7, 8]].sum(axis=1)
+        evaluator_metrics["eval/AUC_1-3-4-5-6-7-8"], roc_plot = self.plot_roc_curve(title="ROC (tokens 1-3-4-5-6-7-8)", normalised=False, nonskipped=False)
+        if self.use_wandb:
+            wandb.log({"ROC Curve (1-3-4-5-6-7-8)": roc_plot})
+
+        self.data["losses"] = losses_backup
 
         # Log the evaluation results
         if self.use_wandb and wandb.run is not None:

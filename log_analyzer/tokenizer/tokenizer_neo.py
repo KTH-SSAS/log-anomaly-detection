@@ -7,67 +7,42 @@ from numpy.typing import NDArray
 from .vocab import CLS_TOKEN, EOS_TOKEN, MSK_TOKEN, PAD_TOKEN, SOS_TOKEN, FieldVocab, GlobalVocab, LANLVocab
 
 SECONDS_PER_DAY = 86400
+SECONDS_PER_HOUR = 3600
 
 def mask_tokens(
     indexes: NDArray[np.int64],
-    mask_idx,
-    vocab_range: Tuple[int, int],
-    percentage_to_mask=0.15,
-    p_preserve=0.1,
-    p_random=0.1,
-) -> Tuple[NDArray, NDArray, NDArray]:
-    """Replace a percentage of the tokens with mask tokens.
+    mask_idx: int,
+    test: bool = False,
+) -> Tuple[NDArray, NDArray]:
+    """Replace a random token with a mask token. If test=True instead each token will be replaced with a mask token,
+    one at a time, generatic (seq_len) new sequences each with 1 mask token.
 
-    to_mask :       0110101010 <- 5 mask bits set to mask those tokens
-    mask2mask:      0100101010 <- 1 mask bit cleared to preserve that token
-    mask2random:    0000000010 <- 1 mask bit remains to set that token to a random token
+    If test=True: if 0 is the mask token, and original sequence is 1,2,3,4,5, then the output will be:
+    0,2,3,4,5
+    1,0,3,4,5
+    1,2,0,4,5
+    1,2,3,0,5
+    1,2,3,4,0
     """
-
     masked_tokens = np.array(indexes, dtype=np.int64)
-
-    # Unmasked tokens are used as labels
-    labels = np.array(indexes, dtype=np.int64)
     length = len(indexes)
 
-    # Positions in the sequence that will be masked
-    to_mask = np.random.rand(length) < percentage_to_mask
+    if not test:
+        # Randomly mask a single token
+        mask_pos = np.random.randint(0, length)
+        masked_tokens[mask_pos] = mask_idx
+        labels = np.zeros_like(indexes)
+        labels[mask_pos] = indexes[mask_pos]
+    else:
+        # Mask each token in turn
+        masked_tokens = np.repeat(np.expand_dims(masked_tokens, axis=0), length, axis=0)
+        # Positions in the sequence that will be masked
+        for i in range(length):
+            masked_tokens[i, i] = mask_idx
+        # Unmasked tokens are used as labels
+        labels = np.array(indexes, dtype=np.int64)
 
-    # Ensure that at least one token is masked
-    if np.sum(to_mask) == 0:
-        token_to_mask = np.random.randint(length)
-        masked_tokens[token_to_mask] = mask_idx
-        sample_weights = np.zeros(labels.shape, dtype=np.bool_)
-        sample_weights[token_to_mask] = 1
-        return masked_tokens, labels, sample_weights
-
-    # Leave 10% of tokens unmasked
-    inp_mask_2mask = to_mask & (np.random.rand(length) < 1 - p_preserve)
-
-    # Use the mask token for the right field (if different mask tokens are used)
-    masked_tokens[inp_mask_2mask] = mask_idx
-
-    # Set 10% of tokens to a random token
-    inp_mask_2random = inp_mask_2mask & (np.random.rand(length) < p_random)
-
-    masked_tokens[inp_mask_2random] = np.random.randint(
-        vocab_range[0],
-        high=vocab_range[1],
-        size=(inp_mask_2random.sum(),),
-    )
-
-    # Set targets to -1 by default
-    labels_mask = -1 * np.ones(length, dtype=int)
-    labels_mask[to_mask] = masked_tokens[to_mask]
-
-    # Sample weights is a mask that shows which positions in the sequence were selected
-    # to be masked.
-    sample_weights = np.ones(labels_mask.shape, dtype=np.bool_)
-    sample_weights[labels_mask == -1] = 0
-
-    # Only consider masked positions in label
-    labels *= sample_weights
-
-    return masked_tokens, labels, sample_weights
+    return masked_tokens, labels
 
 
 class Tokenizer(ABC):
@@ -155,8 +130,7 @@ class Tokenizer(ABC):
 
     @abstractmethod
     def mask_tokens(
-        self, indexes: NDArray[np.int64], percentage_to_mask=0.15, p_preserve=0.1, p_random=0.1
-    ) -> Tuple[NDArray[np.int64], NDArray[np.int64], NDArray[np.int64]]:
+        self, indexes: NDArray[np.int64], test: bool) -> Tuple[NDArray[np.int64], NDArray[np.int64], NDArray[np.int64]]:
         ...
 
     @property
@@ -244,10 +218,10 @@ class CharTokenizer(Tokenizer):
         return self.encode(line, add_sos, add_eos)
 
     def mask_tokens(
-        self, indexes: NDArray[np.int64], percentage_to_mask=0.15, p_preserve=0.1, p_random=0.1
+        self, indexes: NDArray[np.int64], test: bool = False
     ) -> Tuple[NDArray[np.int64], NDArray[np.int64], NDArray[np.int64]]:
         return mask_tokens(
-            indexes, self.mask_idx, (self.offset, self.vocab_size), percentage_to_mask, p_preserve, p_random
+            indexes, self.mask_idx, test
         )
 
     @property
@@ -325,71 +299,37 @@ class LANLTokenizer(Tokenizer):
         return ",".join(self.decode(indexes))
 
     def mask_tokens(
-        self, indexes: NDArray[np.int64], percentage_to_mask=0.2, p_preserve=0.1, p_random=0.1
-    ) -> Tuple[NDArray, NDArray, NDArray]:
-        """Replace a percentage of the tokens with mask tokens.
+        self, indexes: NDArray[np.int64], test: bool = False
+    ) -> Tuple[NDArray, NDArray]:
+        """Replace a random token with a mask token. If test=True instead each token will be replaced with a mask token,
+        one at a time, generatic (seq_len) new sequences each with 1 mask token.
 
-        to_mask :       0110101010 <- 5 mask bits set to mask those tokens
-        mask2mask:      0100101010 <- 1 mask bit cleared to preserve that token
-        mask2random:    0000000010 <- 1 mask bit remains to set that token to a random token
+        If test=True: if 0 is the mask token, and original sequence is 1,2,3,4,5, then the output will be:
+        0,2,3,4,5
+        1,0,3,4,5
+        1,2,0,4,5
+        1,2,3,0,5
+        1,2,3,4,0
         """
-
         masked_tokens = np.array(indexes, dtype=np.int64)
-
-        # Unmasked tokens are used as labels
-        labels = np.array(indexes, dtype=np.int64)
         length = len(indexes)
 
-        # Positions in the sequence that will be masked
-        to_mask = np.random.rand(length) < percentage_to_mask
+        if not test:
+            # Randomly mask a single token
+            mask_pos = np.random.randint(0, length)
+            masked_tokens[mask_pos] = self.vocab.mask_tokens[mask_pos]
+            labels = np.zeros_like(indexes)
+            labels[mask_pos] = indexes[mask_pos]
+        else:
+            # Mask each token in turn
+            masked_tokens = np.repeat(np.expand_dims(masked_tokens, axis=0), length, axis=0)
+            # Positions in the sequence that will be masked
+            for i in range(length):
+                masked_tokens[i, i] = self.vocab.mask_tokens[i]
+            # Unmasked tokens are used as labels
+            labels = np.array(indexes, dtype=np.int64)
 
-        # Ensure that at least one token is masked
-        if np.sum(to_mask) == 0:
-            token_to_mask = np.random.randint(length)
-            masked_tokens[token_to_mask] = self.vocab.mask_tokens[token_to_mask]
-            sample_weights = np.zeros(labels.shape, dtype=np.bool_)
-            sample_weights[token_to_mask] = 1
-            return masked_tokens, labels, sample_weights
-
-        # Leave 10% of tokens unmasked
-        inp_mask_2mask = to_mask & (np.random.rand(length) < 1 - p_preserve)
-
-        # Use the mask token for the right field (if different mask tokens are used)
-        masked_tokens[inp_mask_2mask] = self.vocab.mask_tokens[inp_mask_2mask]
-
-        # Set 10% of tokens to a random token
-        inp_mask_2random = inp_mask_2mask & (np.random.rand(length) < p_random)
-
-        if np.any(inp_mask_2random):
-            low = self.vocab.field_vocab_min[inp_mask_2random]
-            high = self.vocab.field_vocab_max[inp_mask_2random]
-
-            # This is only true when fields have a vocab size of 1
-            if np.all(low == high):
-                masked_tokens[inp_mask_2random] = self.vocab.field_vocab_min[inp_mask_2random]
-            elif np.any(low == high):
-                raise NotImplementedError(
-                    "The case where one field has a single token in its vocabulary is unsupported."
-                )
-            else:
-                masked_tokens[inp_mask_2random] = np.random.randint(
-                    low=low,
-                    high=high + 1,  # +1 since randint is exclusive of high value
-                )
-
-        # Set targets to -1 by default
-        labels_mask = -1 * np.ones(length, dtype=int)
-        labels_mask[to_mask] = masked_tokens[to_mask]
-
-        # Sample weights is a mask that shows which positions in the sequence were selected
-        # to be masked.
-        sample_weights = np.ones(labels_mask.shape, dtype=np.bool_)
-        sample_weights[labels_mask == -1] = 0
-
-        # Only consider masked positions in label
-        labels *= sample_weights
-
-        return masked_tokens, labels, sample_weights
+        return masked_tokens, labels
 
 
 class GlobalTokenizer(Tokenizer):
@@ -450,9 +390,5 @@ class GlobalTokenizer(Tokenizer):
     def vocab_size(self):
         return self.vocab.size
 
-    def mask_tokens(
-        self, indexes: NDArray[np.int64], percentage_to_mask=0.15, p_preserve=0.1, p_random=0.1
-    ) -> Tuple[NDArray[np.int64], NDArray[np.int64], NDArray[np.int64]]:
-        return mask_tokens(
-            indexes, self.mask_idx, (self.offset, self.vocab_size), percentage_to_mask, p_preserve, p_random
-        )
+    def mask_tokens(self, indexes: NDArray[np.int64], test: bool = False) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+        return mask_tokens(indexes, self.mask_idx, test=test)
