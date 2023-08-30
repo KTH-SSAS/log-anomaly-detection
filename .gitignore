@@ -147,7 +147,8 @@ cython_debug/
 .DS_Store
 
 # Model runs
-runs/
+runs
+temp
 
 # Pycharm Directory
 .idea
