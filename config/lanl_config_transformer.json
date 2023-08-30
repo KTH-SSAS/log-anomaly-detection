@@ -1,8 +1,8 @@
 {
-	"layers": 2,
-	"feedforward_dim": 512,
-	"model_dim": 256,
-	"attention_heads": 16,
+	"layers": 1,
+	"feedforward_dim": 128,
+	"model_dim": 128,
+	"attention_heads": 4,
 	"dropout": 0.25,
 	"include_timestamp": false
 }
