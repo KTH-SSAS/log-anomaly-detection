@@ -405,6 +405,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                         {
                             "train/loss": loss,
                             "train/iteration": iteration,
+                            "train/sample_number": train_loader.batch_size * iteration,
                             "train/day": batch["day"][0],
                             "train/lr": lm_trainer.optimizer.param_groups[0]["lr"],
                             "train/epoch": epoch,
@@ -469,6 +470,7 @@ def eval_model(
                     {
                         "eval/loss": loss,
                         "eval/iteration": iteration,
+                        "eval/sample_number": test_loader.batch_size * iteration,
                         "eval/day": batch["day"][0],
                     },
                 )
