@@ -352,7 +352,7 @@ class Evaluator:
         self.eval_loss = self.eval_loss / max(self.eval_lines_count, 1)
         self.eval_lines_count += 1 - self.eval_lines_count  # Reset to 1, keep the same Tensor, type and device
         # Prepared the normalised losses
-        self._normalise_losses()
+        #self._normalise_losses()
 
         self.data_is_prepared = True
 
@@ -372,19 +372,19 @@ class Evaluator:
         # Apply the normalization
         self.data["normalised_losses"] = self.data["losses"] - average_losses_user
 
-    def get_metrics(self):
+    def get_metrics(self, key_prefix="eval/"):
         """Computes and returns all baseline metrics."""
-        metrics_at_chosen_thresholds = self.get_metrics_at_chosen_thresholds()
+        metrics_at_chosen_thresholds = self.get_metrics_at_chosen_thresholds(key_prefix=key_prefix)
         return_dict = {
-            "eval/loss": self.get_test_loss(),
-            "eval/token_accuracy": self.get_token_accuracy(),
-            "eval/token_perplexity": self.get_token_perplexity(),
-            "eval/AUC": self.get_auc_score(),
-            "eval/AP": self.get_ap_score(),
-            "eval/total_lines": len(self.data["losses"]),
-            "eval/total_reds": np.sum(self.data["red_flags"]),
-            "eval/skipped_lines": np.sum(self.data["skipped"]),
-            "eval/skipped_reds": np.sum(self.data["red_flags"][self.data["skipped"]]),
+            key_prefix + "loss": self.get_test_loss(),
+            key_prefix + "token_accuracy": self.get_token_accuracy(),
+            key_prefix + "token_perplexity": self.get_token_perplexity(),
+            key_prefix + "AUC": self.get_auc_score(),
+            key_prefix + "AP": self.get_ap_score(),
+            key_prefix + "total_lines": len(self.data["losses"]),
+            key_prefix + "total_reds": np.sum(self.data["red_flags"]),
+            # key_prefix + "skipped_lines": np.sum(self.data["skipped"]),
+            # key_prefix + "skipped_reds": np.sum(self.data["red_flags"][self.data["skipped"]]),
         }
         return_dict.update(metrics_at_chosen_thresholds)
         return return_dict
@@ -413,7 +413,7 @@ class Evaluator:
         perplexity = np.exp(average_loss)
         return perplexity
 
-    def get_metrics_at_chosen_thresholds(self, normalised=False):
+    def get_metrics_at_chosen_thresholds(self, key_prefix="eval/", normalised=False):
         """Computes TPR/FPR/Precision/Recall at two thresholds:
         - FPR at above 0.1%
         - Highest Precision achieved (with Recall >= 0.1)
@@ -444,16 +444,16 @@ class Evaluator:
         peak_precision_tpr = tp_rate[np.where(roc_thresholds==peak_precision_threshold)[0][-1]]
         peak_precision_fpr = fp_rate[np.where(roc_thresholds==peak_precision_threshold)[0][-1]]
         return_dict = {
-            "eval/0.1p_fpr": acceptable_fpr,
-            "eval/0.1p_fpr_tpr": acceptable_tpr,
-            "eval/0.1p_fpr_threshold": acceptable_threshold,
-            "eval/0.1p_fpr_precision": acceptable_precision,
-            "eval/0.1p_fpr_recall": acceptable_recall,
-            "eval/peak_precision": peak_precision,
-            "eval/peak_precision_recall": peak_precision_recall,
-            "eval/peak_precision_threshold": peak_precision_threshold,
-            "eval/peak_precision_fpr": peak_precision_fpr,
-            "eval/peak_precision_tpr": peak_precision_tpr,
+            key_prefix + "0.1p_fpr": acceptable_fpr,
+            key_prefix + "0.1p_fpr_tpr": acceptable_tpr,
+            key_prefix + "0.1p_fpr_threshold": acceptable_threshold,
+            key_prefix + "0.1p_fpr_precision": acceptable_precision,
+            key_prefix + "0.1p_fpr_recall": acceptable_recall,
+            key_prefix + "peak_precision": peak_precision,
+            key_prefix + "peak_precision_recall": peak_precision_recall,
+            key_prefix + "peak_precision_threshold": peak_precision_threshold,
+            key_prefix + "peak_precision_fpr": peak_precision_fpr,
+            key_prefix + "peak_precision_tpr": peak_precision_tpr,
         }
         return return_dict
 
@@ -704,80 +704,71 @@ class Evaluator:
         plt.legend()
         return AP_score, plt
 
-    def run_all(self):
+    def run_all(self, field_indices=None):
         r"""Performs standard evaluation on the model. Assumes the model has been trained
         and the evaluator has been populated with evaluation data (see eval_step)"""
+        key_prefix = "eval/"
+        if field_indices is not None:
+            # If field_indices is not None, only evaluate on the given fields
+            self.data["losses"] = self.data["token_losses"][:, field_indices].sum(axis=1)
+            key_prefix = "eval/fields_{}/".format("-".join(map(str, field_indices)))
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
         # Get generic metrics
-        evaluator_metrics = self.get_metrics()
+        evaluator_metrics = self.get_metrics(key_prefix=key_prefix)
 
         # get line losses plot
-        self.plot_line_loss_percentiles(
-            percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False
-        )
-        if self.use_wandb:
-            wandb.log({"Aggregate line losses": wandb.Image(plt)})
-        plt.clf()
+        # self.plot_line_loss_percentiles(
+        #     percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False
+        # )
+        # if self.use_wandb:
+        #     wandb.log({"Aggregate line losses": wandb.Image(plt)})
+        # plt.clf()
 
         # get roc curve
         _, roc_plot = self.plot_roc_curve()
         if self.use_wandb:
-            wandb.log({"ROC Curve": roc_plot})
+            wandb.log({key_prefix + "ROC Curve": roc_plot})
 
         # get nonskipped roc curve
-        evaluator_metrics["eval/AUC_nonskipped"], nonskipped_roc_plot = self.plot_roc_curve(title="ROC (nonskipped)", nonskipped=True)
-        if self.use_wandb:
-            wandb.log({"ROC Curve (nonskipped)": nonskipped_roc_plot})
+        # evaluator_metrics["eval/AUC_nonskipped"], nonskipped_roc_plot = self.plot_roc_curve(title="ROC (nonskipped)",
+        #                                                                                     nonskipped=True)
+        # if self.use_wandb:
+        #     wandb.log({"ROC Curve (nonskipped)": nonskipped_roc_plot})
 
         # get pr curve
-        evaluator_metrics["eval/AP"], pr_plot = self.plot_pr_curve()
+        evaluator_metrics[key_prefix + "AP"], pr_plot = self.plot_pr_curve()
         if self.use_wandb:
-            wandb.log({"PR Curve": pr_plot})
+            wandb.log({key_prefix + "PR Curve": pr_plot})
 
         # get normalised line losses plot
-        self.plot_line_loss_percentiles(
-            percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False, normalised=True
-        )
-        if self.use_wandb:
-            wandb.log({"Aggregate line losses (normalised)": wandb.Image(plt)})
-        plt.clf()
+        # self.plot_line_loss_percentiles(
+        #     percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False, normalised=True
+        # )
+        # if self.use_wandb:
+        #     wandb.log({"Aggregate line losses (normalised)": wandb.Image(plt)})
+        # plt.clf()
 
         # get normalised roc curve
-        evaluator_metrics["eval/AUC_(normalised)"], roc_plot = self.plot_roc_curve(
-            title="ROC (normalised)", normalised=True
-        )
-        if self.use_wandb:
-            wandb.log({"ROC Curve (normalised)": roc_plot})
+        # evaluator_metrics["eval/AUC_(normalised)"], roc_plot = self.plot_roc_curve(
+        #     title="ROC (normalised)", normalised=True
+        # )
+        # if self.use_wandb:
+        #     wandb.log({"ROC Curve (normalised)": roc_plot})
 
         # get normalised pr curve
-        evaluator_metrics["eval/AP_(normalised)"], pr_plot = self.plot_pr_curve(
-            title="PR Curve (normalised)", normalised=True
-        )
-        if self.use_wandb:
-            wandb.log({"PR Curve (normalised)": pr_plot})
-        
-        # Find AUC if only using a subset of tokens
-        losses_backup = self.data["losses"]
-        self.data["losses"] = self.data["token_losses"][:, [4, 5, 6]].sum(axis=1)
-        evaluator_metrics["eval/AUC_4-5-6"], roc_plot = self.plot_roc_curve(title="ROC (tokens 4-5-6)", normalised=False, nonskipped=False)
-        if self.use_wandb:
-            wandb.log({"ROC Curve (4-5-6)": roc_plot})
-
-        # Find AUC if only using tokens 1,3,4,5,6,7,8
-        self.data["losses"] = self.data["token_losses"][:, [1, 3, 4, 5, 6, 7, 8]].sum(axis=1)
-        evaluator_metrics["eval/AUC_1-3-4-5-6-7-8"], roc_plot = self.plot_roc_curve(title="ROC (tokens 1-3-4-5-6-7-8)", normalised=False, nonskipped=False)
-        if self.use_wandb:
-            wandb.log({"ROC Curve (1-3-4-5-6-7-8)": roc_plot})
-        metrics_1_3_4_5_6_7_8 = self.get_metrics()
-        fixed_names_dict = {(key + "_1-3-4-5-6-7-8"): value for key, value in metrics_1_3_4_5_6_7_8.items()}
-        evaluator_metrics.update(fixed_names_dict)
-
-        self.data["losses"] = losses_backup
-
+        # evaluator_metrics["eval/AP_(normalised)"], pr_plot = self.plot_pr_curve(
+        #     title="PR Curve (normalised)", normalised=True
+        # )
+        # if self.use_wandb:
+        #     wandb.log({"PR Curve (normalised)": pr_plot})
 
         # Log the evaluation results
         if self.use_wandb and wandb.run is not None:
             for key, value in evaluator_metrics.items():
                 wandb.run.summary[key] = value
+
+        if field_indices is not None:
+            # reset the losses to the full set of losses
+            self.data["losses"] = self.data["token_losses"].sum(axis=1)
         return evaluator_metrics
