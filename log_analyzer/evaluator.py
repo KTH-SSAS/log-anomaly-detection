@@ -381,6 +381,7 @@ class Evaluator:
             key_prefix + "token_perplexity": self.get_token_perplexity(),
             key_prefix + "AUC": self.get_auc_score(),
             key_prefix + "AP": self.get_ap_score(),
+            key_prefix + "filter_%": self.get_filter_percent(),
             key_prefix + "total_lines": len(self.data["losses"]),
             key_prefix + "total_reds": np.sum(self.data["red_flags"]),
             # key_prefix + "skipped_lines": np.sum(self.data["skipped"]),
@@ -472,6 +473,18 @@ class Evaluator:
             fp_rate, tp_rate, _ = metrics.roc_curve(red_flags, losses, pos_label=1)
         auc_score = metrics.auc(fp_rate, tp_rate)
         return auc_score
+    
+    def get_filter_percent(self):
+        """Computes the % of data that is filtered out (marked as normal) if threshold is set so as to achieve 100%
+        recall with maximal precision."""
+        _, _, thresholds = metrics.precision_recall_curve(self.data["red_flags"], self.data["losses"], pos_label=1)
+        # Find the threshold for 100% recall
+        threshold = thresholds[0]
+        # Find the number of lines that have a loss below this threshold - i.e. are filtered out
+        filtered_lines = np.sum(self.data["losses"] < threshold)
+        # Find what % of the data is filtered out
+        filter_percent = (1 - float(filtered_lines)/float(len(self.data["losses"])))
+        return filter_percent
 
     def plot_line_loss_percentiles(
         self,
