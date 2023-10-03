@@ -502,10 +502,9 @@ def create_data_loader(
     """Creates and returns a data loader."""
 
     dataset: LogDataset
-    if shuffle:
-        dataset = MapLogDataset(filepaths, tokenizer, task, test=test)
-    else:
-        dataset = IterableLogDataset(filepaths, tokenizer, task, test=test)
+    dataset = MapLogDataset(filepaths, tokenizer, task, test=test)
+    # else:
+    #     dataset = IterableLogDataset(filepaths, tokenizer, task, test=test)
 
     collate = partial(collate_fn, jagged=tokenizer.jagged)
     data_handler = LogDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_function=collate)
