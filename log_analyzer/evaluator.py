@@ -10,7 +10,8 @@ from tqdm import tqdm
 
 import wandb
 from log_analyzer.application import Application
-from log_analyzer.model.lstm import LogModel, LSTMLanguageModel, MultilineLogModel, TieredLogModel
+from log_analyzer.model.lstm import LogModel, LSTMLanguageModel, MultilineLogModel, TieredLogModel, TieredLSTM
+from log_analyzer.model.transformer import TransformerLanguageModel
 from log_analyzer.tokenizer.tokenizer import CharTokenizer
 
 
@@ -159,9 +160,10 @@ class Evaluator:
         self.model.eval()
 
         # Apply the model to input to produce the output
-        if not self.model.bidirectional:
+        if isinstance(self.model, (LSTMLanguageModel, TieredLSTM)) or not self.model.bidirectional:
             output, _ = self.model(X, lengths=L, mask=M)
         else:
+            # If model is bidirectional AND Transformer, we have a masked task.
             # Masked task, so each input sample must be processed n times, where n is its length, and the output
             # predictions reconstructed.
             # i.e. in the first pass the first token is predicted, in the second pass the second token is predicted, ...
@@ -767,8 +769,12 @@ class Evaluator:
         evaluator_metrics["eval/AUC_1-3-4-5-6-7-8"], roc_plot = self.plot_roc_curve(title="ROC (tokens 1-3-4-5-6-7-8)", normalised=False, nonskipped=False)
         if self.use_wandb:
             wandb.log({"ROC Curve (1-3-4-5-6-7-8)": roc_plot})
+        metrics_1_3_4_5_6_7_8 = self.get_metrics()
+        fixed_names_dict = {(key + "_1-3-4-5-6-7-8"): value for key, value in metrics_1_3_4_5_6_7_8.items()}
+        evaluator_metrics.update(fixed_names_dict)
 
         self.data["losses"] = losses_backup
+
 
         # Log the evaluation results
         if self.use_wandb and wandb.run is not None:
