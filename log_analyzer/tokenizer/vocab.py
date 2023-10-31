@@ -93,6 +93,11 @@ class GlobalVocab(FieldVocab):
 
     @classmethod
     def counts2vocab(cls, counts: Union[dict, Path], cutoff: int):
+        """Generates a vocabulary file based on a file of token counts per
+        field.
+
+        Tokens that appear in several fields are assigned just one (global) index.
+        """
 
         vocab: OrderedDict[str, int] = OrderedDict()
         index = 0
@@ -117,6 +122,11 @@ class GlobalVocab(FieldVocab):
                 if count > cutoff and token not in vocab:
                     vocab[token] = index
                     index += 1
+
+        # Add indexes for timestamps
+        for i in range(0, 24):
+            vocab[f"T{i}"] = index
+            index += 1
 
         print(f"Generated vocab with {index} words.")
 
@@ -245,6 +255,16 @@ class LANLVocab(FieldVocab):
                 vocab[t][field] = index
                 index += 1
 
+        # Add indexes for timestamps
+        vocab[OOV_TOKEN]["time"] = index
+        index += 1
+        vocab[MSK_TOKEN]["time"] = index
+        index += 1
+        vocab["time"] = {}
+        for i in range(0, 24):
+            vocab["time"][f"T{i}"] = index
+            index += 1
+
         for field in field_counts:
             vocab[field] = {}
 
@@ -259,6 +279,7 @@ class LANLVocab(FieldVocab):
         vocab.move_to_end(MSK_TOKEN)
         vocab.move_to_end(OOV_TOKEN)
         vocab.move_to_end("special_tokens")
+
 
         print(f"Generated vocab with {index} words.")
 
@@ -281,6 +302,7 @@ class MergedLANLVocab(LANLVocab):
         # not very pedagogical but it werks
         idxs = self.field_indexes
         self.mappings = [
+            idxs["time"],
             idxs["user"],
             idxs["domain"],
             idxs["user"],

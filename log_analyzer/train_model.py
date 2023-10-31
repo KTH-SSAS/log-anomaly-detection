@@ -174,5 +174,5 @@ def main(seed=22):
 
 if __name__ == "__main__":
 
-    for seed_val in range(1, 2):
+    for seed_val in range(1, 6):
         main(seed_val)

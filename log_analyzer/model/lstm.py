@@ -36,14 +36,14 @@ class LogModel(nn.Module):
         # Parameter setting
         self.tiered: bool = False
 
-    def compute_loss(self, output: torch.Tensor, Y):
+    def compute_loss(self, output: Tensor, Y: Tensor):
         """Computes the loss for the given model output and ground truth."""
         token_losses = self.criterion(output.transpose(1, 2), Y)
         line_losses = torch.mean(token_losses, dim=1)
         loss = torch.mean(line_losses, dim=0)
 
         # Return the loss, as well as extra details like loss per line
-        return loss, line_losses.unsqueeze(-1)
+        return loss, line_losses.unsqueeze(-1), token_losses
 
     @abstractmethod
     def forward(self, sequences, lengths: Tensor = None, mask=None, targets=None):
@@ -62,6 +62,7 @@ class TieredLogModel(LogModel):
         """Computes the loss for the given model output and ground truth."""
         loss = torch.tensor(0.0)
         line_losses_list = torch.empty(output.shape[:-2], dtype=torch.float)
+        token_losses_list = torch.empty(output.shape[:-1], dtype=torch.float)
         if Application.instance().using_cuda:
             line_losses_list = line_losses_list.cuda()
         # output (num_steps x batch x length x embedding dimension)  Y
@@ -70,12 +71,13 @@ class TieredLogModel(LogModel):
             # On notebook, I checked it with forward LSTM and word
             # tokenization. Further checks have to be done...
             token_losses = self.criterion(step_output.transpose(1, 2), step_y)
+            token_losses_list[i] = token_losses
             line_losses = torch.mean(token_losses, dim=1)
             line_losses_list[i] = line_losses
             step_loss = torch.mean(line_losses, dim=0)
             loss += step_loss.cpu()
         loss /= len(Y)
-        return loss, line_losses_list
+        return loss, line_losses_list, token_losses_list
 
     @abstractmethod
     def forward(self, sequences, lengths: Tensor = None, mask=None, targets=None):
@@ -132,8 +134,8 @@ class MultilineLogModel(LogModel):
         line_losses = torch.mean(embedding_losses, dim=2) if len(embedding_losses.shape) > 2 else embedding_losses
         loss = torch.mean(line_losses[torch.all(Y, dim=2)])  # do not include loss from padding
 
-        # Return the loss, as well as extra details like loss per line
-        return loss, line_losses
+        # Return the loss, as well as extra details like loss per line and per token
+        return loss, line_losses, embedding_losses
 
 
 class LSTMLanguageModel(LogModel):
@@ -235,7 +237,7 @@ class FwdLSTM(LSTMLanguageModel):
         loss = None
         if targets is not None:
             # Compute and return loss if targets is given
-            loss, _ = self.compute_loss(token_output, targets)
+            loss, *_ = self.compute_loss(token_output, targets)
 
         if self.tiered:
             return token_output, (lstm_out, hx), loss
@@ -288,7 +290,7 @@ class BidLSTM(LSTMLanguageModel):
         loss = None
         if targets is not None:
             # Compute and return loss if targets is given
-            loss, _ = self.compute_loss(token_output, targets)
+            loss, *_ = self.compute_loss(token_output, targets)
 
         if self.tiered:
             return token_output, (lstm_out, hx), loss
@@ -342,6 +344,7 @@ class TieredLSTM(TieredLogModel):
             self.model = BidLSTM
         else:
             self.model = FwdLSTM
+        self.bidirectional = bidirectional
 
         event_model_layers = config.layers
 
@@ -355,7 +358,7 @@ class TieredLSTM(TieredLogModel):
         # Layers
         self.event_level_lstm = self.model(config)
         self.event_level_lstm.tiered = True
-        if bidirectional:
+        if self.bidirectional:
             self.context_input_features = event_model_layers[-1] * 4
         else:
             self.context_input_features = event_model_layers[-1] * 2
@@ -443,7 +446,7 @@ class TieredLSTM(TieredLogModel):
         loss = None
         if targets is not None:
             # Compute and return loss if targets is given
-            loss, _ = self.compute_loss(token_output, targets)
+            loss, *_ = self.compute_loss(token_output, targets)
 
         return token_output, loss
 

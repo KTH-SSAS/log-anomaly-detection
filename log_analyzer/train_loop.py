@@ -73,7 +73,7 @@ tokenizer_vocabs = {
 }
 
 
-def get_tokenizer(tokenization, counts_file: Path, cutoff) -> Tokenizer:
+def get_tokenizer(tokenization, counts_file: Path, cutoff, include_timestamp) -> Tokenizer:
     tokenizer: Tokenizer
     vocab = None
     tokenizer_cls, vocab_cls = tokenizer_vocabs[tokenization]
@@ -85,7 +85,7 @@ def get_tokenizer(tokenization, counts_file: Path, cutoff) -> Tokenizer:
     else:
         users = None
 
-    tokenizer = tokenizer_cls(vocab, users)
+    tokenizer = tokenizer_cls(vocab, users, include_timestamp)
     return tokenizer
 
 
@@ -194,7 +194,7 @@ def init_from_config_classes(
 
     shuffle_train_data = trainer_config.shuffle_train_data
 
-    tokenizer = get_tokenizer(tokenization, counts_file, cutoff)
+    tokenizer = get_tokenizer(tokenization, counts_file, cutoff, model_config.include_timestamp)
 
     task = get_task(model_type, bidirectional)
 
@@ -405,6 +405,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                         {
                             "train/loss": loss,
                             "train/iteration": iteration,
+                            "train/sample_number": train_loader.batch_size * iteration,
                             "train/day": batch["day"][0],
                             "train/lr": lm_trainer.optimizer.param_groups[0]["lr"],
                             "train/epoch": epoch,
@@ -469,6 +470,7 @@ def eval_model(
                     {
                         "eval/loss": loss,
                         "eval/iteration": iteration,
+                        "eval/sample_number": test_loader.batch_size * iteration,
                         "eval/day": batch["day"][0],
                     },
                 )

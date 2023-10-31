@@ -131,7 +131,7 @@ class TransformerLanguageModel(LogModel):
         self.feedforward_dim = config.feedforward_dim
         self.vocab_size = config.vocab_size
 
-        self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout)
+        self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout, max_len=10)
         encoder_layers = nn.TransformerEncoderLayer(
             self.model_dim, self.attention_heads, self.feedforward_dim, dropout=self.dropout, batch_first=True
         )
@@ -185,16 +185,62 @@ class Transformer(TransformerLanguageModel):
         # word embedding encoder and decoder share weights
         # @ is shorthand for matrix multiplication
         logits = tf_hidden @ self.word_embedding.weight.t()
+        
 
         loss = None
         if targets is not None:
             # Compute and return loss if targets is given
-            loss, _ = self.compute_loss(logits, targets)
+            # Don't compute loss for the first token (source_user) when including timestamp
+            if self.config.include_timestamp:
+                logits = logits[:, 1:, :]
+                targets = targets[:, 1:]
+            loss, *_ = self.compute_loss(logits, targets)
 
         if self.tiered:
             return logits, tf_hidden, loss
         return logits, loss
 
+
+class MLMTransformer(Transformer):
+    """Transformer model that learns via masked language modelling (ish).
+    
+    For each input sequence, the model will mask out each token in turn and
+    predict the masked token. The loss is the sum of the cross entropy loss
+    for each masked token.
+    """
+    def forward(self, sequences, lengths=None, mask=None, targets=None):
+        # batch size, sequence length, embedded dimension
+        # lengths is currently ignored, added for compatibility with LSTM-training code
+
+        if not self.bidirectional:
+            self.src_mask = self.get_mask(sequences)
+        else:
+            self.src_mask = None
+
+        word_embeddings = self.word_embedding(sequences) * math.sqrt(self.config.model_dim)
+        tf_input = self.pos_encoder(word_embeddings)
+        if mask is None:
+            pad_mask = None
+        else:
+            pad_mask = mask == 0
+        tf_hidden = self.transformer_encoder(tf_input, self.src_mask, src_key_padding_mask=pad_mask)
+        # word embedding encoder and decoder share weights
+        # @ is shorthand for matrix multiplication
+        logits = tf_hidden @ self.word_embedding.weight.t()
+        
+        # Don't compute loss for the first token (source_user) when including timestamp
+        if self.config.include_timestamp:
+            logits = logits[:, 1:, :]
+            targets = targets[:, 1:]
+
+        loss = None
+        if targets is not None:
+            # Compute and return loss if targets is given
+            loss, *_ = self.compute_loss(logits, targets)
+
+        if self.tiered:
+            return logits, tf_hidden, loss
+        return logits, loss
 
 class TieredTransformer(TieredLogModel):
 
@@ -291,7 +337,7 @@ class TieredTransformer(TieredLogModel):
         loss = None
         if targets is not None:
             # Compute and return loss if targets is given
-            loss, _ = self.compute_loss(token_output, targets)
+            loss, *_ = self.compute_loss(token_output, targets)
         return token_output, loss
 
     def get_ctx_data(self, users, device):
@@ -557,6 +603,6 @@ class MultilineTransformer(MultilineLogModel):
         loss = None
         if targets is not None:
             # Compute and return loss if targets is given
-            loss, _ = self.compute_loss(logits, targets)
+            loss, *_ = self.compute_loss(logits, targets)
 
         return logits, loss

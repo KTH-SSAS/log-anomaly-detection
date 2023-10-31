@@ -10,7 +10,8 @@ from tqdm import tqdm
 
 import wandb
 from log_analyzer.application import Application
-from log_analyzer.model.lstm import LogModel, LSTMLanguageModel, MultilineLogModel
+from log_analyzer.model.lstm import LogModel, LSTMLanguageModel, MultilineLogModel, TieredLogModel, TieredLSTM
+from log_analyzer.model.transformer import TransformerLanguageModel
 from log_analyzer.tokenizer.tokenizer import CharTokenizer
 
 
@@ -159,10 +160,28 @@ class Evaluator:
         self.model.eval()
 
         # Apply the model to input to produce the output
-        output, _ = self.model(X, lengths=L, mask=M)
+        if isinstance(self.model, (LSTMLanguageModel, TieredLSTM)) or not self.model.bidirectional:
+            output, _ = self.model(X, lengths=L, mask=M)
+        else:
+            # If model is bidirectional AND Transformer, we have a masked task.
+            # Masked task, so each input sample must be processed n times, where n is its length, and the output
+            # predictions reconstructed.
+            # i.e. in the first pass the first token is predicted, in the second pass the second token is predicted, ...
+            output = torch.empty((X.shape[0], X.shape[1], self.model.word_embedding.num_embeddings), device=X.device)
+            for i in range(X.shape[1]):
+                # Apply the model to input to produce the output
+                logit_i, _ = self.model(X[:, i, :], lengths=L, mask=M)
+                output[:, i, :] = logit_i[:, i, :]
 
         # Compute the loss for the output
-        loss, line_losses = self.model.compute_loss(output, Y)
+        loss, line_losses, token_losses = self.model.compute_loss(output, Y)
+
+        if not self.model.bidirectional and not isinstance(self.model, MultilineLogModel):
+            # Prepend a 0 to token_losses since non-bidir models don't predict the first token
+            if isinstance(self.model, TieredLogModel):
+                token_losses = torch.cat((torch.zeros((token_losses.shape[0], token_losses.shape[1], 1), device=token_losses.device), token_losses), dim=2)
+            else:
+                token_losses = torch.cat((torch.zeros((token_losses.shape[0], 1), device=token_losses.device), token_losses), dim=1)
 
         # Save the results if desired
         if store_eval_data:
@@ -192,6 +211,7 @@ class Evaluator:
                 predictions=preds,
                 mask=mask,
                 skipped_lines=skipped_lines,
+                token_losses=token_losses,
             )
             self.eval_loss += loss
             self.eval_lines_count += 1
@@ -209,12 +229,19 @@ class Evaluator:
         predictions: Optional[Tensor] = None,
         mask: Optional[Tensor] = None,
         skipped_lines: Optional[Tensor] = None,
+        token_losses: Optional[Tensor] = None,
     ):
         """Extend the data stored in self.data with the inputs."""
         # Handle input from tiered models
         users = users.numpy().flatten()
         seconds = seconds.numpy().flatten()
         red_flags = red_flags.numpy().flatten()
+        losses = losses.cpu().flatten()
+    
+        if len(token_losses.shape) > 2:
+            token_losses = token_losses.cpu().flatten(end_dim=1).numpy()
+        else:
+            token_losses = token_losses.cpu().numpy()
 
         # Handle masked (i.e. padding) lines in the input
         if mask is not None:
@@ -222,10 +249,8 @@ class Evaluator:
             users = users[mask]
             seconds = seconds[mask]
             red_flags = red_flags[mask]
-
-        losses = losses.cpu().flatten()
-        if mask is not None:
             losses = losses[mask]
+            token_losses = token_losses[mask]
 
         # Check that there's enough space left for all the entries
         if len(self.data["losses"]) < self.index + len(users):
@@ -236,6 +261,7 @@ class Evaluator:
             self.data["seconds"] = np.concatenate((self.data["seconds"], np.zeros(1050000, int)))
             self.data["red_flags"] = np.concatenate((self.data["red_flags"], np.zeros(1050000, bool)))
             self.data["skipped"] = np.concatenate((self.data["skipped"], np.zeros(1050000, bool)))
+            self.data["token_losses"] = np.concatenate((self.data["token_losses"], np.zeros((1050000, 10), float)))
 
         if skipped_lines is not None:
             # trick to make mypy happy
@@ -257,6 +283,8 @@ class Evaluator:
         # Handle losses separately, since it might be None
         if losses is not None:
             self.data["losses"][self.index : self.index + len(losses)] = losses.squeeze()
+        if token_losses is not None:
+            self.data["token_losses"][self.index : self.index + len(losses)] = token_losses
         # Update the index
         self.index += len(users)
 
@@ -288,6 +316,7 @@ class Evaluator:
             "seconds": np.zeros(0, int),
             "red_flags": np.zeros(0, bool),
             "skipped": np.zeros(0, bool),
+            "token_losses": np.zeros((0, 10), float),
         }
         self.index = 0
         self.token_accuracy = torch.tensor(0, dtype=torch.float)
@@ -323,7 +352,7 @@ class Evaluator:
         self.eval_loss = self.eval_loss / max(self.eval_lines_count, 1)
         self.eval_lines_count += 1 - self.eval_lines_count  # Reset to 1, keep the same Tensor, type and device
         # Prepared the normalised losses
-        self._normalise_losses()
+        #self._normalise_losses()
 
         self.data_is_prepared = True
 
@@ -343,19 +372,20 @@ class Evaluator:
         # Apply the normalization
         self.data["normalised_losses"] = self.data["losses"] - average_losses_user
 
-    def get_metrics(self):
+    def get_metrics(self, key_prefix="eval/"):
         """Computes and returns all baseline metrics."""
-        metrics_at_chosen_thresholds = self.get_metrics_at_chosen_thresholds()
+        metrics_at_chosen_thresholds = self.get_metrics_at_chosen_thresholds(key_prefix=key_prefix)
         return_dict = {
-            "eval/loss": self.get_test_loss(),
-            "eval/token_accuracy": self.get_token_accuracy(),
-            "eval/token_perplexity": self.get_token_perplexity(),
-            "eval/AUC": self.get_auc_score(),
-            "eval/AP": self.get_ap_score(),
-            "eval/total_lines": len(self.data["losses"]),
-            "eval/total_reds": np.sum(self.data["red_flags"]),
-            "eval/skipped_lines": np.sum(self.data["skipped"]),
-            "eval/skipped_reds": np.sum(self.data["red_flags"][self.data["skipped"]]),
+            key_prefix + "loss": self.get_test_loss(),
+            key_prefix + "token_accuracy": self.get_token_accuracy(),
+            key_prefix + "token_perplexity": self.get_token_perplexity(),
+            key_prefix + "AUC": self.get_auc_score(),
+            key_prefix + "AP": self.get_ap_score(),
+            key_prefix + "filter_%": self.get_filter_percent(),
+            key_prefix + "total_lines": len(self.data["losses"]),
+            key_prefix + "total_reds": np.sum(self.data["red_flags"]),
+            # key_prefix + "skipped_lines": np.sum(self.data["skipped"]),
+            # key_prefix + "skipped_reds": np.sum(self.data["red_flags"][self.data["skipped"]]),
         }
         return_dict.update(metrics_at_chosen_thresholds)
         return return_dict
@@ -384,7 +414,7 @@ class Evaluator:
         perplexity = np.exp(average_loss)
         return perplexity
 
-    def get_metrics_at_chosen_thresholds(self, normalised=False):
+    def get_metrics_at_chosen_thresholds(self, key_prefix="eval/", normalised=False):
         """Computes TPR/FPR/Precision/Recall at two thresholds:
         - FPR at above 0.1%
         - Highest Precision achieved (with Recall >= 0.1)
@@ -397,31 +427,34 @@ class Evaluator:
         precisions, recalls, pr_thresholds = metrics.precision_recall_curve(self.data["red_flags"], losses, pos_label=1)
 
         # FPR at 0.1%
+        # Find the lowest fp_rate above 0.1%
         acceptable_fpr_index = np.where(fp_rate==np.min(fp_rate[fp_rate>0.001]))[0][0]
         acceptable_tpr = tp_rate[acceptable_fpr_index]
         acceptable_fpr = fp_rate[acceptable_fpr_index]
         acceptable_threshold = roc_thresholds[acceptable_fpr_index]
-        acceptable_recall = recalls[np.where(pr_thresholds==acceptable_threshold)[0][0]]
-        acceptable_precision = precisions[np.where(pr_thresholds==acceptable_threshold)[0][0]]
+        acceptable_recall = recalls[np.where(pr_thresholds==acceptable_threshold)[0][-1]]
+        acceptable_precision = precisions[np.where(pr_thresholds==acceptable_threshold)[0][-1]]
 
-        recall_low_bound_index = np.where(recalls==np.min(recalls[recalls>=0.1]))[0][0]
-        peak_precision_index = np.where(precisions==np.max(precisions[:recall_low_bound_index+1]))
+        # Find the lowest recall above 0.1 - this is the lower bound for the precision search
+        # Note that precisions/recalls are ordered in reverse, so we need to find the last index
+        recall_low_bound_index = np.where(recalls==np.min(recalls[recalls>=0.1]))[0][-1]
+        peak_precision_index = np.where(precisions==np.max(precisions[:recall_low_bound_index+1]))[0][-1]
         peak_precision = precisions[peak_precision_index]
         peak_precision_recall = recalls[peak_precision_index]
         peak_precision_threshold = pr_thresholds[peak_precision_index]
-        peak_precision_tpr = tp_rate[np.where(roc_thresholds==peak_precision_threshold)[0][0]]
-        peak_precision_fpr = fp_rate[np.where(roc_thresholds==peak_precision_threshold)[0][0]]
+        peak_precision_tpr = tp_rate[np.where(roc_thresholds==peak_precision_threshold)[0][-1]]
+        peak_precision_fpr = fp_rate[np.where(roc_thresholds==peak_precision_threshold)[0][-1]]
         return_dict = {
-            "eval/0.1p_fpr": acceptable_fpr,
-            "eval/0.1p_fpr_tpr": acceptable_tpr,
-            "eval/0.1p_fpr_threshold": acceptable_threshold,
-            "eval/0.1p_fpr_precision": acceptable_precision,
-            "eval/0.1p_fpr_recall": acceptable_recall,
-            "eval/peak_precision": peak_precision,
-            "eval/peak_precision_recall": peak_precision_recall,
-            "eval/peak_precision_threshold": peak_precision_threshold,
-            "eval/peak_precision_fpr": peak_precision_fpr,
-            "eval/peak_precision_tpr": peak_precision_tpr,
+            key_prefix + "0.1p_fpr": acceptable_fpr,
+            key_prefix + "0.1p_fpr_tpr": acceptable_tpr,
+            key_prefix + "0.1p_fpr_threshold": acceptable_threshold,
+            key_prefix + "0.1p_fpr_precision": acceptable_precision,
+            key_prefix + "0.1p_fpr_recall": acceptable_recall,
+            key_prefix + "peak_precision": peak_precision,
+            key_prefix + "peak_precision_recall": peak_precision_recall,
+            key_prefix + "peak_precision_threshold": peak_precision_threshold,
+            key_prefix + "peak_precision_fpr": peak_precision_fpr,
+            key_prefix + "peak_precision_tpr": peak_precision_tpr,
         }
         return return_dict
 
@@ -440,6 +473,18 @@ class Evaluator:
             fp_rate, tp_rate, _ = metrics.roc_curve(red_flags, losses, pos_label=1)
         auc_score = metrics.auc(fp_rate, tp_rate)
         return auc_score
+    
+    def get_filter_percent(self):
+        """Computes the % of data that is filtered out (marked as normal) if threshold is set so as to achieve 100%
+        recall with maximal precision."""
+        _, _, thresholds = metrics.precision_recall_curve(self.data["red_flags"], self.data["losses"], pos_label=1)
+        # Find the threshold for 100% recall
+        threshold = thresholds[0]
+        # Find the number of lines that have a loss below this threshold - i.e. are filtered out
+        filtered_lines = np.sum(self.data["losses"] < threshold)
+        # Find what % of the data is filtered out
+        filter_percent = (1 - float(filtered_lines)/float(len(self.data["losses"])))
+        return filter_percent
 
     def plot_line_loss_percentiles(
         self,
@@ -672,61 +717,71 @@ class Evaluator:
         plt.legend()
         return AP_score, plt
 
-    def run_all(self):
+    def run_all(self, field_indices=None):
         r"""Performs standard evaluation on the model. Assumes the model has been trained
         and the evaluator has been populated with evaluation data (see eval_step)"""
+        key_prefix = "eval/"
+        if field_indices is not None:
+            # If field_indices is not None, only evaluate on the given fields
+            self.data["losses"] = self.data["token_losses"][:, field_indices].sum(axis=1)
+            key_prefix = "eval/fields_{}/".format("-".join(map(str, field_indices)))
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
         # Get generic metrics
-        evaluator_metrics = self.get_metrics()
+        evaluator_metrics = self.get_metrics(key_prefix=key_prefix)
 
         # get line losses plot
-        self.plot_line_loss_percentiles(
-            percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False
-        )
-        if self.use_wandb:
-            wandb.log({"Aggregate line losses": wandb.Image(plt)})
-        plt.clf()
+        # self.plot_line_loss_percentiles(
+        #     percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False
+        # )
+        # if self.use_wandb:
+        #     wandb.log({"Aggregate line losses": wandb.Image(plt)})
+        # plt.clf()
 
         # get roc curve
         _, roc_plot = self.plot_roc_curve()
         if self.use_wandb:
-            wandb.log({"ROC Curve": roc_plot})
+            wandb.log({key_prefix + "ROC Curve": roc_plot})
 
         # get nonskipped roc curve
-        evaluator_metrics["eval/AUC_nonskipped"], nonskipped_roc_plot = self.plot_roc_curve(title="ROC (nonskipped)", nonskipped=True)
-        if self.use_wandb:
-            wandb.log({"ROC Curve (nonskipped)": nonskipped_roc_plot})
+        # evaluator_metrics["eval/AUC_nonskipped"], nonskipped_roc_plot = self.plot_roc_curve(title="ROC (nonskipped)",
+        #                                                                                     nonskipped=True)
+        # if self.use_wandb:
+        #     wandb.log({"ROC Curve (nonskipped)": nonskipped_roc_plot})
 
         # get pr curve
-        evaluator_metrics["eval/AP"], pr_plot = self.plot_pr_curve()
+        evaluator_metrics[key_prefix + "AP"], pr_plot = self.plot_pr_curve()
         if self.use_wandb:
-            wandb.log({"PR Curve": pr_plot})
+            wandb.log({key_prefix + "PR Curve": pr_plot})
 
         # get normalised line losses plot
-        self.plot_line_loss_percentiles(
-            percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False, normalised=True
-        )
-        if self.use_wandb:
-            wandb.log({"Aggregate line losses (normalised)": wandb.Image(plt)})
-        plt.clf()
+        # self.plot_line_loss_percentiles(
+        #     percentiles=[75, 95, 99], smoothing=300, ylim=(-1, -1), outliers=1, legend=False, normalised=True
+        # )
+        # if self.use_wandb:
+        #     wandb.log({"Aggregate line losses (normalised)": wandb.Image(plt)})
+        # plt.clf()
 
         # get normalised roc curve
-        evaluator_metrics["eval/AUC_(normalised)"], roc_plot = self.plot_roc_curve(
-            title="ROC (normalised)", normalised=True
-        )
-        if self.use_wandb:
-            wandb.log({"ROC Curve (normalised)": roc_plot})
+        # evaluator_metrics["eval/AUC_(normalised)"], roc_plot = self.plot_roc_curve(
+        #     title="ROC (normalised)", normalised=True
+        # )
+        # if self.use_wandb:
+        #     wandb.log({"ROC Curve (normalised)": roc_plot})
 
         # get normalised pr curve
-        evaluator_metrics["eval/AP_(normalised)"], pr_plot = self.plot_pr_curve(
-            title="PR Curve (normalised)", normalised=True
-        )
-        if self.use_wandb:
-            wandb.log({"PR Curve (normalised)": pr_plot})
+        # evaluator_metrics["eval/AP_(normalised)"], pr_plot = self.plot_pr_curve(
+        #     title="PR Curve (normalised)", normalised=True
+        # )
+        # if self.use_wandb:
+        #     wandb.log({"PR Curve (normalised)": pr_plot})
 
         # Log the evaluation results
         if self.use_wandb and wandb.run is not None:
             for key, value in evaluator_metrics.items():
                 wandb.run.summary[key] = value
+
+        if field_indices is not None:
+            # reset the losses to the full set of losses
+            self.data["losses"] = self.data["token_losses"].sum(axis=1)
         return evaluator_metrics

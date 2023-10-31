@@ -45,7 +45,7 @@ def tokens_to_add(task: str) -> Tuple[bool, bool]:
     return add_sos, add_eos
 
 
-def prepare_datadict(line: str, task: str, tokenizer: Tokenizer) -> dict:
+def prepare_datadict(line: str, task: str, tokenizer: Tokenizer, test: bool = False) -> dict:
 
     fields = line.strip().split(",")
     second = int(fields[0])
@@ -53,8 +53,12 @@ def prepare_datadict(line: str, task: str, tokenizer: Tokenizer) -> dict:
 
     add_sos, add_eos = tokens_to_add(task)
 
-    # Remove timestamp and red team flag from input
-    to_tokenize = line[len(fields[0]) + 1 : -3]
+    if tokenizer.include_timestamp:
+        # Remove red team flag from input
+        to_tokenize = line[: -3]
+    else:
+        # Remove timestamp and red team flag from input
+        to_tokenize = line[len(fields[0]) + 1 : -3]
     tokenized_line = tokenizer.tokenize(to_tokenize, add_sos, add_eos)
 
     day = int(second) // SECONDS_PER_DAY
@@ -77,7 +81,7 @@ def prepare_datadict(line: str, task: str, tokenizer: Tokenizer) -> dict:
         label = tokenized_line[1:-1]
     elif task == MASKED_LM:
         # Add mask tokens to input
-        data_in, label, _ = tokenizer.mask_tokens(tokenized_line)
+        data_in, label = tokenizer.mask_tokens(tokenized_line, test=test)
     elif task == SENTENCE_LM:
         # Include all tokens in both input and target
         data_in = tokenized_line
@@ -103,9 +107,10 @@ def parse_multiple_files(filepaths: List[str]):
 class LogDataset:
     """Base log dataset class."""
 
-    def __init__(self, filepaths: Union[str, List[str]], tokenizer: Tokenizer, task: str) -> None:
+    def __init__(self, filepaths: Union[str, List[str]], tokenizer: Tokenizer, task: str, test: bool = False) -> None:
         self.tokenizer: Tokenizer = tokenizer
         self.task = task
+        self.test = test
 
         if isinstance(filepaths, str):
             filepaths = [filepaths]
@@ -116,16 +121,15 @@ class MapLogDataset(LogDataset, Dataset):
     """Provides data via __getitem__, allowing arbitrary data entries to be
     accessed via index."""
 
-    def __init__(self, filepaths, tokenizer, task) -> None:
-        super().__init__(filepaths, tokenizer, task)
-
+    def __init__(self, filepaths, tokenizer, task, test=False) -> None:
+        super().__init__(filepaths, tokenizer, task, test)
         self.log_lines = []
         iterator = parse_multiple_files(self.filepaths)
         self.log_lines.extend(iterator)
 
     def __getitem__(self, index):
         log_line = self.log_lines[index]
-        parsed_line = prepare_datadict(log_line, self.task, self.tokenizer)
+        parsed_line = prepare_datadict(log_line, self.task, self.tokenizer, test=self.test)
         return parsed_line
 
     def __len__(self):
@@ -136,8 +140,8 @@ class IterableLogDataset(LogDataset, IterableDataset):  # pylint: disable=abstra
     """Provides data via __iter__, allowing data to be accessed in order
     only."""
 
-    def __init__(self, filepaths, tokenizer, task) -> None:
-        super().__init__(filepaths, tokenizer, task)
+    def __init__(self, filepaths, tokenizer, task, test=False) -> None:
+        super().__init__(filepaths, tokenizer, task, test)
         self.refresh_iterator()
 
     def __iter__(self):
@@ -146,7 +150,7 @@ class IterableLogDataset(LogDataset, IterableDataset):  # pylint: disable=abstra
     def refresh_iterator(self):
         def generate_iterator():
             for line in parse_multiple_files(self.filepaths):
-                yield prepare_datadict(line, self.task, self.tokenizer)
+                yield prepare_datadict(line, self.task, self.tokenizer, test=self.test)
 
         self.iterator = generate_iterator()
 
@@ -493,14 +497,14 @@ def create_data_loader(
     tokenizer: Tokenizer,
     task: str,
     shuffle: bool = False,
+    test: bool = False,
 ) -> LogDataLoader:
     """Creates and returns a data loader."""
 
     dataset: LogDataset
-    if shuffle:
-        dataset = MapLogDataset(filepaths, tokenizer, task)
-    else:
-        dataset = IterableLogDataset(filepaths, tokenizer, task)
+    dataset = MapLogDataset(filepaths, tokenizer, task, test=test)
+    # else:
+    #     dataset = IterableLogDataset(filepaths, tokenizer, task, test=test)
 
     collate = partial(collate_fn, jagged=tokenizer.jagged)
     data_handler = LogDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_function=collate)
@@ -565,7 +569,7 @@ def load_data(
         val_loader = create_data_loader(filepaths_valid, batch_sizes[1], tokenizer, task, shuffle=False)
     else:
         val_loader = None
-    test_loader = create_data_loader(filepaths_eval, batch_sizes[1], tokenizer, task, shuffle=False)
+    test_loader = create_data_loader(filepaths_eval, batch_sizes[1], tokenizer, task, shuffle=False, test=True)
     return train_loader, val_loader, test_loader
 
 
@@ -634,7 +638,7 @@ class TieredLogDataLoader:
         self.tokenizer: Tokenizer = tokenizer
         self.task = task
         self.delimiter = delimiter  # delimiter for input file
-        self.mb_size = batch_size  # the number of users in a batch
+        self.batch_size = batch_size  # the number of users in a batch
         self.num_steps = num_steps  # The number of log lines for each user in a batch
         self.user_logs: Dict[int, List[dict]] = {}
         self.staggler_num_steps = 1
@@ -681,7 +685,7 @@ class TieredLogDataLoader:
                             self.flush = True
 
                     # Before the data loader reads the last line of the log - we only want fullsized batches (mb_size)
-                    if len(self.batch_ready_users_list) >= self.mb_size and not self.flush:
+                    if len(self.batch_ready_users_list) >= self.batch_size and not self.flush:
                         batch_data = self.get_batch_data()
 
                     # When the data loader has read the last line of the log - we accept any size of batch
@@ -692,7 +696,7 @@ class TieredLogDataLoader:
                     elif len(self.batch_ready_users_list) == 0 and self.flush:
                         if self.num_steps == self.staggler_num_steps:
                             break
-                        self.mb_size = self.num_steps * self.mb_size
+                        self.batch_size = self.num_steps * self.batch_size
                         self.num_steps = self.staggler_num_steps
                         # Update batch_ready_users_list for the smaller num_steps
                         for user, logs in self.user_logs.items():
@@ -790,7 +794,7 @@ class TieredLogDataLoader:
     def get_batch_data(self):
         batch_data = []
         # Loop over users that have enough lines loaded to be used in a batch
-        for user in self.batch_ready_users_list[: self.mb_size]:
+        for user in self.batch_ready_users_list[: self.batch_size]:
             # Add user's lines to the batch
             batch_data.append(self.user_logs[user][0 : self.num_steps])
             # Update user's saved lines

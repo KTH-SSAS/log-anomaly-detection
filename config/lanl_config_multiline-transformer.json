@@ -7,5 +7,6 @@
 	"shift_window": 100,
 	"memory_type": "user",
 	"sentence_embedding": "stack",
-	"embeddings_path": ""
+	"embeddings_path": "",
+	"include_timestamp": false
 }

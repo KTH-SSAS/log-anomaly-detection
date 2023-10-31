@@ -9,6 +9,7 @@ from log_analyzer.config.config import Config
 class ModelConfig(Config):
     sequence_length: Optional[int] = field(init=False, default=None)
     _vocab_size: Optional[int] = field(init=False, default=None)
+    include_timestamp: bool
 
     @property
     def vocab_size(self) -> int:

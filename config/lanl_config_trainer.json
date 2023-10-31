@@ -8,19 +8,19 @@
 	"test_files": [
 		"8.csv"
 	],
-	"train_batch_size": 64,
+	"train_batch_size": 400,
 	"eval_batch_size": 2048,
-	"epochs": 1,
-	"learning_rate": 0.001,
+	"epochs": 3,
+	"learning_rate": 1e-4,
 	"early_stopping": true,
 	"early_stop_patience": 5,
 	"scheduler_gamma": 0.99,
 	"scheduler_step_size": 0,
 	"mixed_precision": false,
-	"shuffle_train_data": false,
+	"shuffle_train_data": true,
 	"gradient_accumulation": 0,
 	"validations_per_epoch": 0,
 	"gradient_clip": 0,
 	"warmup_period": 0,
-	"per_epoch_lr_reduction": 0
+	"per_epoch_lr_reduction": 0.5
 }
