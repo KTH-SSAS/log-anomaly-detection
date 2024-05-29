@@ -11,7 +11,7 @@ def set_args(bidir, model_type, token_level):
     args["bidirectional"] = bidir
     args["model_type"] = model_type
     args["tokenization"] = token_level
-    args["counts_file"] = "data/counts678.json"
+    args["counts_file"] = "data/counts.json"
     trainer_config = TrainerConfig.init_from_file("config/lanl_config_trainer.json")
     trainer_config.train_files = ["6.csv", "7.csv"]
     trainer_config.validation_files = ["6_two.csv"]

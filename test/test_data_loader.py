@@ -25,7 +25,7 @@ def test_data_loader_char(shuffle, task):
 
     filepath = "data/test_data/6.csv"
     batch_size = 10
-    counts_file = Path("data/counts678.json")
+    counts_file = Path("data/counts.json")
     tokenizer = get_tokenizer("char", counts_file, cutoff=40)
     data_handler = create_data_loader([filepath], batch_size, tokenizer, task, shuffle=shuffle)
     bidirectional = task == "bidir-lm"
@@ -46,7 +46,7 @@ def test_data_loader_word(shuffle, task, mode):
 
     filepath = "data/test_data/6.csv"
     batch_size = 10
-    counts_file = Path("data/counts678.json")
+    counts_file = Path("data/counts.json")
 
     tokenizer = get_tokenizer(mode, counts_file, cutoff=40)
 
@@ -73,7 +73,7 @@ def test_data_loader_tiered():
 @pytest.mark.parametrize("memory_type", ["global", "user"])
 def test_data_loader_multiline(shuffle, memory_type):
     filepath = ["data/test_data/6.csv"]
-    counts_file = Path("data/counts678.json")
+    counts_file = Path("data/counts.json")
     batch_size = 10
     tokenizer = get_tokenizer("word-merged", counts_file, cutoff=49)
     task = "sentence-lm"

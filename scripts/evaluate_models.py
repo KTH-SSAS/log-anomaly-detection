@@ -18,7 +18,7 @@ names = ["jakob", "simon", "yeongwoo"]
 data_dir = Path("data")
 
 log_data_dir = data_dir / "full_data"
-counts_file = data_dir / "counts678.json"
+counts_file = data_dir / "counts.json"
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
