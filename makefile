@@ -2,7 +2,7 @@
 .ONESHELL:
 DATA_DIR = data/full_data
 CONFIG_DIR = config
-COUNTS_FILE = data/counts678.json
+COUNTS_FILE = data/counts.json
 TRAINER_CONFIG = config/lanl_config_trainer.json
 FLAGS = -tc $(TRAINER_CONFIG) -df $(DATA_DIR)
 
@@ -34,7 +34,7 @@ FLAGS += $(PYFLAGS)
 endif
 
 counts: data/full_data/*.csv
-	generate-counts $^ -o data/counts678.json
+	generate-counts $^ -o data/counts.json
 
 
 tox:
