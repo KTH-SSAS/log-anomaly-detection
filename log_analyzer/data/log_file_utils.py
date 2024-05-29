@@ -266,7 +266,7 @@ def process_file():
     parser.add_argument("auth_file", type=str, help="Path to auth.txt.")
     parser.add_argument("redteam_file", type=str, help="Path to file with redteam events.")
     parser.add_argument("days_to_keep", nargs="+", type=int, help="Days to keep logs from.")
-    parser.add_argument("-o", "--output", type=str, help="Output directory.", default="auth_split")
+    parser.add_argument("-o", "--output", type=str, help="Output directory.", default="data/full_data")
     args = parser.parse_args()
     process_logfiles_for_training(args.auth_file, args.redteam_file, args.output, args.days_to_keep)
 
@@ -274,14 +274,14 @@ def process_file():
 def generate_counts(arguments=None):
     """CLI tool to generate counts file."""
     parser = ArgumentParser()
-    parser.add_argument("log_files", type=str, nargs="+", help="Glob pattern of log files to process.")
+    parser.add_argument("log_files", type=str, nargs="+", help="Glob pattern of log files to process.", default="data/full_data/*.csv")
     parser.add_argument(
         "--not-normalized", action="store_false", help="Add this flag if the log file is not already normalized."
     )
     parser.add_argument(
         "--no-red", action="store_false", help="Add this flag if the log file does not have red team events added."
     )
-    parser.add_argument("-o", "--output", help="Output filename.", default="counts.json")
+    parser.add_argument("-o", "--output", help="Output filename.", default="data/counts.json")
     parser.add_argument(
         "--fields-to-exclude", nargs="+", type=int, help="Indexes of fields to not count.", default=[0, -1]
     )
@@ -335,3 +335,6 @@ def generate_vocab_from_counts():
 # count_days("/home/jakob/lanl/redteam.txt")
 # day = 6
 # add_redteam_to_log(day, f"/home/jakob/lanl/{day}.csv", f"{day}.csv", "/home/jakob/lanl/redteam.txt", normalized=True)
+
+if __name__ == "__main__":
+    process_file()
