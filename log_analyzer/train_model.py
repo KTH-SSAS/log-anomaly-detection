@@ -9,7 +9,7 @@ import torch
 
 import wandb
 from log_analyzer.application import Application
-from log_analyzer.data.data_loader import MultilineDataLoader
+from log_analyzer.data_utils.data_loader import MultilineDataLoader
 from log_analyzer.train_loop import eval_model, init_from_args, train_model
 
 

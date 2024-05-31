@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from log_analyzer.data.log_file_utils import count_fields, process_logfiles_for_training
+from log_analyzer.data_utils.log_file_utils import count_fields, process_logfiles_for_training
 from log_analyzer.tokenizer.tokenizer_neo import CharTokenizer, GlobalTokenizer, LANLTokenizer, LANLVocab
 from log_analyzer.tokenizer.vocab import GlobalVocab, MergedLANLVocab
 from log_analyzer.train_loop import get_tokenizer

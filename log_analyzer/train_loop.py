@@ -14,7 +14,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-import log_analyzer.data.data_loader as data_utils
+import log_analyzer.data_utils.data_loader as data_utils
 import wandb
 from log_analyzer import application
 from log_analyzer.application import Application

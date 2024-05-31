@@ -5,6 +5,7 @@ import sys
 import tempfile
 from argparse import ArgumentParser
 from collections import OrderedDict
+from tqdm import tqdm
 
 from log_analyzer.tokenizer.tokenizer_neo import LANLVocab
 from log_analyzer.tokenizer.vocab import GlobalVocab
@@ -103,6 +104,9 @@ def split_by_day(log_filename, out_dir, keep_days=None):
             day = sec2day(sec)
             user = split_line[1]
 
+            if day > max(keep_days):
+                break
+
             if not (day in keep_days and user.startswith("U")):
                 continue
 
@@ -168,7 +172,7 @@ def add_redteam_to_log(day, filename_in, filename_out, readteam_file, normalized
     with open(filename_out, "w", encoding="utf8") as outfile, open(filename_in, "r", encoding="utf8") as infile:
         reader = LANLReader(infile, normalized=normalized)
         writer = csv.DictWriter(outfile, reader.field_names + ["is_red"])
-        for line in reader:
+        for line in tqdm(reader, desc=f"Writing day {day}"):
 
             red_style_line = (
                 f"""{line['time']},{line['src_user']}@{line['src_domain']},{line['src_pc']},{line['dst_pc']}\n"""
@@ -182,7 +186,20 @@ def add_redteam_to_log(day, filename_in, filename_out, readteam_file, normalized
             writer.writerow(line)
 
 
-def process_logfiles_for_training(auth_file, red_file, output_dir, days_to_keep):
+def generate_subset(infile_path, outfile_path, subset_size, indices_to_force_red=(10,50)):
+    """Generate a subset of the input file."""
+    with open(outfile_path, "w", encoding="utf8") as outfile, open(infile_path, "r", encoding="utf8") as infile:
+        reader = LANLReader(infile, has_red=True)
+        writer = csv.DictWriter(outfile, fieldnames=reader.field_names)
+        for i, entry in enumerate(reader):
+            if i+1 in indices_to_force_red:
+                entry["is_red"] = "1"
+            if i >= subset_size:
+                break
+            writer.writerow(entry)
+
+
+def process_logfiles_for_training(auth_file, red_file, days_to_keep, output_dir, sample_output_dir, test_output_dir):
     """Process auth.txt into normalized log files split into days."""
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
@@ -194,6 +211,35 @@ def process_logfiles_for_training(auth_file, red_file, output_dir, days_to_keep)
             infile = os.path.join(tmpdir, f"{day}.csv")
             outfile = os.path.join(output_dir, f"{day}.csv")
             add_redteam_to_log(day, infile, outfile, red_file)
+            # Generate sample and test files by copying the outfile (full data)
+            sample_outfile = os.path.join(sample_output_dir, f"{day}.csv")
+            generate_subset(outfile, sample_outfile, 10000)
+            test_outfile = os.path.join(test_output_dir, f"{day}.csv")
+            generate_subset(outfile, test_outfile, 200)
+        
+        # Copy the first 10000 lines of redteam.txt and auth.txt to the test directory
+        red_outfile = os.path.join(test_output_dir, "redteam.txt")
+        with open(red_file, "r", encoding="utf8") as in_file, open(red_outfile, "w", encoding="utf8") as out_file:
+            for i, line in enumerate(in_file):
+                out_file.write(line)
+                if i >= 10000:
+                    break
+        
+        auth_outfile = os.path.join(test_output_dir, "auth_head.txt")
+        with open(auth_file, "r", encoding="utf8") as in_file, open(auth_outfile, "w", encoding="utf8") as out_file:
+            for i, line in enumerate(in_file):
+                out_file.write(line)
+                if i >= 10000:
+                    break
+
+        # Copy the first 100 lines of the raw day 8 data to the test directory
+        raw_day_8 = os.path.join(tmpdir, "8.csv")
+        raw_day_8_outfile = os.path.join(test_output_dir, "raw_8_head.csv")
+        with open(raw_day_8, "r", encoding="utf8") as in_file, open(raw_day_8_outfile, "w", encoding="utf8") as out_file:
+            for i, line in enumerate(in_file):
+                out_file.write(line)
+                if i >= 100:
+                    break
 
 
 def get_all_users(infile_path, outfile_path, has_red=True):
@@ -260,15 +306,22 @@ def count_fields(infile_path, outfile_path=None, fields_to_exclude=None, normali
     return counts
 
 
-def process_file():
+def process_file(arguments=None):
     """CLI tool to process auth.txt."""
     parser = ArgumentParser()
-    parser.add_argument("auth_file", type=str, help="Path to auth.txt.")
-    parser.add_argument("redteam_file", type=str, help="Path to file with redteam events.")
-    parser.add_argument("days_to_keep", nargs="+", type=int, help="Days to keep logs from.")
+    parser.add_argument("auth_file", type=str, help="Path to auth.txt.", default="data/auth.txt")
+    parser.add_argument("redteam_file", type=str, help="Path to file with redteam events.", default="data/redteam.txt")
+    parser.add_argument("-d", "--days_to_keep", nargs="+", type=int, help="Days to keep logs from.", default=[6, 7, 8])
     parser.add_argument("-o", "--output", type=str, help="Output directory.", default="data/full_data")
-    args = parser.parse_args()
-    process_logfiles_for_training(args.auth_file, args.redteam_file, args.output, args.days_to_keep)
+    parser.add_argument("-s", "--sample_output", type=str, help="Output directory for sample data.", default="data/sample_data")
+    parser.add_argument("-t", "--test_output", type=str, help="Output directory for test data.", default="data/test_data")
+
+    if arguments is None:
+        args = parser.parse_args()
+    else:
+        args = parser.parse_args(arguments)
+
+    process_logfiles_for_training(args.auth_file, args.redteam_file, args.days_to_keep, args.output, args.sample_output, args.test_output)
 
 
 def generate_counts(arguments=None):
@@ -283,7 +336,7 @@ def generate_counts(arguments=None):
     )
     parser.add_argument("-o", "--output", help="Output filename.", default="data/counts.json")
     parser.add_argument(
-        "--fields-to-exclude", nargs="+", type=int, help="Indexes of fields to not count.", default=[0, -1]
+        "--fields-to-exclude", nargs="+", type=int, help="Indices of fields to not count.", default=[0, -1]
     )
 
     if arguments is None:
@@ -291,11 +344,10 @@ def generate_counts(arguments=None):
     else:
         args = parser.parse_args(arguments)
 
-    # args = parser.parse_args(["data/train_data/7.csv", "--fields-to-exclude", "0"])
     count_fields(args.log_files, args.output, args.fields_to_exclude, args.not_normalized, args.no_red)
 
 
-def count_users():
+def count_users(arguments=None):
     """CLI tool to generate  file."""
     parser = ArgumentParser()
     parser.add_argument("log_files", type=str, nargs="+", help="Glob pattern of log files to process.")
@@ -304,12 +356,15 @@ def count_users():
     )
     parser.add_argument("-o", "--output", help="Output filename.", default="users.json")
 
-    args = parser.parse_args()
+    if arguments is None:
+        args = parser.parse_args()
+    else:
+        args = parser.parse_args(arguments)
 
     get_all_users(args.log_files, args.output, args.no_red)
 
 
-def generate_vocab_from_counts():
+def generate_vocab_from_counts(arguments=None):
     """Generate vocab."""
     parser = ArgumentParser()
     parser.add_argument("counts_file", type=str, help="Path to JSON file with field counts.")
@@ -319,7 +374,10 @@ def generate_vocab_from_counts():
     )
     parser.add_argument("-o", "--output", type=str, help="Output filename", default="vocab.json")
 
-    args = parser.parse_args()
+    if arguments is None:
+        args = parser.parse_args()
+    else:
+        args = parser.parse_args(arguments)
 
     if args.mode == "fields":
         vocab = LANLVocab.counts2vocab(args.counts_file, args.cutoff)
@@ -332,9 +390,9 @@ def generate_vocab_from_counts():
         json.dump(vocab, f)
 
 
-# count_days("/home/jakob/lanl/redteam.txt")
-# day = 6
-# add_redteam_to_log(day, f"/home/jakob/lanl/{day}.csv", f"{day}.csv", "/home/jakob/lanl/redteam.txt", normalized=True)
-
 if __name__ == "__main__":
+    # First populate full_data, sample_data and test_data with the log files split by day
     process_file()
+    # Then generate counts
+    generate_counts()
+    # Done

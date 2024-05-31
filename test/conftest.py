@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from log_analyzer.config.model_config import TieredTransformerConfig, TransformerConfig
-from log_analyzer.data.log_file_utils import add_redteam_to_log, count_fields
+from log_analyzer.data_utils.log_file_utils import add_redteam_to_log, count_fields
 from log_analyzer.tokenizer.tokenizer_neo import LANLTokenizer, LANLVocab
 
 SEQUENCE_LENGTH = 10

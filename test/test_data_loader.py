@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from log_analyzer.data.data_loader import create_data_loader, create_data_loader_multiline
+from log_analyzer.data_utils.data_loader import create_data_loader, create_data_loader_multiline
 from log_analyzer.train_loop import calculate_max_input_length, get_tokenizer
 
 
