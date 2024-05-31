@@ -36,6 +36,9 @@ endif
 counts: data/full_data/*.csv
 	generate-counts $^ -o data/counts.json
 
+prepare_data: data/auth.txt data/redteam.txt
+	process-auth $^
+	$(MAKE) counts
 
 tox:
 	tox .
