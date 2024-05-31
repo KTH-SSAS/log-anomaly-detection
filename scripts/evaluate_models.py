@@ -12,7 +12,7 @@ import pandas as pd
 model_dir = Path("trained_models")
 
 # subfolders
-names = ["jakob", "simon", "yeongwoo"]
+names = ["name"]
 
 # log data folder
 data_dir = Path("data")
