@@ -73,7 +73,7 @@ tokenizer_vocabs = {
 }
 
 
-def get_tokenizer(tokenization, counts_file: Path, cutoff, include_timestamp) -> Tokenizer:
+def get_tokenizer(tokenization, counts_file: Path, cutoff, include_timestamp=False) -> Tokenizer:
     tokenizer: Tokenizer
     vocab = None
     tokenizer_cls, vocab_cls = tokenizer_vocabs[tokenization]
