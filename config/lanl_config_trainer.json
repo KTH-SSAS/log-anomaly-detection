@@ -3,7 +3,7 @@
 		"7.csv"
 	],
 	"validation_files": [
-		"6_100k.csv"
+		"6.csv"
 	],
 	"test_files": [
 		"8.csv"
