@@ -233,13 +233,14 @@ def process_logfiles_for_training(auth_file, red_file, days_to_keep, output_dir,
                     break
 
         # Copy the first 100 lines of the raw day 8 data to the test directory
-        raw_day_8 = os.path.join(tmpdir, "8.csv")
-        raw_day_8_outfile = os.path.join(test_output_dir, "raw_8_head.csv")
-        with open(raw_day_8, "r", encoding="utf8") as in_file, open(raw_day_8_outfile, "w", encoding="utf8") as out_file:
-            for i, line in enumerate(in_file):
-                out_file.write(line)
-                if i >= 100:
-                    break
+        if 8 in days_to_keep:
+            raw_day_8 = os.path.join(tmpdir, "8.csv")
+            raw_day_8_outfile = os.path.join(test_output_dir, "raw_8_head.csv")
+            with open(raw_day_8, "r", encoding="utf8") as in_file, open(raw_day_8_outfile, "w", encoding="utf8") as out_file:
+                for i, line in enumerate(in_file):
+                    out_file.write(line)
+                    if i >= 100:
+                        break
 
 
 def get_all_users(infile_path, outfile_path, has_red=True):
