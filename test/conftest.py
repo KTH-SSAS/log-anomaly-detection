@@ -140,8 +140,8 @@ def fixture_counts_file(tmp_path):
 
     assert list(counts.keys()) == field_names[1:]
 
-    assert counts["src_user"]["U7499"] == 6
-    assert counts["src_user"]["U7893"] == 3
+    assert counts["src_user"]["U12"] == 3
+    assert counts["src_user"]["U90"] == 13
 
     return outfile
 

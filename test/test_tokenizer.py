@@ -14,7 +14,7 @@ def test_counter(processed_log_file):
     counts = count_fields(processed_log_file, fields_to_exclude=[0], has_red=True)
     assert counts["src_user"]["U22"] == 8
     assert counts["dst_user"]["U22"] == 8
-    assert counts["src_domain"]["DOM1"] == 97
+    assert counts["src_domain"]["DOM1"] == 98
 
 
 def test_counts2vocab(counts_file):
@@ -22,7 +22,7 @@ def test_counts2vocab(counts_file):
     vocab = LANLVocab.counts2vocab(counts_file, 0)
 
     assert vocab.special_tokens["[PAD]"] == 0
-    assert "U1" in vocab.vocab[1]
+    assert "U2" in vocab.vocab[1]
 
 
 def test_log_processing(tmp_path, auth_file, redteam_file):
@@ -31,7 +31,7 @@ def test_log_processing(tmp_path, auth_file, redteam_file):
     outfile = Path(tmp_path) / "out"
     outfile.mkdir()
 
-    process_logfiles_for_training(auth_file, redteam_file, outfile, [0])
+    process_logfiles_for_training(auth_file, redteam_file, [0], outfile, outfile, outfile)
 
 
 @pytest.mark.parametrize(
@@ -39,7 +39,7 @@ def test_log_processing(tmp_path, auth_file, redteam_file):
     [
         (
             "word-global",
-            (GlobalTokenizer, GlobalVocab, "T8,U1053,DOM1,U1053,DOM1,[OOV],C625,Kerberos,Network,LogOn,Success"),
+            (GlobalTokenizer, GlobalVocab, "T8,[OOV],DOM1,[OOV],DOM1,[OOV],C625,Kerberos,Network,LogOn,Success"),
         ),
         (
             "word-fields",
@@ -47,7 +47,7 @@ def test_log_processing(tmp_path, auth_file, redteam_file):
         ),
         (
             "word-merged",
-            (LANLTokenizer, MergedLANLVocab, "T8,U1053,DOM1,U1053,DOM1,[OOV],C625,Kerberos,Network,LogOn,Success"),
+            (LANLTokenizer, MergedLANLVocab, "T8,[OOV],DOM1,[OOV],DOM1,[OOV],C625,Kerberos,Network,LogOn,Success"),
         ),
         (
             "char",
