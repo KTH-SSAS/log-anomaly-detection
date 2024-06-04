@@ -131,7 +131,13 @@ class TransformerLanguageModel(LogModel):
         self.feedforward_dim = config.feedforward_dim
         self.vocab_size = config.vocab_size
 
-        self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout, max_len=10)
+        max_len = 10
+        # Hack to detect char-based tokenisation
+        if self.vocab_size < 200:
+            # Char-based, increase max_len
+            max_len = 200
+
+        self.pos_encoder = PositionalEncoding(self.model_dim, dropout=self.dropout, max_len=max_len)
         encoder_layers = nn.TransformerEncoderLayer(
             self.model_dim, self.attention_heads, self.feedforward_dim, dropout=self.dropout, batch_first=True
         )
