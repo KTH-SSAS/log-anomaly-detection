@@ -4,15 +4,14 @@ from typing import Dict, Optional
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import wandb
 from sklearn import metrics
 from torch import Tensor
 from tqdm import tqdm
 
-import wandb
 from log_analyzer.application import Application
 from log_analyzer.model.lstm import LogModel, LSTMLanguageModel, MultilineLogModel, TieredLogModel, TieredLSTM
-from log_analyzer.model.transformer import TransformerLanguageModel
-from log_analyzer.tokenizer.tokenizer import CharTokenizer
+from log_analyzer.tokenizer.detokenizer import Int2Char
 
 
 def create_attention_matrix(
@@ -90,7 +89,7 @@ def create_attention_matrix(
 
         ax.matshow(matrix.detach().numpy())
         if lengths is not None:
-            string = CharTokenizer.detokenize_line(seq[: lengths[i] - 1])
+            string = Int2Char.run_detokenizer(seq[: lengths[i] - 1])
             ax.set_xticks(range(len(string)))
             ax.set_xticklabels(string, fontsize="small")
             ax.set_yticks(range(len(string)))
@@ -179,9 +178,17 @@ class Evaluator:
         if not self.model.bidirectional and not isinstance(self.model, MultilineLogModel):
             # Prepend a 0 to token_losses since non-bidir models don't predict the first token
             if isinstance(self.model, TieredLogModel):
-                token_losses = torch.cat((torch.zeros((token_losses.shape[0], token_losses.shape[1], 1), device=token_losses.device), token_losses), dim=2)
+                token_losses = torch.cat(
+                    (
+                        torch.zeros((token_losses.shape[0], token_losses.shape[1], 1), device=token_losses.device),
+                        token_losses,
+                    ),
+                    dim=2,
+                )
             else:
-                token_losses = torch.cat((torch.zeros((token_losses.shape[0], 1), device=token_losses.device), token_losses), dim=1)
+                token_losses = torch.cat(
+                    (torch.zeros((token_losses.shape[0], 1), device=token_losses.device), token_losses), dim=1
+                )
 
         # Save the results if desired
         if store_eval_data:
@@ -237,7 +244,7 @@ class Evaluator:
         seconds = seconds.numpy().flatten()
         red_flags = red_flags.numpy().flatten()
         losses = losses.cpu().flatten()
-    
+
         if len(token_losses.shape) > 2:
             token_losses = token_losses.cpu().flatten(end_dim=1).numpy()
         else:
@@ -352,7 +359,7 @@ class Evaluator:
         self.eval_loss = self.eval_loss / max(self.eval_lines_count, 1)
         self.eval_lines_count += 1 - self.eval_lines_count  # Reset to 1, keep the same Tensor, type and device
         # Prepared the normalised losses
-        #self._normalise_losses()
+        # self._normalise_losses()
 
         self.data_is_prepared = True
 
@@ -416,6 +423,7 @@ class Evaluator:
 
     def get_metrics_at_chosen_thresholds(self, key_prefix="eval/", normalised=False):
         """Computes TPR/FPR/Precision/Recall at two thresholds:
+
         - FPR at above 0.1%
         - Highest Precision achieved (with Recall >= 0.1)
         """
@@ -428,22 +436,22 @@ class Evaluator:
 
         # FPR at 0.1%
         # Find the lowest fp_rate above 0.1%
-        acceptable_fpr_index = np.where(fp_rate==np.min(fp_rate[fp_rate>0.001]))[0][0]
+        acceptable_fpr_index = np.where(fp_rate == np.min(fp_rate[fp_rate > 0.001]))[0][0]
         acceptable_tpr = tp_rate[acceptable_fpr_index]
         acceptable_fpr = fp_rate[acceptable_fpr_index]
         acceptable_threshold = roc_thresholds[acceptable_fpr_index]
-        acceptable_recall = recalls[np.where(pr_thresholds==acceptable_threshold)[0][-1]]
-        acceptable_precision = precisions[np.where(pr_thresholds==acceptable_threshold)[0][-1]]
+        acceptable_recall = recalls[np.where(pr_thresholds == acceptable_threshold)[0][-1]]
+        acceptable_precision = precisions[np.where(pr_thresholds == acceptable_threshold)[0][-1]]
 
         # Find the lowest recall above 0.1 - this is the lower bound for the precision search
         # Note that precisions/recalls are ordered in reverse, so we need to find the last index
-        recall_low_bound_index = np.where(recalls==np.min(recalls[recalls>=0.1]))[0][-1]
-        peak_precision_index = np.where(precisions==np.max(precisions[:recall_low_bound_index+1]))[0][-1]
+        recall_low_bound_index = np.where(recalls == np.min(recalls[recalls >= 0.1]))[0][-1]
+        peak_precision_index = np.where(precisions == np.max(precisions[: recall_low_bound_index + 1]))[0][-1]
         peak_precision = precisions[peak_precision_index]
         peak_precision_recall = recalls[peak_precision_index]
         peak_precision_threshold = pr_thresholds[peak_precision_index]
-        peak_precision_tpr = tp_rate[np.where(roc_thresholds==peak_precision_threshold)[0][-1]]
-        peak_precision_fpr = fp_rate[np.where(roc_thresholds==peak_precision_threshold)[0][-1]]
+        peak_precision_tpr = tp_rate[np.where(roc_thresholds == peak_precision_threshold)[0][-1]]
+        peak_precision_fpr = fp_rate[np.where(roc_thresholds == peak_precision_threshold)[0][-1]]
         return_dict = {
             key_prefix + "0.1p_fpr": acceptable_fpr,
             key_prefix + "0.1p_fpr_tpr": acceptable_tpr,
@@ -473,17 +481,18 @@ class Evaluator:
             fp_rate, tp_rate, _ = metrics.roc_curve(red_flags, losses, pos_label=1)
         auc_score = metrics.auc(fp_rate, tp_rate)
         return auc_score
-    
+
     def get_filter_percent(self):
-        """Computes the % of data that is filtered out (marked as normal) if threshold is set so as to achieve 100%
-        recall with maximal precision."""
+        """Computes the % of data that is filtered out (marked as normal) if
+        threshold is set so as to achieve 100% recall with maximal
+        precision."""
         _, _, thresholds = metrics.precision_recall_curve(self.data["red_flags"], self.data["losses"], pos_label=1)
         # Find the threshold for 100% recall
         threshold = thresholds[0]
         # Find the number of lines that have a loss below this threshold - i.e. are filtered out
         filtered_lines = np.sum(self.data["losses"] < threshold)
         # Find what % of the data is filtered out
-        filter_percent = (1 - float(filtered_lines)/float(len(self.data["losses"])))
+        filter_percent = 1 - float(filtered_lines) / float(len(self.data["losses"]))
         return filter_percent
 
     def plot_line_loss_percentiles(
@@ -718,13 +727,16 @@ class Evaluator:
         return AP_score, plt
 
     def run_all(self, field_indices=None):
-        r"""Performs standard evaluation on the model. Assumes the model has been trained
-        and the evaluator has been populated with evaluation data (see eval_step)"""
+        r"""Performs standard evaluation on the model.
+
+        Assumes the model has been trained and the evaluator has been
+        populated with evaluation data (see eval_step)
+        """
         key_prefix = "eval/"
         if field_indices is not None:
             # If field_indices is not None, only evaluate on the given fields
             self.data["losses"] = self.data["token_losses"][:, field_indices].sum(axis=1)
-            key_prefix = "eval/fields_{}/".format("-".join(map(str, field_indices)))
+            key_prefix = f"eval/fields_{'-'.join(map(str, field_indices))}/"
         if not self.data_is_prepared:
             self.prepare_evaluation_data()
         # Get generic metrics

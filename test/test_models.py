@@ -1,4 +1,5 @@
 """Functions to test different model configurations."""
+
 from pathlib import Path
 
 import numpy as np
@@ -37,7 +38,7 @@ def test_transformer(tmpdir, model_type, bidirectional, tokenization, cuda):
 
     if cuda and not torch.cuda.is_available():
         pytest.skip()
-    
+
     if bidirectional and (model_type == "tiered-transformer" or tokenization == "char"):
         # Bidirectional transformer is not supported for tiered-transformer or char tokenization.
         pytest.skip()

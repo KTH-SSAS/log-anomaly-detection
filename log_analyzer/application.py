@@ -21,7 +21,7 @@ class Application:
 
     def __init__(self, cuda=False, wandb=False) -> None:
         if Application.__instance is not None:
-            raise Exception("Application has already been initialized.")
+            raise RuntimeError("Application has already been initialized.")
 
         Application.__instance = self
 

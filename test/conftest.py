@@ -23,7 +23,9 @@ NUM_USERS = 100
 
 @pytest.fixture()
 def test_config():
-    config = TransformerConfig(include_timestamp=False, layers=2, feedforward_dim=64, model_dim=64, attention_heads=2, dropout=0.1)
+    config = TransformerConfig(
+        include_timestamp=False, layers=2, feedforward_dim=64, model_dim=64, attention_heads=2, dropout=0.1
+    )
     config.vocab_size = VOCAB_SIZE
     config.sequence_length = SEQUENCE_LENGTH
     return config

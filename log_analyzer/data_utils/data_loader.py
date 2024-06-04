@@ -55,7 +55,7 @@ def prepare_datadict(line: str, task: str, tokenizer: Tokenizer, test: bool = Fa
 
     if tokenizer.include_timestamp:
         # Remove red team flag from input
-        to_tokenize = line[: -3]
+        to_tokenize = line[:-3]
     else:
         # Remove timestamp and red team flag from input
         to_tokenize = line[len(fields[0]) + 1 : -3]
@@ -100,8 +100,7 @@ def parse_multiple_files(filepaths: List[str]):
     for datafile in filepaths:
         # Only permit ASCII characters.
         with open(datafile, "r", encoding="ascii") as f:
-            for line in f:
-                yield line
+            yield from f
 
 
 class LogDataset:
@@ -278,7 +277,8 @@ class IterableUserMultilineDataset(IterableLogDataset, MultilineLogDataset):
 
 
 class MapMultilineDataset(MapLogDataset, MultilineLogDataset):
-    """Provides data via __getitem__, allowing arbitrary data entries to be accessed via index in arbitrary order.
+    """Provides data via __getitem__, allowing arbitrary data entries to be
+    accessed via index in arbitrary order.
 
     Provides sequences of loglines of length shift_window * 2 - 1. Each sequence contains loglines from a single user.
     """
@@ -511,6 +511,7 @@ def create_data_loader(
 
     return data_handler
 
+
 def multiline_collate_fn(data, pad_idx=0):
     """Pads the input fields to the length of the longest sequence in the
     batch."""
@@ -534,6 +535,7 @@ def multiline_collate_fn(data, pad_idx=0):
     batch["mask"] = torch.all(batch["input"] != pad_idx, dim=2)
 
     return batch
+
 
 def create_data_loader_multiline(
     filepaths: List[str],

@@ -41,10 +41,10 @@ prepare_data: data/auth.txt data/redteam.txt
 	$(MAKE) counts
 
 tox:
-	tox .
+	tox
 
 lint:
-	tox . -e py3-lint
+	tox -e py3-lint
 
 install:
 	pip install -e .

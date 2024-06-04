@@ -1,4 +1,5 @@
 """Helper functions for model creation and training."""
+
 import json
 import logging
 import os
@@ -11,11 +12,12 @@ from time import time
 from typing import Optional, Tuple, Union
 
 import numpy as np
+import wandb
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from wandb import wandb_run
 
 import log_analyzer.data_utils.data_loader as data_utils
-import wandb
 from log_analyzer import application
 from log_analyzer.application import Application
 from log_analyzer.config import TrainerConfig
@@ -41,7 +43,6 @@ from log_analyzer.tokenizer.tokenizer_neo import (
 )
 from log_analyzer.tokenizer.vocab import MergedLANLVocab
 from log_analyzer.trainer import Trainer
-from wandb import wandb_run
 
 try:
     import torch
@@ -158,7 +159,6 @@ def init_from_config_files(
     base_logdir=Path("./runs"),
     counts_file=None,
 ) -> Tuple[Trainer, Evaluator, DataLoader, DataLoader, DataLoader]:
-
     """Creates a model plus trainer given the specifications in args."""
     model_config = get_model_config(model_config_file, model_type)
     trainer_config = TrainerConfig.init_from_file(trainer_config_file)
@@ -383,7 +383,7 @@ def train_model(lm_trainer: Trainer, train_loader, val_loader):
                             loss, gradient_norm, done = lm_trainer.train_step(split_batch)
                         else:
                             if iteration == 0:
-                                raise Exception("Flush happened before any training could be done.")
+                                raise RuntimeError("Flush happened before any training could be done.")
 
                             logger.info("Due to flush, skipping the rest of the current file.")
                             train_loader.skip_file = True

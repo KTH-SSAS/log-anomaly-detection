@@ -1,12 +1,14 @@
+import csv
 import itertools
 from pathlib import Path
 from typing import List
+
+import pandas as pd
 import torch
+
+from log_analyzer.application import Application
 from log_analyzer.evaluator import Evaluator
 from log_analyzer.train_loop import eval_model, init_from_config_files
-from log_analyzer.application import Application
-import csv
-import pandas as pd
 
 # root folder
 model_dir = Path("trained_models")
@@ -25,9 +27,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def evaluate_single(run_dir: Path):
-    """
-    Evaluate a single model in a run directory. 
-    The directory is expected to be named as follows: 
+    """Evaluate a single model in a run directory.
+
+    The directory is expected to be named as follows:
     <run_id>_<model_type>_<tokenization>
     """
     name_parts = run_dir.name.split("_")
@@ -78,10 +80,11 @@ def main():
     Application(cuda=True, wandb=False)
     run_dirs = list(itertools.chain(*((model_dir / name).iterdir() for name in names)))
     evaluate_set_of_models(run_dirs)
-    
-    #df.groupby(["model_type", "tokenization"]).mean().to_csv(
+
+    # df.groupby(["model_type", "tokenization"]).mean().to_csv(
     #    "eval_data_mean.csv", mode=write_mode, header=first_entry, index=True
-    #)
+    # )
+
 
 if __name__ == "__main__":
     main()

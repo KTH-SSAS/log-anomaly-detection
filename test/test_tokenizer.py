@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from log_analyzer.data_utils.log_file_utils import count_fields, process_logfiles_for_training
@@ -43,16 +42,13 @@ def test_log_processing(tmp_path, auth_file, redteam_file):
         ),
         (
             "word-fields",
-            (LANLTokenizer, LANLVocab, "T8,[OOV],DOM1,[OOV],DOM1,[OOV],C625,Kerberos,Network,LogOn,Success")
+            (LANLTokenizer, LANLVocab, "T8,[OOV],DOM1,[OOV],DOM1,[OOV],C625,Kerberos,Network,LogOn,Success"),
         ),
         (
             "word-merged",
             (LANLTokenizer, MergedLANLVocab, "T8,[OOV],DOM1,[OOV],DOM1,[OOV],C625,Kerberos,Network,LogOn,Success"),
         ),
-        (
-            "char",
-            (CharTokenizer, None, "T8,U1053,DOM1,U1053,DOM1,C862,C625,Kerberos,Network,LogOn,Success")
-        ),
+        ("char", (CharTokenizer, None, "T8,U1053,DOM1,U1053,DOM1,C862,C625,Kerberos,Network,LogOn,Success")),
     ],
 )
 @pytest.mark.parametrize("include_timestamp", [True, False])

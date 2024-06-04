@@ -1,4 +1,5 @@
 """Code related to Transformer language model."""
+
 import math
 from abc import abstractmethod
 from functools import partial
@@ -57,8 +58,10 @@ def _generate_padding_mask(ctx_history, history_length):
 # Positional Encoding class taken from PyTorch word_language_model example code:
 # https://github.com/pytorch/examples/blob/master/word_language_model/model.py
 class PositionalEncoding(nn.Module):
-    r"""Inject some information about the relative or absolute position of the tokens
-        in the sequence. The positional encodings have the same dimension as
+    r"""Inject some information about the relative or absolute position of the
+    tokens in the sequence.
+
+    The positional encodings have the same dimension as
         the embeddings, so that the two can be summed. Here, we use sine and cosine
         functions of different frequencies.
     .. math::
@@ -153,8 +156,7 @@ class TransformerLanguageModel(LogModel):
         return self.src_mask
 
     @abstractmethod
-    def forward(self, sequences, lengths: Tensor = None, mask=None, targets=None):
-        ...
+    def forward(self, sequences, lengths: Tensor = None, mask=None, targets=None): ...
 
 
 class Transformer(TransformerLanguageModel):
@@ -191,7 +193,6 @@ class Transformer(TransformerLanguageModel):
         # word embedding encoder and decoder share weights
         # @ is shorthand for matrix multiplication
         logits = tf_hidden @ self.word_embedding.weight.t()
-        
 
         loss = None
         if targets is not None:
@@ -209,11 +210,12 @@ class Transformer(TransformerLanguageModel):
 
 class MLMTransformer(Transformer):
     """Transformer model that learns via masked language modelling (ish).
-    
-    For each input sequence, the model will mask out each token in turn and
-    predict the masked token. The loss is the sum of the cross entropy loss
-    for each masked token.
+
+    For each input sequence, the model will mask out each token in turn
+    and predict the masked token. The loss is the sum of the cross
+    entropy loss for each masked token.
     """
+
     def forward(self, sequences, lengths=None, mask=None, targets=None):
         # batch size, sequence length, embedded dimension
         # lengths is currently ignored, added for compatibility with LSTM-training code
@@ -233,7 +235,7 @@ class MLMTransformer(Transformer):
         # word embedding encoder and decoder share weights
         # @ is shorthand for matrix multiplication
         logits = tf_hidden @ self.word_embedding.weight.t()
-        
+
         # Don't compute loss for the first token (source_user) when including timestamp
         if self.config.include_timestamp:
             logits = logits[:, 1:, :]
@@ -247,6 +249,7 @@ class MLMTransformer(Transformer):
         if self.tiered:
             return logits, tf_hidden, loss
         return logits, loss
+
 
 class TieredTransformer(TieredLogModel):
 
@@ -360,11 +363,14 @@ class TieredTransformer(TieredLogModel):
 
 
 class SKVTransformerEncoderLayer(nn.Module):
-    r"""Near-duplicate of PyTorch's nn.TransformerEncoderLayer to redefine forward function.
+    r"""Near-duplicate of PyTorch's nn.TransformerEncoderLayer to redefine
+    forward function.
 
     Purpose: allow separate query/key/value tensors as input.
 
-    See torch.nn.modules.transformer.TransformerEncoderLayer docs for more information."""
+    See torch.nn.modules.transformer.TransformerEncoderLayer docs for more information.
+    """
+
     __constants__ = ["batch_first"]
 
     def __init__(
@@ -409,7 +415,8 @@ class SKVTransformerEncoderLayer(nn.Module):
         src_mask: Optional[Tensor] = None,
         src_key_padding_mask: Optional[Tensor] = None,
     ) -> Tensor:
-        r"""Redefined forward function to allow separate query/key/value tensors.
+        r"""Redefined forward function to allow separate query/key/value
+        tensors.
 
         see the nn.TransformerEncoderLayer docs for more information.
         """
@@ -426,7 +433,10 @@ class SKVTransformerEncoder(nn.Module):
     r"""Near-duplicate of PyTorch's nn.TransformerEncoder to allow passing
     separate source(aka query)/key/value tensors as input.
 
-    See torch.nn.modules.transformer.TransformerEncoder docs for more information."""
+    See torch.nn.modules.transformer.TransformerEncoder docs for more
+    information.
+    """
+
     __constants__ = ["norm"]
 
     def __init__(self, encoder_layer, num_layers, norm=None):
@@ -443,7 +453,8 @@ class SKVTransformerEncoder(nn.Module):
         mask: Optional[Tensor] = None,
         src_key_padding_mask: Optional[Tensor] = None,
     ) -> Tensor:
-        r"""Redefined forward function to allow separate query/key/value tensors.
+        r"""Redefined forward function to allow separate query/key/value
+        tensors.
 
         see the nn.TransformerEncoder docs for more information.
         """

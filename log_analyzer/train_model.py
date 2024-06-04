@@ -6,8 +6,8 @@ from pathlib import Path
 
 import numpy as np
 import torch
-
 import wandb
+
 from log_analyzer.application import Application
 from log_analyzer.data_utils.data_loader import MultilineDataLoader
 from log_analyzer.train_loop import eval_model, init_from_args, train_model
@@ -72,7 +72,7 @@ def main(seed=22):
     args = prepare_args()
 
     if ("tiered" in args.model_type or "word" in args.tokenization) and args.counts_file is None:
-        raise Exception("No field counts file was supplied!.")
+        raise TypeError("No field counts file was supplied!.")
 
     #  Start a W&B run
 

@@ -12,7 +12,7 @@ class Config:
         pass
 
     def save_config(self, filename):
-        """save configuration as json file."""
+        """Save configuration as json file."""
         with open(filename, "w", encoding="utf8") as f:
             dictionary = self.__dict__
 
@@ -23,7 +23,7 @@ class Config:
             json.dump(dictionary, f, indent="\t")
 
     def load_config(self, filename):
-        """load configuration from json file."""
+        """Load configuration from json file."""
         with open(filename, "r", encoding="utf8") as f:
             data = json.load(f)
 

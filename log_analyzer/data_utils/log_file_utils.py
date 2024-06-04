@@ -5,6 +5,7 @@ import sys
 import tempfile
 from argparse import ArgumentParser
 from collections import OrderedDict
+
 from tqdm import tqdm
 
 from log_analyzer.tokenizer.tokenizer_neo import LANLVocab
@@ -186,13 +187,13 @@ def add_redteam_to_log(day, filename_in, filename_out, readteam_file, normalized
             writer.writerow(line)
 
 
-def generate_subset(infile_path, outfile_path, subset_size, indices_to_force_red=(10,50)):
+def generate_subset(infile_path, outfile_path, subset_size, indices_to_force_red=(10, 50)):
     """Generate a subset of the input file."""
     with open(outfile_path, "w", encoding="utf8") as outfile, open(infile_path, "r", encoding="utf8") as infile:
         reader = LANLReader(infile, has_red=True)
         writer = csv.DictWriter(outfile, fieldnames=reader.field_names)
         for i, entry in enumerate(reader):
-            if i+1 in indices_to_force_red:
+            if i + 1 in indices_to_force_red:
                 entry["is_red"] = "1"
             if i >= subset_size:
                 break
@@ -216,7 +217,7 @@ def process_logfiles_for_training(auth_file, red_file, days_to_keep, output_dir,
             generate_subset(outfile, sample_outfile, 10000)
             test_outfile = os.path.join(test_output_dir, f"{day}.csv")
             generate_subset(outfile, test_outfile, 200)
-        
+
         # Copy the first 10000 lines of redteam.txt and auth.txt to the test directory
         red_outfile = os.path.join(test_output_dir, "redteam.txt")
         with open(red_file, "r", encoding="utf8") as in_file, open(red_outfile, "w", encoding="utf8") as out_file:
@@ -224,7 +225,7 @@ def process_logfiles_for_training(auth_file, red_file, days_to_keep, output_dir,
                 out_file.write(line)
                 if i >= 10000:
                     break
-        
+
         auth_outfile = os.path.join(test_output_dir, "auth_head.txt")
         with open(auth_file, "r", encoding="utf8") as in_file, open(auth_outfile, "w", encoding="utf8") as out_file:
             for i, line in enumerate(in_file):
@@ -236,7 +237,9 @@ def process_logfiles_for_training(auth_file, red_file, days_to_keep, output_dir,
         if 8 in days_to_keep:
             raw_day_8 = os.path.join(tmpdir, "8.csv")
             raw_day_8_outfile = os.path.join(test_output_dir, "raw_8_head.csv")
-            with open(raw_day_8, "r", encoding="utf8") as in_file, open(raw_day_8_outfile, "w", encoding="utf8") as out_file:
+            with open(raw_day_8, "r", encoding="utf8") as in_file, open(
+                raw_day_8_outfile, "w", encoding="utf8"
+            ) as out_file:
                 for i, line in enumerate(in_file):
                     out_file.write(line)
                     if i >= 100:
@@ -314,21 +317,29 @@ def process_file(arguments=None):
     parser.add_argument("redteam_file", type=str, help="Path to file with redteam events.", default="data/redteam.txt")
     parser.add_argument("-d", "--days_to_keep", nargs="+", type=int, help="Days to keep logs from.", default=[6, 7, 8])
     parser.add_argument("-o", "--output", type=str, help="Output directory.", default="data/full_data")
-    parser.add_argument("-s", "--sample_output", type=str, help="Output directory for sample data.", default="data/sample_data")
-    parser.add_argument("-t", "--test_output", type=str, help="Output directory for test data.", default="data/test_data")
+    parser.add_argument(
+        "-s", "--sample_output", type=str, help="Output directory for sample data.", default="data/sample_data"
+    )
+    parser.add_argument(
+        "-t", "--test_output", type=str, help="Output directory for test data.", default="data/test_data"
+    )
 
     if arguments is None:
         args = parser.parse_args()
     else:
         args = parser.parse_args(arguments)
 
-    process_logfiles_for_training(args.auth_file, args.redteam_file, args.days_to_keep, args.output, args.sample_output, args.test_output)
+    process_logfiles_for_training(
+        args.auth_file, args.redteam_file, args.days_to_keep, args.output, args.sample_output, args.test_output
+    )
 
 
 def generate_counts(arguments=None):
     """CLI tool to generate counts file."""
     parser = ArgumentParser()
-    parser.add_argument("log_files", type=str, nargs="+", help="Glob pattern of log files to process.", default="data/full_data/*.csv")
+    parser.add_argument(
+        "log_files", type=str, nargs="+", help="Glob pattern of log files to process.", default="data/full_data/*.csv"
+    )
     parser.add_argument(
         "--not-normalized", action="store_false", help="Add this flag if the log file is not already normalized."
     )

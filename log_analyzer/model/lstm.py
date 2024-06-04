@@ -46,8 +46,7 @@ class LogModel(nn.Module):
         return loss, line_losses.unsqueeze(-1), token_losses
 
     @abstractmethod
-    def forward(self, sequences, lengths: Tensor = None, mask=None, targets=None):
-        ...
+    def forward(self, sequences, lengths: Tensor = None, mask=None, targets=None): ...
 
 
 class TieredLogModel(LogModel):
@@ -80,8 +79,7 @@ class TieredLogModel(LogModel):
         return loss, line_losses_list, token_losses_list
 
     @abstractmethod
-    def forward(self, sequences, lengths: Tensor = None, mask=None, targets=None):
-        ...
+    def forward(self, sequences, lengths: Tensor = None, mask=None, targets=None): ...
 
 
 class MultilineLogModel(LogModel):
@@ -94,16 +92,13 @@ class MultilineLogModel(LogModel):
         # self.criterion = nn.CosineEmbeddingLoss(reduction="none")
 
     @abstractmethod
-    def word_embedding(self, src):
-        ...
+    def word_embedding(self, src): ...
 
     @abstractmethod
-    def sentence_embedding(self, src):
-        ...
+    def sentence_embedding(self, src): ...
 
     @abstractmethod
-    def sentence_deembedding(self, src):
-        ...
+    def sentence_deembedding(self, src): ...
 
     def compute_loss(self, output: Tensor, Y: Tensor):
         """Computes the loss for the given model output and ground truth."""

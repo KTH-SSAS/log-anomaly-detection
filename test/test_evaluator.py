@@ -1,4 +1,5 @@
 """Functions to test different model configurations."""
+
 from pathlib import Path
 
 import pytest

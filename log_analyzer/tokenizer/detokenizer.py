@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from .tokenizer import split_line
+from .tokenizer_neo import split_line
 
 
 class Detokenizer:

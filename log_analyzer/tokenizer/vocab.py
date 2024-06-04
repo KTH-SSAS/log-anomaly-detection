@@ -38,21 +38,17 @@ class FieldVocab(ABC):
     field_names: List[str]
 
     @abstractmethod
-    def __init__(self, vocab: OrderedDict) -> None:
-        ...
+    def __init__(self, vocab: OrderedDict) -> None: ...
 
     @abstractmethod
-    def token2idx(self, token: str, field: int):
-        ...
+    def token2idx(self, token: str, field: int): ...
 
     @abstractmethod
-    def idx2token(self, idx: int, field: int):
-        ...
+    def idx2token(self, idx: int, field: int): ...
 
     @classmethod
     @abstractmethod
-    def counts2vocab(cls, counts: Union[dict, Path], cutoff: int):
-        ...
+    def counts2vocab(cls, counts: Union[dict, Path], cutoff: int): ...
 
 
 class GlobalVocab(FieldVocab):
@@ -96,7 +92,8 @@ class GlobalVocab(FieldVocab):
         """Generates a vocabulary file based on a file of token counts per
         field.
 
-        Tokens that appear in several fields are assigned just one (global) index.
+        Tokens that appear in several fields are assigned just one
+        (global) index.
         """
 
         vocab: OrderedDict[str, int] = OrderedDict()
@@ -279,7 +276,6 @@ class LANLVocab(FieldVocab):
         vocab.move_to_end(MSK_TOKEN)
         vocab.move_to_end(OOV_TOKEN)
         vocab.move_to_end("special_tokens")
-
 
         print(f"Generated vocab with {index} words.")
 

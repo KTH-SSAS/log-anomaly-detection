@@ -12,7 +12,6 @@ disable=design,
 		missing-class-docstring,
 		missing-function-docstring,
 		invalid-name,
-		max-attributes,
 		consider-using-with,
 		too-many-nested-blocks,
 		duplicate-code

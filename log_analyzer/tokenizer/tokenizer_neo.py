@@ -9,20 +9,43 @@ from .vocab import CLS_TOKEN, EOS_TOKEN, MSK_TOKEN, PAD_TOKEN, SOS_TOKEN, FieldV
 SECONDS_PER_DAY = 86400
 SECONDS_PER_HOUR = 3600
 
+
+def split_line(string):
+    """Turn raw some fields of raw log line from auth_h.txt into a list of word
+    tokens (needed for consistent user ids and domain ids)
+
+    :param string: Raw log line from auth_h.txt
+    :return: (list) word tokens for some fields of auth_h.txt
+    """
+    data = string.strip().split(",")
+    src_user = data[1].split("@")[0]
+    src_domain = data[1].split("@")[1]
+    dst_user = data[2].split("@")[0]
+    dst_domain = data[2].split("@")[1]
+    src_pc = data[3]
+    dst_pc = data[4]
+    return (
+        src_user,
+        src_domain,
+        dst_user.replace("$", ""),
+        dst_domain,
+        src_pc,
+        dst_pc,
+    )
+
+
 def mask_tokens(
     indexes: NDArray[np.int64],
     mask_idx: int,
     test: bool = False,
 ) -> Tuple[NDArray, NDArray]:
-    """Replace a random token with a mask token. If test=True instead each token will be replaced with a mask token,
-    one at a time, generatic (seq_len) new sequences each with 1 mask token.
+    """Replace a random token with a mask token. If test=True instead each
+    token will be replaced with a mask token, one at a time, generatic
+    (seq_len) new sequences each with 1 mask token.
 
-    If test=True: if 0 is the mask token, and original sequence is 1,2,3,4,5, then the output will be:
-    0,2,3,4,5
-    1,0,3,4,5
-    1,2,0,4,5
-    1,2,3,0,5
-    1,2,3,4,0
+    If test=True: if 0 is the mask token, and original sequence is
+    1,2,3,4,5, then the output will be: 0,2,3,4,5 1,0,3,4,5 1,2,0,4,5
+    1,2,3,0,5 1,2,3,4,0
     """
     masked_tokens = np.array(indexes, dtype=np.int64)
     length = len(indexes)
@@ -61,12 +84,12 @@ class Tokenizer(ABC):
         super().__init__()
 
     @abstractmethod
-    def tokenize(self, line: Union[str, List[str]], add_sos: bool = False, add_eos: bool = False) -> NDArray[np.int64]:
-        ...
+    def tokenize(
+        self, line: Union[str, List[str]], add_sos: bool = False, add_eos: bool = False
+    ) -> NDArray[np.int64]: ...
 
     @abstractmethod
-    def _encode_single_position(self, token: str, field: int):
-        ...
+    def _encode_single_position(self, token: str, field: int): ...
 
     def _encode_timestamp(self, token: str, field: int):
         # Bucket the timestamp into 1 hour intervals
@@ -90,7 +113,9 @@ class Tokenizer(ABC):
 
         for i in range(num_pre_tokens + self.include_timestamp, total_length - num_post_tokens):
             # If we're not including timestamp, we need to shift the field index by 1
-            indexes[i] = self._encode_single_position(tokens[i - num_pre_tokens], i - num_pre_tokens + (1 - self.include_timestamp))
+            indexes[i] = self._encode_single_position(
+                tokens[i - num_pre_tokens], i - num_pre_tokens + (1 - self.include_timestamp)
+            )
 
         for i in range(num_post_tokens):
             indexes[total_length - num_post_tokens + i] = self.eos_idx
@@ -98,27 +123,22 @@ class Tokenizer(ABC):
         return indexes
 
     @abstractmethod
-    def decode(self, indexes: NDArray[np.int64]) -> List[str]:
-        ...
+    def decode(self, indexes: NDArray[np.int64]) -> List[str]: ...
 
     @abstractmethod
-    def detokenize(self, indexes: NDArray[np.int64]) -> str:
-        ...
+    def detokenize(self, indexes: NDArray[np.int64]) -> str: ...
 
     @property
     @abstractmethod
-    def sos_idx(self):
-        ...
+    def sos_idx(self): ...
 
     @property
     @abstractmethod
-    def eos_idx(self):
-        ...
+    def eos_idx(self): ...
 
     @property
     @abstractmethod
-    def include_timestamp(self):
-        ...
+    def include_timestamp(self): ...
 
     def user_idx(self, user):
         if self.num_users == 0:
@@ -130,8 +150,8 @@ class Tokenizer(ABC):
 
     @abstractmethod
     def mask_tokens(
-        self, indexes: NDArray[np.int64], test: bool) -> Tuple[NDArray[np.int64], NDArray[np.int64], NDArray[np.int64]]:
-        ...
+        self, indexes: NDArray[np.int64], test: bool
+    ) -> Tuple[NDArray[np.int64], NDArray[np.int64], NDArray[np.int64]]: ...
 
     @property
     @abstractmethod
@@ -140,13 +160,11 @@ class Tokenizer(ABC):
 
     @property
     @abstractmethod
-    def vocab_size(self) -> int:
-        ...
+    def vocab_size(self) -> int: ...
 
     @property
     @abstractmethod
-    def sequence_length(self) -> Optional[int]:
-        ...
+    def sequence_length(self) -> Optional[int]: ...
 
 
 class CharTokenizer(Tokenizer):
@@ -220,9 +238,7 @@ class CharTokenizer(Tokenizer):
     def mask_tokens(
         self, indexes: NDArray[np.int64], test: bool = False
     ) -> Tuple[NDArray[np.int64], NDArray[np.int64], NDArray[np.int64]]:
-        return mask_tokens(
-            indexes, self.mask_idx, test
-        )
+        return mask_tokens(indexes, self.mask_idx, test)
 
     @property
     def num_users(self):
@@ -298,18 +314,14 @@ class LANLTokenizer(Tokenizer):
     def detokenize(self, indexes) -> str:
         return ",".join(self.decode(indexes))
 
-    def mask_tokens(
-        self, indexes: NDArray[np.int64], test: bool = False
-    ) -> Tuple[NDArray, NDArray]:
-        """Replace a random token with a mask token. If test=True instead each token will be replaced with a mask token,
-        one at a time, generatic (seq_len) new sequences each with 1 mask token.
+    def mask_tokens(self, indexes: NDArray[np.int64], test: bool = False) -> Tuple[NDArray, NDArray]:
+        """Replace a random token with a mask token. If test=True instead each
+        token will be replaced with a mask token, one at a time, generatic
+        (seq_len) new sequences each with 1 mask token.
 
-        If test=True: if 0 is the mask token, and original sequence is 1,2,3,4,5, then the output will be:
-        0,2,3,4,5
-        1,0,3,4,5
-        1,2,0,4,5
-        1,2,3,0,5
-        1,2,3,4,0
+        If test=True: if 0 is the mask token, and original sequence is
+        1,2,3,4,5, then the output will be: 0,2,3,4,5 1,0,3,4,5
+        1,2,0,4,5 1,2,3,0,5 1,2,3,4,0
         """
         masked_tokens = np.array(indexes, dtype=np.int64)
         length = len(indexes)
@@ -390,5 +402,7 @@ class GlobalTokenizer(Tokenizer):
     def vocab_size(self):
         return self.vocab.size
 
-    def mask_tokens(self, indexes: NDArray[np.int64], test: bool = False) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+    def mask_tokens(
+        self, indexes: NDArray[np.int64], test: bool = False
+    ) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         return mask_tokens(indexes, self.mask_idx, test=test)
