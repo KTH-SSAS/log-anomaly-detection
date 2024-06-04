@@ -37,6 +37,10 @@ def test_transformer(tmpdir, model_type, bidirectional, tokenization, cuda):
 
     if cuda and not torch.cuda.is_available():
         pytest.skip()
+    
+    if bidirectional and (model_type == "tiered-transformer" or tokenization == "char"):
+        # Bidirectional transformer is not supported for tiered-transformer or char tokenization.
+        pytest.skip()
 
     args = utils.set_args(bidirectional, model_type, tokenization)
     if model_type == "tiered-transformer":
