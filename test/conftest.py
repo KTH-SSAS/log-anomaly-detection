@@ -12,9 +12,9 @@ VOCAB_SIZE = 128
 BATCH_SIZE = 4
 CONSECUTIVE_LOG = 3
 SHIFT_WINDOW = 3
-LAYERS = 2
-MODEL_DIM = 20
-FFW_DIM = 20
+LAYERS = 1
+MODEL_DIM = 10
+FFW_DIM = 10
 DROPOUT_RATE = 0.1
 ATTENTION_HEAD = 2
 LEN_SAVED_HISTORY = 10
@@ -23,7 +23,7 @@ NUM_USERS = 100
 
 @pytest.fixture()
 def test_config():
-    config = TransformerConfig(layers=2, feedforward_dim=64, model_dim=64, attention_heads=2, dropout=0.1)
+    config = TransformerConfig(include_timestamp=False, layers=2, feedforward_dim=64, model_dim=64, attention_heads=2, dropout=0.1)
     config.vocab_size = VOCAB_SIZE
     config.sequence_length = SEQUENCE_LENGTH
     return config
@@ -38,6 +38,7 @@ def test_tiered_transformer_config():
         "attention_heads": ATTENTION_HEAD,
         "dropout": DROPOUT_RATE,
         "shift_window": SHIFT_WINDOW,
+        "include_timestamp": False,
     }
     config = TieredTransformerConfig(**args)
     config.vocab_size = VOCAB_SIZE
