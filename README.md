@@ -29,11 +29,26 @@ Anomaly detection in security logs using sequence modeling info:
 
 ## Publication
 
-This work was presented at the [IEEE/IFIP Network Operations and Management Symposium 2024](https://noms2024.ieee-noms.org). Once the conference proceedings have been published this README will be updated with a link and bibtex. The abstract of the paper is as follows:
+This work was published at the [IEEE/IFIP Network Operations and Management Symposium 2024](https://noms2024.ieee-noms.org) as a [technical session paper](http://doi.org/10.1109/NOMS59830.2024.10575561).
+
+The abstract of the paper is as follows:
 
 <p style="text-align: justify">
 "As cyberattacks are becoming more sophisticated, automated activity logging and anomaly detection are becoming important tools for defending computer systems. Recent deep learning-based approaches have demonstrated promising results in cybersecurity contexts, typically using supervised learning combined with large amounts of labeled data. Self-supervised learning has seen growing interest as a method of training models because it does not require labeled training data, which can be difficult and expensive to collect. However, existing self-supervised approaches to anomaly detection in user authentication logs either suffer from low precision or rely on large pre-trained natural language models. This makes them slow and expensive both during training and inference. Building on previous works, we therefore propose an end-to-end trained self-supervised transformer-based sequence model for anomaly detection in user authentication events. Thanks in part to an adapted masked-language modeling (MLM) learning task and domain knowledge-based improvements to the anomaly detection method, our proposed model outperforms previous long short-term memory (LSTM)-based approaches at detecting red-team activity in the “Comprehensive, Multi-Source Cyber-Security Events” authentication event dataset, improving the area under the receiver operating characteristic curve (AUC) from 0.9760 to 0.9989 and achieving an average precision of 0.0410. Our work presents the first application of end-to-end trained self-supervised transformer models to user authentication data in a cybersecurity context, and demonstrates the potential of transformer-based approaches for anomaly detection."
 </p>
+
+If you make use of this code or our work, please cite our [paper](http://doi.org/10.1109/NOMS59830.2024.10575561) using the following bibtex:
+```
+@INPROCEEDINGS{gokstorp2024anomaly,
+  author={Gökstorp, Simon and Nyberg, Jakob and Kim, Yeongwoo and Johnson, Pontus and Dán, György},
+  booktitle={NOMS 2024-2024 IEEE Network Operations and Management Symposium}, 
+  title={Anomaly Detection in Security Logs using Sequence Modeling}, 
+  year={2024},
+  volume={},
+  number={},
+  pages={1-9},
+  doi={10.1109/NOMS59830.2024.10575561}}
+```
 
 ## Instructions for using the code
 This project was built with Python 3.8. The module and all requirements can most easily be installed by running:
